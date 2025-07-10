@@ -3,6 +3,9 @@ FROM php:8.4-fpm
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     libpq-dev \
+    git \
+    zip \
+    unzip \
     && rm -rf /var/lib/apt/lists/*
 
 # Install PHP extensions

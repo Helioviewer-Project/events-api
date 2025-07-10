@@ -3,7 +3,8 @@
     "description": "Events API for Helioviewer.org",
     "type": "project",
     "require": {
-        "php": "^8.4"
+        "php": "^8.4",
+        "robmorgan/phinx": "^0.16.10"
     },
     "autoload": {
         "psr-4": {
