@@ -1,0 +1,17 @@
+{
+    "name": "helioviewer/events-api",
+    "description": "Events API for Helioviewer.org",
+    "type": "project",
+    "require": {
+        "php": "^8.4",
+        "robmorgan/phinx": "^0.16.10"
+    },
+    "autoload": {
+        "psr-4": {
+            "Helioviewer\\EventsApi\\": "src/"
+        }
+    },
+    "config": {
+        "sort-packages": true
+    }
+}

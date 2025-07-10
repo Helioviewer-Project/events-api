@@ -17,8 +17,31 @@ services:
     container_name: eventsapi-phpfpm
     volumes:
       - ../:/u/apps/site
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=eventsapi
+      - DB_USER=eventsapi
+      - DB_PASSWORD=eventsapi_pass
+    depends_on:
+      - postgres
     networks:
       - eventsapi
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: eventsapi-postgres
+    environment:
+      - POSTGRES_DB=eventsapi
+      - POSTGRES_USER=eventsapi
+      - POSTGRES_PASSWORD=eventsapi_pass
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - eventsapi
+
+volumes:
+  postgres_data:
 
 networks:
   eventsapi:
