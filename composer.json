@@ -4,6 +4,7 @@
     "type": "project",
     "require": {
         "php": "^8.4",
+        "illuminate/database": "^12.20",
         "robmorgan/phinx": "^0.16.10"
     },
     "autoload": {
