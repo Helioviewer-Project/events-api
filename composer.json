@@ -5,7 +5,9 @@
     "require": {
         "php": "^8.4",
         "illuminate/database": "^12.20",
-        "robmorgan/phinx": "^0.16.10"
+        "robmorgan/phinx": "^0.16.10",
+        "slim/psr7": "^1.7",
+        "slim/slim": "^4.14"
     },
     "autoload": {
         "psr-4": {
