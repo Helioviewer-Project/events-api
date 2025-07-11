@@ -16,9 +16,9 @@ final class CreateEventsTable extends AbstractMigration
             $table->id();
             $table->uuid('uuid')->unique();
             $table->smallInteger('source_id');
-            $table->timestamp('start');
-            $table->timestamp('peak');
-            $table->timestamp('end');
+            $table->integer('start');
+            $table->integer('peak');
+            $table->integer('end');
             $table->string('label', 256);
             $table->timestamps();
         });

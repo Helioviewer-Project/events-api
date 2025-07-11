@@ -31,7 +31,12 @@ This project uses Docker Compose for local development with PHP 8.4, Nginx, and 
    make migrate-run
    ```
 
-4. **Access the application:**
+4. **Seed the database with sample data:**
+   ```bash
+   make seed-run
+   ```
+
+5. **Access the application:**
    - Open http://localhost:8082 in your browser
    - You should see the PHP info page
 
@@ -57,6 +62,7 @@ make
 - `make migrate-create NAME=MigrationName` - Create a new migration
 - `make migrate-run` - Run pending migrations
 - `make migrate-rollback` - Rollback the last migration
+- `make seed-run` - Run database seeders
 
 ### Architecture
 
