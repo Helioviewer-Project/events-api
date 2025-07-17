@@ -1,4 +1,4 @@
-.PHONY: composer-install composer-require up down build shell migrate-status migrate-create migrate-run migrate-rollback seed-run
+.PHONY: composer-install composer-require up down build shell migrate-status migrate-create migrate-run migrate-rollback seed-run collect
 .DEFAULT_GOAL := help
 
 composer-install:
@@ -35,6 +35,9 @@ migrate-rollback:
 seed-run:
 	docker compose -f docker/docker-compose.yml run --rm --user 1000:1000 phpfpm vendor/bin/phinx seed:run
 
+collect:
+	docker compose -f docker/docker-compose.yml run --rm --user 1000:1000 phpfpm php bin/collect.php $(ARGS)
+
 help:
 	@echo "Available commands:"
 	@echo "  up                    - Start the Docker containers"
@@ -48,3 +51,4 @@ help:
 	@echo "  migrate-run           - Run pending migrations"
 	@echo "  migrate-rollback      - Rollback the last migration"
 	@echo "  seed-run              - Run database seeders"
+	@echo "  collect               - Collect events from sources (use: make collect ARGS='2024-01-01 2024-01-31')"

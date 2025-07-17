@@ -64,6 +64,10 @@ make
 - `make migrate-rollback` - Rollback the last migration
 - `make seed-run` - Run database seeders
 
+#### Event Collection Commands
+- `make collect` - Collect events from all sources (last 7 days by default)
+- `make collect ARGS='2024-01-01 2024-01-31'` - Collect events for specific date range
+
 ### Architecture
 
 - **Nginx** (`eventsapi-nginx`) - Web server listening on port 8082
