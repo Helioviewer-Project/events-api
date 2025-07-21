@@ -65,8 +65,9 @@ make
 - `make seed-run` - Run database seeders
 
 #### Event Collection Commands
-- `make collect` - Collect events from all sources (last 7 days by default)
-- `make collect ARGS='2024-01-01 2024-01-31'` - Collect events for specific date range
+- `make collect` - Collect events for today
+- `make collect 2024-01-15` - Collect events for specific date (Y-m-d format)
+- `make collect 2024-01-01 2024-01-31` - Collect events for date range (inclusive)
 
 ### Architecture
 

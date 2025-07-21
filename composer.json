@@ -4,7 +4,9 @@
     "type": "project",
     "require": {
         "php": "^8.4",
+        "helioviewer/event-interface": "dev-main",
         "illuminate/database": "^12.20",
+        "ramsey/uuid": "^4.9",
         "robmorgan/phinx": "^0.16.10",
         "slim/psr7": "^1.7",
         "slim/slim": "^4.14"
@@ -16,5 +18,16 @@
     },
     "config": {
         "sort-packages": true
-    }
+    },
+    "repositories": {
+        "helioviewer-event-interface": {
+            "type": "path",
+            "url": "./helioviewer-event-interface",
+            "options": {
+                "symlink": true
+            }
+        }
+    },
+    "prefer-stable": true,
+    "minimum-stability": "dev"
 }

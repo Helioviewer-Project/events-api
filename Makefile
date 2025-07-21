@@ -36,7 +36,11 @@ seed-run:
 	docker compose -f docker/docker-compose.yml run --rm --user 1000:1000 phpfpm vendor/bin/phinx seed:run
 
 collect:
-	docker compose -f docker/docker-compose.yml run --rm --user 1000:1000 phpfpm php bin/collect.php $(ARGS)
+	docker compose -f docker/docker-compose.yml run --rm --user 1000:1000 phpfpm php bin/collect.php $(filter-out $@,$(MAKECMDGOALS))
+
+# Treat any additional arguments as non-targets to avoid "No rule" errors
+%:
+	@:
 
 help:
 	@echo "Available commands:"
@@ -51,4 +55,4 @@ help:
 	@echo "  migrate-run           - Run pending migrations"
 	@echo "  migrate-rollback      - Rollback the last migration"
 	@echo "  seed-run              - Run database seeders"
-	@echo "  collect               - Collect events from sources (use: make collect ARGS='2024-01-01 2024-01-31')"
+	@echo "  collect [date1] [date2] - Collect events (use: make collect 2024-01-15 or make collect 2024-01-01 2024-01-31)"
