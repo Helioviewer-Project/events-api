@@ -25,3 +25,8 @@ $capsule->setAsGlobal();
 
 // Setup the Eloquent ORM
 $capsule->bootEloquent();
+
+// Define Coordinator URL if not set
+if (!defined('HV_COORDINATOR_URL')) {
+    define('HV_COORDINATOR_URL', $_ENV['HV_COORDINATOR_URL'] ?? 'https://api.helioviewer.org/coordinate');
+}

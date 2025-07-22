@@ -11,11 +11,12 @@ use Helioviewer\EventsApi\Sources\FlareScoreboard;
 use Helioviewer\EventsApi\Models\Event;
 use Helioviewer\EventsApi\Processors\Database as DatabaseEventProcessor;
 use Helioviewer\EventsApi\Processors\Log as LogEventProcessor;
+use Helioviewer\EventsApi\Utils\ArgumentParser;
 use Carbon\Carbon;
 
 // Initialize log processor for testing/watching without database saves
-// $eventProcessor = new DatabaseEventProcessor();
-$eventProcessor = new LogEventProcessor();
+$eventProcessor = new DatabaseEventProcessor();
+// $eventProcessor = new LogEventProcessor();
 
 // FlareScoreboard prediction models (REGIONS only)
 $predictionModels = [
@@ -37,65 +38,21 @@ $predictionModels = [
 
 // Initialize sources
 $sources = [
-    // new DonkiCme('CCMC>>DONKI>>CME'),
-    // new DonkiFlare('CCMC>>DONKI>>Solar Flares'),
+    new DonkiCme('CCMC>>DONKI>>CME'),
+    new DonkiFlare('CCMC>>DONKI>>Solar Flares'),
 ];
 
 // Add FlareScoreboard sources
 foreach ($predictionModels as $modelId => $modelName) {
-    $sources[] = new FlareScoreboard("CCMC>>Solar Flare Predictions", $modelId, $modelName);
+    // $sources[] = new FlareScoreboard("CCMC>>Solar Flare Predictions", $modelId, $modelName);
 }
 
-// Parse command line arguments for date range using Carbon
-if ($argc == 1) {
-    // No parameters: use current date only
-    $start = Carbon::today()->timestamp;
-    $end = Carbon::today()->endOfDay()->timestamp;
-} elseif ($argc == 2) {
-    // One parameter: use start-date only (that single day or specific datetime)
-    try {
-        // Try ISO format first (e.g., 2024-01-15T14:30:00)
-        if (strpos($argv[1], 'T') !== false) {
-            $date = Carbon::createFromFormat('Y-m-d\TH:i:s', $argv[1]);
-            $start = $date->timestamp;
-            $end = $date->endOfDay()->timestamp;
-        } else {
-            // Fall back to date-only format (e.g., 2024-01-15)
-            $date = Carbon::createFromFormat('Y-m-d', $argv[1]);
-            $start = $date->startOfDay()->timestamp;
-            $end = $date->endOfDay()->timestamp;
-        }
-    } catch (Exception $e) {
-        echo "Error: Invalid date format. Use Y-m-d or Y-m-d\TH:i:s format (e.g., 2024-01-15 or 2024-01-15T14:30:00)\n";
-        exit(1);
-    }
-} else {
-    // Two parameters: start-date and end-date range
-    try {
-        // Try ISO format first for both parameters
-        if (strpos($argv[1], 'T') !== false) {
-            $startDate = Carbon::createFromFormat('Y-m-d\TH:i:s', $argv[1]);
-        } else {
-            $startDate = Carbon::createFromFormat('Y-m-d', $argv[1]);
-        }
-        
-        if (strpos($argv[2], 'T') !== false) {
-            $endDate = Carbon::createFromFormat('Y-m-d\TH:i:s', $argv[2]);
-        } else {
-            $endDate = Carbon::createFromFormat('Y-m-d', $argv[2]);
-        }
-        
-        if ($startDate->gt($endDate)) {
-            echo "Error: Start date must be before or equal to end date\n";
-            exit(1);
-        }
-        
-        $start = $startDate->timestamp;
-        $end = $endDate->timestamp;
-    } catch (Exception $e) {
-        echo "Error: Invalid date format. Use Y-m-d or Y-m-d\TH:i:s format (e.g., 2024-01-15 or 2024-01-15T14:30:00)\n";
-        exit(1);
-    }
+// Parse command line arguments for date range
+try {
+    [$start, $end] = ArgumentParser::parseDateRange($argv);
+} catch (Exception $e) {
+    echo "Error: " . $e->getMessage() . "\n";
+    exit(1);
 }
 
 echo "Collecting events from " . date('Y-m-d H:i:s', $start) . " to " . date('Y-m-d H:i:s', $end) . "\n";

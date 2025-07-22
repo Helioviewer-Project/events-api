@@ -98,7 +98,7 @@ abstract class HttpSource extends Source
     private function createDefaultClient(): ClientInterface
     {
         return new Client([
-            'timeout' => 60.0,
+            'timeout' => 5.0,
             'http_errors' => true,
             'headers' => [
                 'User-Agent' => 'Helioviewer Events API/1.0',
