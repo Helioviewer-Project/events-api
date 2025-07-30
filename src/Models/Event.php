@@ -6,39 +6,87 @@ namespace Helioviewer\EventsApi\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Builder;
 
 /**
  * Event Model
- * 
+ *
  * Represents a solar event record in the database with normalized data
- * from various sources (HEK, CCMC, WSA, RHESSI).
+ * from various sources including HEK (Heliophysics Event Knowledgebase),
+ * CCMC (Community Coordinated Modeling Center), WSA (Wang-Sheeley-Arge),
+ * and RHESSI (Reuven Ramaty High Energy Solar Spectroscopic Imager).
+ *
+ * This model handles the storage and retrieval of solar events with
+ * standardized coordinates, timing, and metadata. Events are uniquely
+ * identified by UUIDs and can be filtered by source, time range, and
+ * various other criteria.
+ *
+ * @package Helioviewer\EventsApi\Models
+ * @author  Kasim Necdet Percinel <kasim.n.percinel@nasa.gov>
+ * @since   1.0.0
+ *
+ * @property string $id Unique UUID identifier for the event
+ * @property string $remote_id Remote identifier from the source system
+ * @property string $response_hash Hash of the original response data
+ * @property int $source_id Identifier of the data source
+ * @property string|null $path Event path or classification
+ * @property int $start Event start time as Unix timestamp
+ * @property int|null $peak Event peak time as Unix timestamp
+ * @property int $end Event end time as Unix timestamp
+ * @property float|null $hv_hpc_x Helioviewer HPC X coordinate
+ * @property float|null $hv_hpc_y Helioviewer HPC Y coordinate
+ * @property string|null $label Human-readable event label
+ * @property string $translator Name of the data translator/processor
+ * @property string|null $legacy_version Legacy version identifier
+ * @property string|null $legacy_type Legacy event type
+ * @property string|null $legacy_pin Legacy pin identifier
+ * @property \Carbon\Carbon $created_at Event creation timestamp
+ * @property \Carbon\Carbon $updated_at Event last update timestamp
+ *
+ * @method static Builder bySource(int $sourceId) Filter events by source ID
+ * @method static Builder overlapping(int $start, int $end) Find overlapping events
+ * @method static Builder timeRange(int $start, int $end) Filter by time range
+ * @method static Builder byTranslator(string $translator) Filter by translator
  */
 class Event extends Model
 {
     use HasUuids;
 
     /**
-     * The table associated with the model
+     * The table associated with the model.
+     *
+     * @var string
      */
     protected $table = 'events';
 
     /**
-     * The primary key for the model
+     * The primary key for the model.
+     *
+     * @var string
      */
     protected $primaryKey = 'id';
 
     /**
-     * The "type" of the primary key ID
+     * The "type" of the primary key ID.
+     *
+     * @var string
      */
     protected $keyType = 'string';
 
     /**
-     * Indicates if the IDs are auto-incrementing
+     * Indicates if the IDs are auto-incrementing.
+     *
+     * @var bool
      */
     public $incrementing = false;
 
     /**
-     * The attributes that are mass assignable
+     * The attributes that are mass assignable.
+     *
+     * These attributes can be set via mass assignment methods
+     * like create() and fill().
+     *
+     * @var array<string>
      */
     protected $fillable = [
         'remote_id',
@@ -58,7 +106,9 @@ class Event extends Model
     ];
 
     /**
-     * The attributes that should be cast
+     * The attributes that should be cast to native types.
+     *
+     * @var array<string, string>
      */
     protected $casts = [
         'start' => 'integer',
@@ -72,48 +122,75 @@ class Event extends Model
     ];
 
     /**
-     * The attributes that should be hidden for serialization
+     * The attributes that should be hidden for serialization.
+     *
+     * @var array<string>
      */
     protected $hidden = [
         'response_hash',
     ];
 
     /**
-     * Get events for a specific source
+     * Scope a query to only include events from a specific source.
+     *
+     * @param  Builder $query The query builder instance
+     * @param  int $sourceId The source ID to filter by
+     * @return Builder The modified query builder
      */
-    public function scopeBySource($query, int $sourceId)
+    public function scopeBySource(Builder $query, int $sourceId): Builder
     {
         return $query->where('source_id', $sourceId);
     }
 
     /**
-     * Get events that overlap with a given time period
+     * Scope a query to only include events that overlap with a given time period.
+     *
+     * An event overlaps if its start time is before or at the period end,
+     * and its end time is after or at the period start.
+     *
+     * @param  Builder $query The query builder instance
+     * @param  int $start The start of the time period (Unix timestamp)
+     * @param  int $end The end of the time period (Unix timestamp)
+     * @return Builder The modified query builder
      */
-    public function scopeOverlapping($query, int $start, int $end)
+    public function scopeOverlapping(Builder $query, int $start, int $end): Builder
     {
         return $query->where('start', '<=', $end)
                     ->where('end', '>=', $start);
     }
 
     /**
-     * Get events within a time range
+     * Scope a query to only include events that fall completely within a time range.
+     *
+     * Both the event start and end times must be within the specified range.
+     *
+     * @param  Builder $query The query builder instance
+     * @param  int $start The start of the time range (Unix timestamp)
+     * @param  int $end The end of the time range (Unix timestamp)
+     * @return Builder The modified query builder
      */
-    public function scopeTimeRange($query, int $start, int $end)
+    public function scopeTimeRange(Builder $query, int $start, int $end): Builder
     {
         return $query->where('start', '>=', $start)
                     ->where('end', '<=', $end);
     }
 
     /**
-     * Get events by translator
+     * Scope a query to only include events processed by a specific translator.
+     *
+     * @param  Builder $query The query builder instance
+     * @param  string $translator The translator name to filter by
+     * @return Builder The modified query builder
      */
-    public function scopeByTranslator($query, string $translator)
+    public function scopeByTranslator(Builder $query, string $translator): Builder
     {
         return $query->where('translator', $translator);
     }
 
     /**
-     * Get the start time as a formatted date
+     * Get the start time as a formatted date string.
+     *
+     * @return string The formatted start date (Y-m-d H:i:s)
      */
     public function getStartDateAttribute(): string
     {
@@ -121,7 +198,9 @@ class Event extends Model
     }
 
     /**
-     * Get the peak time as a formatted date
+     * Get the peak time as a formatted date string.
+     *
+     * @return string The formatted peak date (Y-m-d H:i:s)
      */
     public function getPeakDateAttribute(): string
     {
@@ -129,7 +208,9 @@ class Event extends Model
     }
 
     /**
-     * Get the end time as a formatted date
+     * Get the end time as a formatted date string.
+     *
+     * @return string The formatted end date (Y-m-d H:i:s)
      */
     public function getEndDateAttribute(): string
     {
@@ -137,7 +218,11 @@ class Event extends Model
     }
 
     /**
-     * Get the duration in seconds
+     * Get the event duration in seconds.
+     *
+     * Calculates the difference between end and start timestamps.
+     *
+     * @return int The duration in seconds
      */
     public function getDurationAttribute(): int
     {
@@ -145,7 +230,14 @@ class Event extends Model
     }
 
     /**
-     * Check if event overlaps with another time period
+     * Check if this event overlaps with another time period.
+     *
+     * An overlap occurs when the event's time range intersects
+     * with the given time period.
+     *
+     * @param  int $start The start of the time period to check (Unix timestamp)
+     * @param  int $end The end of the time period to check (Unix timestamp)
+     * @return bool True if the event overlaps with the given period
      */
     public function overlaps(int $start, int $end): bool
     {
@@ -153,7 +245,14 @@ class Event extends Model
     }
 
     /**
-     * Create a new event from processed data
+     * Create a new event from processed data.
+     *
+     * This is a convenience method for creating events from
+     * data that has already been processed and normalized.
+     *
+     * @param  array<string, mixed> $processedData The processed event data
+     * @return self The created event instance
+     * @throws \Illuminate\Database\QueryException If the data is invalid
      */
     public static function createFromProcessed(array $processedData): self
     {
