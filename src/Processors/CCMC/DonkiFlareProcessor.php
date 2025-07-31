@@ -6,7 +6,8 @@ namespace Helioviewer\EventsApi\Processors\CCMC;
 
 use Helioviewer\EventsApi\Processors\EventProcessorInterface;
 use Helioviewer\EventsApi\Models\Event;
-use Helioviewer\EventsApi\Sources\AbstractSource;
+use Helioviewer\EventsApi\Sources\JsonSource;
+use Helioviewer\EventsApi\Sources\SourceInterface;
 use HelioviewerEventInterface\Translator\DonkiFlare as EventInterfaceDonkiFlare;
 use HelioviewerEventInterface\Util\LocationParser;
 
@@ -59,9 +60,9 @@ class DonkiFlareProcessor implements EventProcessorInterface
      *
      * @return bool True if this processor can handle the data, false otherwise
      */
-    public function canProcess(string $sourceName, array $rawRecord): bool
+    public function canProcess(SourceInterface $source, array $rawRecord): bool
     {
-        return $sourceName === 'DONKI_FLARE' && isset($rawRecord['activityID']);
+        return $source->getName() === 'DONKI_FLARE' && isset($rawRecord['flrID']);
     }
 
     /**
@@ -96,7 +97,7 @@ class DonkiFlareProcessor implements EventProcessorInterface
      *
      * @throws \Exception If the event interface translator fails
      */
-    public function process(array $rawRecord, string $sourceName, array $context = []): Event
+    public function process(array $rawRecord, SourceInterface $source): Event
     {
         // Use existing event interface translator to transform raw DONKI flare data
         // This handles complex flare classification and data normalization
@@ -124,7 +125,7 @@ class DonkiFlareProcessor implements EventProcessorInterface
         $eventData = [
             'remote_id' => $translatedEvent['id'],
             'response_hash' => md5(json_encode($rawRecord)),
-            'source_id' => AbstractSource::CCMC,
+            'source_id' => JsonSource::CCMC,
             'path' => 'CCMC>>DONKI>>Solar Flares',
             'start' => strtotime($translatedEvent['start']),
             // Handle peak time which may be DateTime object or string

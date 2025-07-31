@@ -127,6 +127,28 @@ class DonkiCmeSource extends JsonSource
     }
     
     /**
+     * Extract the unique remote ID from a DONKI CME raw record.
+     *
+     * DONKI CME events use the 'activityID' field as their unique identifier.
+     * This field contains timestamped identifiers in the format:
+     * "YYYY-MM-DDTHH:MM:SS-CME-###" (e.g., "2023-01-01T15:30:00-CME-001")
+     *
+     * @param array $rawRecord The raw CME event record from DONKI API
+     *
+     * @return string The unique activity ID for this CME event
+     *
+     * @throws \InvalidArgumentException When activityID is missing or empty
+     */
+    public function extractRawRecordId(array $rawRecord): string
+    {
+        if (!isset($rawRecord['activityID']) || empty($rawRecord['activityID'])) {
+            throw new \InvalidArgumentException('DONKI CME record missing required activityID field');
+        }
+
+        return (string) $rawRecord['activityID'];
+    }
+
+    /**
      * Extract CME events from the DONKI API JSON response.
      *
      * DONKI CME API uses the same straightforward response format as other DONKI

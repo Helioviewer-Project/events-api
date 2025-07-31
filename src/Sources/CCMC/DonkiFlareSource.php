@@ -100,6 +100,28 @@ class DonkiFlareSource extends JsonSource
     }
     
     /**
+     * Extract the unique remote ID from a DONKI Flare raw record.
+     *
+     * DONKI Solar Flare events use the 'flrID' field as their unique identifier.
+     * This field contains timestamped identifiers in the format:
+     * "YYYY-MM-DDTHH:MM:SS-FLR-###" (e.g., "2023-01-01T12:34:56-FLR-001")
+     *
+     * @param array $rawRecord The raw flare event record from DONKI API
+     *
+     * @return string The unique flare ID for this solar flare event
+     *
+     * @throws \InvalidArgumentException When flrID is missing or empty
+     */
+    public function extractRawRecordId(array $rawRecord): string
+    {
+        if (!isset($rawRecord['flrID']) || empty($rawRecord['flrID'])) {
+            throw new \InvalidArgumentException('DONKI Flare record missing required flrID field');
+        }
+
+        return (string) $rawRecord['flrID'];
+    }
+    
+    /**
      * Extract solar flare events from the DONKI API JSON response.
      *
      * DONKI uses a straightforward response format that returns solar flare events

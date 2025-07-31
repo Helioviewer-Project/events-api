@@ -6,7 +6,8 @@ namespace Helioviewer\EventsApi\Processors\CCMC;
 
 use Helioviewer\EventsApi\Processors\EventProcessorInterface;
 use Helioviewer\EventsApi\Models\Event;
-use Helioviewer\EventsApi\Sources\AbstractSource;
+use Helioviewer\EventsApi\Sources\JsonSource;
+use Helioviewer\EventsApi\Sources\SourceInterface;
 use HelioviewerEventInterface\Translator\FlarePrediction;
 use HelioviewerEventInterface\Util\LocationParser;
 
@@ -61,14 +62,14 @@ class FlareScoreboardProcessor implements EventProcessorInterface
      * and the presence of the required 'start_window' field that defines the
      * prediction time interval.
      *
-     * @param string $sourceName The name/identifier of the data source
-     * @param array  $rawRecord  The raw event data record from the source
+     * @param SourceInterface $source    The data source instance
+     * @param array           $rawRecord The raw event data record from the source
      *
      * @return bool True if this processor can handle the data, false otherwise
      */
-    public function canProcess(string $sourceName, array $rawRecord): bool
+    public function canProcess(SourceInterface $source, array $rawRecord): bool
     {
-        return str_contains($sourceName, 'FLARE_SCOREBOARD') &&
+        return str_contains($source->getName(), 'FLARE_SCOREBOARD') &&
                isset($rawRecord['start_window']);
     }
 
@@ -102,16 +103,15 @@ class FlareScoreboardProcessor implements EventProcessorInterface
      * - Uses end_window when available, otherwise defaults to start_window
      * - Peak time is set to end_window to represent the prediction target time
      *
-     * @param array  $rawRecord  The raw prediction data from FlareScoreboard
-     * @param string $sourceName The source identifier (contains 'FLARE_SCOREBOARD')
-     * @param array  $context    Processing context including 'model_name' for labeling
+     * @param array           $rawRecord The raw prediction data from FlareScoreboard
+     * @param SourceInterface $source    The source instance (contains 'FLARE_SCOREBOARD')
      *
      * @return Event The processed (unpersisted) Event model instance
      */
-    public function process(array $rawRecord, string $sourceName, array $context = []): Event
+    public function process(array $rawRecord, SourceInterface $source): Event
     {
-        // Extract model name from context for proper labeling and provenance
-        $modelName = $context['model_name'] ?? 'Unknown Model';
+        // Extract model name from source for proper labeling and provenance
+        $modelName = method_exists($source, 'getModelName') ? $source->getModelName() : 'Unknown Model';
 
         // Initialize coordinate variables with default values
         $latitude = 0.0;
@@ -143,14 +143,14 @@ class FlareScoreboardProcessor implements EventProcessorInterface
 
         // Generate unique identifier for prediction events
         // Combines source name and record content to ensure uniqueness
-        $id = 'fs_' . md5($sourceName . json_encode($rawRecord));
+        $id = 'fs_' . md5($source->getName() . json_encode($rawRecord));
 
         // Build standardized event data array for the Event model
         $eventData = [
             'remote_id' => $id,
             'response_hash' => md5(json_encode($rawRecord)),
-            'source_id' => AbstractSource::CCMC,
-            'path' => 'CCMC>>Solar Flare Predictions>>' . $modelName,
+            'source_id' => JsonSource::CCMC,
+            'path' => "",
             'start' => strtotime($rawRecord['start_window']),
             // Use end_window as peak if available, otherwise use start_window
             'peak' => isset($rawRecord['end_window'])

@@ -165,6 +165,24 @@ class FlareScoreboardSource extends JsonSource
     }
     
     /**
+     * Extract the unique remote ID from a FlareScoreboard raw record.
+     *
+     * FlareScoreboard predictions use a composite ID based on the model ID
+     * and the prediction timestamp. This creates a unique identifier for each
+     * prediction record from each model.
+     *
+     * @param array $rawRecord The raw prediction record from FlareScoreboard API
+     *
+     * @return string Composite ID in format "MODEL_ID:TIMESTAMP"
+     *
+     * @throws \InvalidArgumentException When timestamp is missing or invalid
+     */
+    public function extractRawRecordId(array $rawRecord): string
+    {
+        return md5(json_encode($rawRecord));
+    }
+    
+    /**
      * Extract prediction data from FlareScoreboard HAPI JSON response.
      *
      * FlareScoreboard uses the HAPI (Heliophysics Application Programmer's Interface)

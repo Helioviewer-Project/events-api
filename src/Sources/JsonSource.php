@@ -43,6 +43,15 @@ use GuzzleHttp\Client;
 abstract class JsonSource implements SourceInterface
 {
     /**
+     * Source identifier constants for different heliophysics data providers.
+     * These constants provide standardized IDs for database storage and routing.
+     */
+    public const CCMC = 1;    // Community Coordinated Modeling Center
+    public const HEK = 2;     // Heliophysics Event Knowledgebase
+    public const WSA = 3;     // Wang-Sheeley-Arge model
+    public const RHESSI = 4;  // Reuven Ramaty High Energy Solar Spectroscopic Imager
+
+    /**
      * HTTP client for making API requests to JSON endpoints.
      *
      * @var ClientInterface PSR-18 compliant HTTP client configured for JSON API communication

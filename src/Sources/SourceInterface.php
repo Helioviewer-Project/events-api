@@ -82,4 +82,34 @@ interface SourceInterface
      *                Must be non-empty and should follow UPPER_SNAKE_CASE convention.
      */
     public function getName(): string;
+
+    /**
+     * Extract the unique remote ID from a raw record.
+     *
+     * This method extracts the unique identifier from a raw event record as returned
+     * by the data source's API. This ID is used for event deduplication and tracking
+     * across different ingestion cycles.
+     *
+     * Different sources use various field names for their unique identifiers:
+     * - DONKI: 'activityID' field containing timestamped identifiers
+     * - HEK: 'kb_archivid' or similar unique record identifiers
+     * - FlareScoreboard: Composite IDs based on model and prediction time
+     * - WSA: Model run identifiers with timestamp components
+     *
+     * The extracted ID should be:
+     * - Unique within the data source
+     * - Stable across API calls for the same event
+     * - Suitable for use as a database key
+     * - Non-empty string value
+     *
+     * @param array $rawRecord The raw event record as returned by fetchRawData(),
+     *                        containing all fields from the source API response.
+     *
+     * @return string The unique remote identifier for this event record.
+     *                Must be non-empty and stable for the same event.
+     *
+     * @throws \InvalidArgumentException When the record lacks a valid unique identifier
+     * @throws \RuntimeException When the identifier cannot be extracted or is malformed
+     */
+    public function extractRawRecordId(array $rawRecord): string;
 }

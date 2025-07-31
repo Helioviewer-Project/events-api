@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Helioviewer\EventsApi\Repositories;
 
 use Helioviewer\EventsApi\Models\Event;
-use Helioviewer\EventsApi\Sources\AbstractSource;
+use Helioviewer\EventsApi\Sources\JsonSource;
 use Helioviewer\EventsApi\Utils\TimeRange;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
@@ -52,28 +52,45 @@ class EloquentRepository implements EventRepositoryInterface
     /**
      * Persist an Event to the underlying storage system.
      *
-     * Currently implemented as a no-op since event persistence is handled
-     * by dedicated processors in the data ingestion pipeline. This design
-     * separates concerns between data collection/processing and querying,
-     * allowing for specialized persistence strategies during batch operations.
+     * Handles both new event creation and updates to existing events using
+     * Eloquent ORM. The method automatically determines whether to create
+     * a new record or update an existing one based on the event's primary key.
      *
-     * Future implementations may include:
-     * - Upsert operations based on remote_id and source_id
-     * - Conflict resolution for duplicate events
-     * - Transactional batch updates
-     * - Event deduplication using response_hash comparison
+     * Features:
+     * - Automatic creation of new events when no ID is present
+     * - Updates existing events when ID is present
+     * - Timestamp management (created_at/updated_at)
+     * - Database transaction safety
+     * - Comprehensive error handling with meaningful messages
      *
      * @param Event $event The event instance to save
      *
-     * @return Event The saved event instance (currently unchanged)
+     * @return Event The saved event instance with updated timestamps
      *
      * @throws \RuntimeException If the save operation fails
      */
     public function save(Event $event): Event
     {
-        // Current implementation delegates persistence to processors
-        // This maintains separation of concerns between ingestion and querying
-        return $event;
+        try {
+            // Use Eloquent's save method which handles both create and update
+            $saved = $event->save();
+            
+            if (!$saved) {
+                throw new \RuntimeException('Failed to save event to database');
+            }
+            
+            // Refresh the model to get any database-generated values
+            $event->refresh();
+            
+            return $event;
+        } catch (\Exception $e) {
+            // Wrap database exceptions in application-specific runtime exception
+            throw new \RuntimeException(
+                "Failed to save event: " . $e->getMessage(),
+                $e->getCode(),
+                $e
+            );
+        }
     }
 
     /**
@@ -221,33 +238,32 @@ class EloquentRepository implements EventRepositoryInterface
      *
      * @param int $limit Maximum number of events to return (default: 100)
      *
-     * @return array<int, array<string, mixed>> Array of the most recent event records,
-     *                                          ordered by creation time (newest first)
+     * @return array<Event> Array of the most recent Event objects,
+     *                      ordered by creation time (newest first)
      */
     public function getRecent(int $limit = 100): array
     {
         // Query most recent events across all sources
-        // Uses created_at index for efficient ordering
+        // Uses created_at first, then id to break ties for more granular ordering
         $events = Event::orderBy('created_at', 'desc')
+            ->orderBy('id', 'desc')
             ->limit($limit)
             ->get();
 
-        return $events->toArray();
+        return $events->all();
     }
 
     /**
-     * Find an event by its remote ID and source ID.
+     * Find an event by its remote ID.
      *
      * Retrieves a specific solar event using its unique identifier from the
-     * originating source system combined with the source ID. This method is
-     * essential for event deduplication, data synchronization, and tracking
-     * events across different ingestion cycles.
+     * originating source system. This method is essential for event deduplication,
+     * data synchronization, and tracking events across different ingestion cycles.
      *
      * Query Strategy:
-     * Uses a compound WHERE clause filtering on both remote_id and source_id
-     * to ensure precise event identification. The combination of these fields
-     * creates a unique constraint that prevents duplicate events and enables
-     * efficient lookups during data processing operations.
+     * Uses a WHERE clause filtering on remote_id to find the event.
+     * This assumes remote_id is unique across all sources or that duplicates
+     * across sources are acceptable for this use case.
      *
      * Use Cases:
      * - Event deduplication during data ingestion
@@ -256,7 +272,7 @@ class EloquentRepository implements EventRepositoryInterface
      * - Data consistency validation across ingestion cycles
      *
      * Performance Notes:
-     * - Leverages compound index on (remote_id, source_id) for optimal performance
+     * - Leverages remote_id index for optimal performance
      * - Query complexity: O(log n) with proper indexing
      * - Returns single result or null, minimizing memory usage
      *
@@ -266,36 +282,30 @@ class EloquentRepository implements EventRepositoryInterface
      * in application-specific exceptions with meaningful error messages.
      *
      * @param string $remoteId The unique identifier from the source system
-     * @param int $sourceId The normalized source identifier
      *
      * @return Event|null The matching event record, or null if not found
      *
      * @throws \RuntimeException If database query fails or connection is unavailable
-     * @throws \InvalidArgumentException If remoteId is empty or sourceId is invalid
+     * @throws \InvalidArgumentException If remoteId is empty
      */
-    public function findByRemoteIdAndSource(string $remoteId, int $sourceId): ?Event
+    public function findByRemoteId(string $remoteId): ?Event
     {
         // Validate input parameters
         if (empty($remoteId)) {
             throw new \InvalidArgumentException('Remote ID cannot be empty');
         }
 
-        if ($sourceId <= 0) {
-            throw new \InvalidArgumentException('Source ID must be a positive integer');
-        }
-
         try {
-            // Query for event using compound WHERE clause for optimal index usage
-            // This leverages the compound index on (remote_id, source_id)
+            // Query for event using WHERE clause for optimal index usage
+            // This leverages the remote_id index
             $event = Event::where('remote_id', $remoteId)
-                ->where('source_id', $sourceId)
                 ->first();
 
             return $event;
         } catch (\Exception $e) {
             // Wrap database exceptions in application-specific runtime exception
             throw new \RuntimeException(
-                "Failed to query event with remote_id '{$remoteId}' and source_id '{$sourceId}': " . $e->getMessage(),
+                "Failed to query event with remote_id '{$remoteId}': " . $e->getMessage(),
                 $e->getCode(),
                 $e
             );
@@ -330,10 +340,10 @@ class EloquentRepository implements EventRepositoryInterface
         // Use match expression for efficient source name resolution
         // Case-insensitive matching with strict return type validation
         return match (strtoupper($source)) {
-            'CCMC' => AbstractSource::CCMC,
-            'HEK' => AbstractSource::HEK,
-            'WSA' => AbstractSource::WSA,
-            'RHESSI' => AbstractSource::RHESSI,
+            'CCMC' => JsonSource::CCMC,
+            'HEK' => JsonSource::HEK,
+            'WSA' => JsonSource::WSA,
+            'RHESSI' => JsonSource::RHESSI,
             default => throw new \InvalidArgumentException("Unknown source: $source")
         };
     }

@@ -6,7 +6,8 @@ namespace Helioviewer\EventsApi\Processors\CCMC;
 
 use Helioviewer\EventsApi\Processors\EventProcessorInterface;
 use Helioviewer\EventsApi\Models\Event;
-use Helioviewer\EventsApi\Sources\AbstractSource;
+use Helioviewer\EventsApi\Sources\JsonSource;
+use Helioviewer\EventsApi\Sources\SourceInterface;
 use HelioviewerEventInterface\Translator\DonkiCme as EventInterfaceDonkiCme;
 
 /**
@@ -50,14 +51,14 @@ class DonkiCmeProcessor implements EventProcessorInterface
      * the required activityID field that uniquely identifies CME events
      * in the DONKI database.
      *
-     * @param string $sourceName The name/identifier of the data source
-     * @param array  $rawRecord  The raw event data record from the source
+     * @param SourceInterface $source    The data source instance
+     * @param array           $rawRecord The raw event data record from the source
      *
      * @return bool True if this processor can handle the data, false otherwise
      */
-    public function canProcess(string $sourceName, array $rawRecord): bool
+    public function canProcess(SourceInterface $source, array $rawRecord): bool
     {
-        return $sourceName === 'DONKI_CME' && isset($rawRecord['activityID']);
+        return $source->getName() === 'DONKI_CME' && isset($rawRecord['activityID']);
     }
 
     /**
@@ -76,15 +77,14 @@ class DonkiCmeProcessor implements EventProcessorInterface
      * - Uses translated coordinate values from the event interface translator
      * - Peak time is set to start time as CMEs don't have a distinct peak phase
      *
-     * @param array  $rawRecord  The raw CME event data from DONKI
-     * @param string $sourceName The source identifier (should be 'DONKI_CME')
-     * @param array  $context    Additional processing context (currently unused)
+     * @param array           $rawRecord The raw CME event data from DONKI
+     * @param SourceInterface $source    The source instance (should be DONKI_CME)
      *
      * @return Event The processed (unpersisted) Event model instance
      *
      * @throws \Exception If the event interface translator fails
      */
-    public function process(array $rawRecord, string $sourceName, array $context = []): Event
+    public function process(array $rawRecord, SourceInterface $source): Event
     {
         // Use existing event interface translator to transform raw DONKI data
         // This handles the complex coordinate transformations and data normalization
@@ -94,7 +94,7 @@ class DonkiCmeProcessor implements EventProcessorInterface
         $eventData = [
             'remote_id' => $translatedEvent['id'],
             'response_hash' => md5(json_encode($rawRecord)),
-            'source_id' => AbstractSource::CCMC,
+            'source_id' => JsonSource::CCMC,
             'path' => 'CCMC>>DONKI>>CME',
             'start' => strtotime($translatedEvent['start']),
             'peak' => strtotime($translatedEvent['start']), // Use start time as peak for CME events

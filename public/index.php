@@ -11,7 +11,7 @@ use HelioviewerEventInterface\Sources as EventInterfaceSources;
 use Helioviewer\EventsApi\Models\Event;
 use HelioviewerEventInterface\Coordinator\Coordinator;
 use Helioviewer\EventsApi\Repositories\EloquentRepository;
-use Helioviewer\EventsApi\Sources\AbstractSource;
+use Helioviewer\EventsApi\Sources\JsonSource;
 use Helioviewer\EventsApi\Utils\TimeRange;
 
 // Create Slim app
@@ -33,6 +33,7 @@ $app->get('/events', function (Request $request, Response $response, array $args
     $response->getBody()->write(json_encode($events, JSON_PRETTY_PRINT));
     return $response->withHeader('Content-Type', 'application/json');
 });
+
 
 // curl "https://www.lmsal.com/hek/her?cmd=search&cosec=2&type=column&event_type=ar&event_starttime=2025-04-14T00:00:00&event_endtime=2025-04-14T00:00:00&event_coordsys=helioprojective&x1=-30000&x2=30000&y1=-30000&y2=30000&param0=ar_noaanum&op0==&value0=14056&param1=frm_name&op1==&value1=NOAA%20SWPC%20Observer&return=required" | jq .
 

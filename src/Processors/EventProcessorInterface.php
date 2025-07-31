@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Helioviewer\EventsApi\Processors;
 
 use Helioviewer\EventsApi\Models\Event;
+use Helioviewer\EventsApi\Sources\SourceInterface;
 
 /**
  * Event Processor Interface
@@ -37,30 +38,27 @@ interface EventProcessorInterface
      * and any other processing required to create a valid Event object.
      *
      * @param array<string, mixed> $rawRecord Raw event data from data source
-     * @param string $sourceName Name of the data source (e.g., 'DONKI_FLARE')
-     * @param array<string, mixed> $context Additional processing context
-     *   - model_name: Name of prediction model (for prediction sources)
-     *   - metadata: Additional source-specific metadata
+     * @param SourceInterface $source The source object providing context and metadata
      *
      * @return Event Processed and validated Event model instance
      *
      * @throws \InvalidArgumentException If raw data is invalid or incomplete
      * @throws \RuntimeException If processing fails due to system errors
      */
-    public function process(array $rawRecord, string $sourceName, array $context = []): Event;
+    public function process(array $rawRecord, SourceInterface $source): Event;
 
     /**
      * Determine if this processor can handle the given source and record type.
      *
      * This method allows the system to automatically select the appropriate
-     * processor for each raw record based on the source name and data
+     * processor for each raw record based on the source object and data
      * structure. It should perform lightweight checks to determine
      * compatibility without performing full processing.
      *
-     * @param string $sourceName Name of the data source
+     * @param SourceInterface $source The source object
      * @param array<string, mixed> $rawRecord Raw event data to check
      *
      * @return bool True if this processor can handle the data, false otherwise
      */
-    public function canProcess(string $sourceName, array $rawRecord): bool;
+    public function canProcess(SourceInterface $source, array $rawRecord): bool;
 }

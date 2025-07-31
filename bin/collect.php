@@ -28,9 +28,9 @@ echo "=== Helioviewer Events Collector ===\n";
 $repository = new EloquentRepository();
 $collector = new EventCollector($repository);
 
-// Register sources
-$collector->addSource(new DonkiFlareSource());
-// $collector->addSource(new DonkiCmeSource());
+// Register sources with paths
+// $collector->addSource('CCMC>>DONKI>>CME', new DonkiCmeSource());
+// $collector->addSource('CCMC>>DONKI>>Solar Flares', new DonkiFlareSource());
 
 // FlareScoreboard prediction models
 $predictionModels = [
@@ -40,7 +40,7 @@ $predictionModels = [
 ];
 
 foreach ($predictionModels as $modelId => $modelName) {
-    // $collector->addSource(new FlareScoreboardSource($modelId, $modelName));
+    $collector->addSource("CCMC>>Solar Flare Predictions>>${modelName}", new FlareScoreboardSource($modelId, $modelName));
 }
 
 // Register processors
@@ -68,30 +68,15 @@ $stats = $collector->getStats();
 echo "Available data sources: " . implode(', ', $stats['sources']) . "\n";
 echo "Total processors: " . $stats['total_processors'] . "\n\n";
 
-// Check if specific source is requested
-$requestedSource = null;
-if (isset($argv[3])) {
-    $requestedSource = strtoupper($argv[3]);
-    echo "Collecting from specific source: {$requestedSource}\n\n";
-}
-
 $totalEvents = 0;
 $startTime = microtime(true);
 
 try {
-    if ($requestedSource) {
-        // Collect from specific source
-        echo "=== Collecting from {$requestedSource} ===\n";
-        $events = $collector->collectEvents($requestedSource, $timeRange);
-        $totalEvents += count($events);
-        echo "Collected " . count($events) . " events from {$requestedSource}\n\n";
-    } else {
-        // Collect from all sources
-        echo "=== Collecting from all sources ===\n";
-        $events = $collector->collectAllEvents($timeRange);
-        $totalEvents = count($events);
-        echo "Total events collected: {$totalEvents}\n\n";
-    }
+    // Collect from all sources
+    echo "=== Collecting from all sources ===\n";
+    $events = $collector->collectAllEvents($timeRange);
+    $totalEvents = count($events);
+    echo "Total events collected: {$totalEvents}\n\n";
     
     $endTime = microtime(true);
     $duration = round($endTime - $startTime, 2);

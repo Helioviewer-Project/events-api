@@ -1,4 +1,4 @@
-.PHONY: composer-install composer-require up down build shell migrate-status migrate-create migrate-run migrate-rollback seed-run collect
+.PHONY: composer-install composer-require up down build shell migrate-status migrate-create migrate-run migrate-rollback seed-run collect recents reset
 .DEFAULT_GOAL := help
 
 composer-install:
@@ -36,7 +36,21 @@ seed-run:
 	docker compose -f docker/docker-compose.yml run --rm --user 1000:1000 phpfpm vendor/bin/phinx seed:run
 
 collect:
-	docker compose -f docker/docker-compose.yml run --rm --user 1000:1000 phpfpm php bin/collect.php $(ARGS)
+	docker compose -f docker/docker-compose.yml run --rm --user 1000:1000 phpfpm php bin/collect.php $(filter-out $@,$(MAKECMDGOALS))
+
+recents:
+	docker compose -f docker/docker-compose.yml run --rm --user 1000:1000 phpfpm php bin/recents.php $(filter-out $@,$(MAKECMDGOALS))
+
+reset:
+	@echo "Resetting database (rollback all + migrate + seed)..."
+	docker compose -f docker/docker-compose.yml run --rm --user 1000:1000 phpfpm vendor/bin/phinx rollback -t 0
+	docker compose -f docker/docker-compose.yml run --rm --user 1000:1000 phpfpm vendor/bin/phinx migrate
+	docker compose -f docker/docker-compose.yml run --rm --user 1000:1000 phpfpm vendor/bin/phinx seed:run
+	@echo "Database reset complete!"
+
+# Handle extra arguments for collect command
+%:
+	@:
 
 
 help:
@@ -52,4 +66,6 @@ help:
 	@echo "  migrate-run           - Run pending migrations"
 	@echo "  migrate-rollback      - Rollback the last migration"
 	@echo "  seed-run              - Run database seeders"
-	@echo "  collect               - Collect events from sources (use: make collect ARGS='2024-01-01 2024-01-31 CCMC')"
+	@echo "  collect               - Collect events from all sources (use: make collect 2024-01-01 2024-01-31)"
+	@echo "  recents               - Show the most recent events from the database (use: make recents 10)"
+	@echo "  reset                 - Reset database (rollback all migrations, migrate, and seed)"

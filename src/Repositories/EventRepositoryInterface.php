@@ -98,16 +98,4 @@ interface EventRepositoryInterface
      */
     public function getRecent(int $limit = 100): array;
 
-    /**
-     * Find an event by remote ID and source ID.
-     *
-     * Searches for an existing event using the combination of remote_id
-     * and source_id, which should be unique for each data source.
-     *
-     * @param string $remoteId The remote identifier from the source system
-     * @param int $sourceId The source identifier
-     *
-     * @return Event|null The event if found, null otherwise
-     */
-    public function findByRemoteIdAndSource(string $remoteId, int $sourceId): ?Event;
 }

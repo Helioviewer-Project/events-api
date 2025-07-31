@@ -9,7 +9,7 @@ use Helioviewer\EventsApi\Processors\EventProcessorInterface;
 use Helioviewer\EventsApi\Repositories\EventRepositoryInterface;
 use Helioviewer\EventsApi\Utils\TimeRange;
 use Helioviewer\EventsApi\Models\Event;
-use Helioviewer\EventsApi\Sources\AbstractSource;
+use Helioviewer\EventsApi\Sources\JsonSource;
 
 /**
  * Event Collection Service
@@ -33,7 +33,7 @@ use Helioviewer\EventsApi\Sources\AbstractSource;
 class EventCollector
 {
     /**
-     * Registered data sources indexed by source name.
+     * Registered data sources indexed by path.
      *
      * @var array<string, SourceInterface>
      */
@@ -57,18 +57,19 @@ class EventCollector
     }
     
     /**
-     * Register a data source for event collection.
+     * Register a data source for event collection with a specific path.
      *
-     * Sources are indexed by their name for efficient lookup during collection.
-     * Duplicate source names will overwrite the previously registered source.
+     * Sources are indexed by their path for organized collection.
+     * Duplicate paths will overwrite the previously registered source.
      *
+     * @param string $path The path/key to register the source under
      * @param SourceInterface $source The data source to register
      *
      * @return void
      */
-    public function addSource(SourceInterface $source): void
+    public function addSource(string $path, SourceInterface $source): void
     {
-        $this->sources[$source->getName()] = $source;
+        $this->sources[$path] = $source;
     }
     
     /**
@@ -88,26 +89,21 @@ class EventCollector
     }
     
     /**
-     * Collect and process events from a specific data source.
+     * Collect and process events from a specific data source object.
      *
-     * Fetches raw data from the specified source within the given time range,
+     * Fetches raw data from the provided source within the given time range,
      * processes each record through registered processors, and returns the
      * resulting Event objects. Provides console output for monitoring progress.
      *
-     * @param string $sourceName Name of the source to collect from
+     * @param string $path The path/identifier for this source
+     * @param SourceInterface $source The source object to collect from
      * @param TimeRange $range Time range for data collection
      *
      * @return array<Event> Array of processed Event objects
-     *
-     * @throws \InvalidArgumentException If the source name is not registered
      */
-    public function collectEvents(string $sourceName, TimeRange $range): array
+    public function collectEvents(string $path, SourceInterface $source, TimeRange $range): array
     {
-        if (!isset($this->sources[$sourceName])) {
-            throw new \InvalidArgumentException("Unknown source: $sourceName");
-        }
-        
-        $source = $this->sources[$sourceName];
+        $sourceName = $source->getName();
         $rawData = $source->fetchRawData($range);
         $events = [];
         
@@ -115,19 +111,19 @@ class EventCollector
         
         foreach ($rawData as $rawRecord) {
             foreach ($this->processors as $processor) {
-                if ($processor->canProcess($sourceName, $rawRecord)) {
+                if ($processor->canProcess($source, $rawRecord)) {
                     try {
-                        // Prepare context for processors
-                        $context = [];
-                        if (method_exists($source, 'getModelName')) {
-                            $context['model_name'] = $source->getModelName();
-                        }
-                        
                         // Process the raw record into an unpersisted Event model
-                        $event = $processor->process($rawRecord, $sourceName, $context);
+                        $event = $processor->process($rawRecord, $source);
+
+                        // Extract and set the remote ID for deduplication
+                        $event->remote_id = $source->getName() . ":" . $source->extractRawRecordId($rawRecord);
                         
+                        // Build hierarchical path: collector path + processor path (if any)
+                        $event->path = empty($event->path) ? $path : $path . '>>' . $event->path;
+
                         // Handle upsert logic: find existing event or create new one
-                        $existingEvent = $this->repository->findByRemoteIdAndSource($event->remote_id, $event->source_id);
+                        $existingEvent = $this->repository->findByRemoteId($event->remote_id);
                         
                         if ($existingEvent) {
                             // Update existing event with new data
@@ -173,12 +169,12 @@ class EventCollector
     {
         $allEvents = [];
         
-        foreach ($this->sources as $sourceName => $source) {
+        foreach ($this->sources as $path => $source) {
             try {
-                $events = $this->collectEvents($sourceName, $range);
+                $events = $this->collectEvents($path, $source, $range);
                 $allEvents = array_merge($allEvents, $events);
             } catch (\Exception $e) {
-                error_log("Failed to collect from {$sourceName}: " . $e->getMessage());
+                error_log("Failed to collect from {$source->getName()}: " . $e->getMessage());
             }
         }
         
