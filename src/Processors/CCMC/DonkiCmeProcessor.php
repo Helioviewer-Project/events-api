@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Helioviewer\EventsApi\Processors\CCMC;
 
-use Helioviewer\EventsApi\Processors\EventProcessorInterface;
+use Helioviewer\EventsApi\Processors\ProcessorInterface;
 use Helioviewer\EventsApi\Models\Event;
 use Helioviewer\EventsApi\Sources\JsonSource;
 use Helioviewer\EventsApi\Sources\SourceInterface;
@@ -42,7 +42,7 @@ use HelioviewerEventInterface\Translator\DonkiCme as EventInterfaceDonkiCme;
  * @see        https://kauai.ccmc.gsfc.nasa.gov/DONKI/
  * @see        EventProcessorInterface
  */
-class DonkiCmeProcessor implements EventProcessorInterface
+class DonkiCmeProcessor implements ProcessorInterface
 {
     /**
      * Determines if this processor can handle the given source data
@@ -70,7 +70,7 @@ class DonkiCmeProcessor implements EventProcessorInterface
      * 3. Transforms coordinate data to Helioviewer coordinate system
      * 4. Generates unique identifiers and response hashes for deduplication
      * 5. Maps to legacy event type system for backward compatibility
-     * 6. Returns an unpersisted Event model (database operations handled by EventCollector)
+     * 6. Returns an unpersisted Event model (database operations handled by Collector)
      *
      * Coordinate Handling:
      * - CME events typically don't have specific coordinate locations like flares
@@ -86,32 +86,61 @@ class DonkiCmeProcessor implements EventProcessorInterface
      */
     public function process(array $rawRecord, SourceInterface $source): Event
     {
+        echo "\nDONKI CME COORDINATE PROCESSING:\n";
+        echo "  - Source: DONKI CME Database\n";
+        echo "  - CME ID: {$rawRecord['activityID']}\n";
+        
         // Use existing event interface translator to transform raw DONKI data
         // This handles the complex coordinate transformations and data normalization
+        echo "  - Using EventInterfaceDonkiCme translator for coordinate extraction...\n";
         $translatedEvent = EventInterfaceDonkiCme::buildTranslatedCME($rawRecord);
+        
+        echo "  - Translated Coordinates:\n";
+        echo "    * HV_HPC_X: {$translatedEvent['hv_hpc_x']}°\n";
+        echo "    * HV_HPC_Y: {$translatedEvent['hv_hpc_y']}°\n";
+        echo "  - Coordinate source: DONKI CME Analysis (via EventInterface translator)\n";
+
+        $endTime = strtotime($translatedEvent['end']); // Default end time from translatedEvent
+        
+        if (isset($rawRecord['cmeAnalyses']) && is_array($rawRecord['cmeAnalyses'])) {
+            foreach ($rawRecord['cmeAnalyses'] as $analysis) {
+                if (isset($analysis['isMostAccurate']) && $analysis['isMostAccurate'] === true && isset($analysis['time21_5'])) {
+                    $endTime = strtotime($analysis['time21_5']);
+                    break;
+                }
+            }
+        }
 
         // Build standardized event data array for the Event model
         $eventData = [
-            'remote_id' => $translatedEvent['id'],
-            'response_hash' => md5(json_encode($rawRecord)),
             'source_id' => JsonSource::CCMC,
-            'path' => 'CCMC>>DONKI>>CME',
+            'path' => '',
             'start' => strtotime($translatedEvent['start']),
             'peak' => strtotime($translatedEvent['start']), // Use start time as peak for CME events
-            'end' => strtotime($translatedEvent['end']),
+            'end' => $endTime,
+            'coordinate_time' => strtotime($translatedEvent['start']),
             'hv_hpc_x' => (float) $translatedEvent['hv_hpc_x'],
             'hv_hpc_y' => (float) $translatedEvent['hv_hpc_y'],
             'label' => $translatedEvent['label'],
-            'translator' => 'DonkiCme',
+            'short_label' => $translatedEvent['short_label'] ?? $translatedEvent['label'],
             'legacy_version' => $translatedEvent['version'] ?? null,
-            'legacy_type' => $translatedEvent['type'] ?? null,
+            'legacy_type' => $translatedEvent['type'] ?? 'CE',
             'legacy_pin' => $translatedEvent['type'] ?? 'CE', // Default to 'CE' for Coronal Ejection
         ];
 
         // Create unpersisted Event model instance
-        // Database operations (create/update) will be handled by EventCollector
+        // Database operations (create/update) will be handled by Collector
         $event = new Event();
         $event->fill($eventData);
+        
+        // Add views and links data to be processed by Collector
+        if (isset($translatedEvent['views'])) {
+            $event->legacy_views = $translatedEvent['views'];
+        }
+        
+        if (isset($translatedEvent['link'])) {
+            $event->legacy_links = is_array($translatedEvent['link']) ? [$translatedEvent['link']] : [$translatedEvent['link']];
+        }
         
         return $event;
     }

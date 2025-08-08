@@ -27,7 +27,7 @@ use Helioviewer\EventsApi\Sources\SourceInterface;
  * @author  Kasim Necdet Percinel <kasim.n.percinel@nasa.gov>
  * @since   1.0.0
  */
-interface EventProcessorInterface
+interface ProcessorInterface
 {
     /**
      * Transform raw event data into a standardized Event model.

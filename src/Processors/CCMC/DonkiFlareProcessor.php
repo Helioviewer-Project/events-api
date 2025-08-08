@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Helioviewer\EventsApi\Processors\CCMC;
 
-use Helioviewer\EventsApi\Processors\EventProcessorInterface;
+use Helioviewer\EventsApi\Processors\ProcessorInterface;
 use Helioviewer\EventsApi\Models\Event;
 use Helioviewer\EventsApi\Sources\JsonSource;
 use Helioviewer\EventsApi\Sources\SourceInterface;
@@ -46,7 +46,7 @@ use HelioviewerEventInterface\Util\LocationParser;
  * @see        https://kauai.ccmc.gsfc.nasa.gov/DONKI/
  * @see        EventProcessorInterface
  */
-class DonkiFlareProcessor implements EventProcessorInterface
+class DonkiFlareProcessor implements ProcessorInterface
 {
     /**
      * Determines if this processor can handle the given source data
@@ -75,7 +75,7 @@ class DonkiFlareProcessor implements EventProcessorInterface
      * 4. Processes temporal data with proper peak time handling
      * 5. Generates unique identifiers and response hashes for deduplication
      * 6. Maps to legacy event type system for backward compatibility
-     * 7. Returns an unpersisted Event model (database operations handled by EventCollector)
+     * 7. Returns an unpersisted Event model (database operations handled by Collector)
      *
      * Coordinate Processing:
      * - Parses DONKI sourceLocation strings (e.g., "N15W30", "S08E45")
@@ -103,49 +103,77 @@ class DonkiFlareProcessor implements EventProcessorInterface
         // This handles complex flare classification and data normalization
         $translatedEvent = EventInterfaceDonkiFlare::makeEventFromRawFlare($rawRecord);
 
+
         // Initialize coordinate variables with default values
         $latitude = 0.0;
         $longitude = 0.0;
 
+        echo "\nDONKI FLARE COORDINATE PROCESSING:\n";
+        echo "  - Source: DONKI Flare Database\n";
+        echo "  - Flare ID: {$rawRecord['flrID']}\n";
+        
         // Extract Stonyhurst coordinates from DONKI source location string
         // DONKI provides locations in formats like "N15W30", "S08E45", etc.
         if (isset($rawRecord['sourceLocation']) && !empty($rawRecord['sourceLocation'])) {
+            echo "  - Raw sourceLocation: '{$rawRecord['sourceLocation']}'\n";
+            
             try {
                 // Parse coordinate string using HelioviewerEventInterface utility
+                echo "  - Parsing with LocationParser::ParseText()...\n";
                 $location = LocationParser::ParseText($rawRecord['sourceLocation']);
                 $latitude = (float) $location[0];  // Stonyhurst latitude in degrees
                 $longitude = (float) $location[1]; // Stonyhurst longitude in degrees
+                
+                echo "  - Parsed successfully:\n";
+                echo "    * Latitude: {$latitude}° (Stonyhurst)\n";
+                echo "    * Longitude: {$longitude}° (Stonyhurst)\n";
+                echo "  - Coordinate source: DONKI sourceLocation field\n";
             } catch (\Exception $e) {
                 // Log parsing errors but continue processing with default coordinates
+                echo "  - ERROR parsing location: " . $e->getMessage() . "\n";
+                echo "  - Using default coordinates (0, 0)\n";
                 error_log("Failed to parse flare location '{$rawRecord['sourceLocation']}': " . $e->getMessage());
             }
+        } else {
+            echo "  - No sourceLocation field found in raw record\n";
+            echo "  - Using default coordinates (0, 0)\n";
         }
+
+        // For flares, coordinate_time is typically the peak time
+        $peakTime = $translatedEvent['peak'] instanceof \DateTime
+            ? $translatedEvent['peak']->getTimestamp()
+            : strtotime($translatedEvent['peak']);
 
         // Build standardized event data array for the Event model
         $eventData = [
-            'remote_id' => $translatedEvent['id'],
-            'response_hash' => md5(json_encode($rawRecord)),
             'source_id' => JsonSource::CCMC,
-            'path' => 'CCMC>>DONKI>>Solar Flares',
+            'path' => '',
             'start' => strtotime($translatedEvent['start']),
-            // Handle peak time which may be DateTime object or string
-            'peak' => $translatedEvent['peak'] instanceof \DateTime
-                ? $translatedEvent['peak']->getTimestamp()
-                : strtotime($translatedEvent['peak']),
+            'peak' => $peakTime,
             'end' => strtotime($translatedEvent['end']),
+            'coordinate_time' => $peakTime, // For flares, coordinates are typically at peak time
             'hv_hpc_x' => $latitude,   // Map latitude to HPC X coordinate
             'hv_hpc_y' => $longitude,  // Map longitude to HPC Y coordinate
             'label' => $translatedEvent['label'],
-            'translator' => 'DonkiFlare',
+            'short_label' => $translatedEvent['short_label'] ?? $translatedEvent['label'], // Use label if short_label not available
             'legacy_version' => $translatedEvent['version'] ?? null,
             'legacy_type' => $translatedEvent['type'] ?? null,
             'legacy_pin' => $translatedEvent['type'] ?? 'FL', // Default to 'FL' for Flare
         ];
 
         // Create unpersisted Event model instance
-        // Database operations (create/update) will be handled by EventCollector
+        // Database operations (create/update) will be handled by Collector
         $event = new Event();
         $event->fill($eventData);
+        
+        // Add views and links data to be processed by Collector
+        if (isset($translatedEvent['views'])) {
+            $event->legacy_views = $translatedEvent['views'];
+        }
+        
+        if (isset($translatedEvent['link'])) {
+           $event->legacy_links = is_array($translatedEvent['link']) ? [$translatedEvent['link']] : [$translatedEvent['link']];
+        }
         
         return $event;
     }

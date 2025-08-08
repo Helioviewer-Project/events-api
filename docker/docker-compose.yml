@@ -17,14 +17,19 @@ services:
     container_name: eventsapi-phpfpm
     volumes:
       - ../:/u/apps/site
+      - ../storage/:/u/apps/data
     environment:
       - DB_HOST=postgres
       - DB_PORT=5432
       - DB_NAME=eventsapi
       - DB_USER=eventsapi
       - DB_PASSWORD=eventsapi_pass
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=10
     depends_on:
       - postgres
+      - redis
     networks:
       - eventsapi
 
@@ -40,8 +45,18 @@ services:
     networks:
       - eventsapi
 
+  redis:
+    image: redis:7-alpine
+    container_name: eventsapi-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - eventsapi
+
 volumes:
   postgres_data:
+  redis_data:
 
 networks:
   eventsapi:

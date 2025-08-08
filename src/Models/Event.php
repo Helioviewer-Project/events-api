@@ -27,16 +27,16 @@ use Illuminate\Database\Eloquent\Builder;
  *
  * @property string $id Unique UUID identifier for the event
  * @property string $remote_id Remote identifier from the source system
- * @property string $response_hash Hash of the original response data
  * @property int $source_id Identifier of the data source
  * @property string|null $path Event path or classification
  * @property int $start Event start time as Unix timestamp
  * @property int|null $peak Event peak time as Unix timestamp
  * @property int $end Event end time as Unix timestamp
+ * @property int $coordinate_time Time when coordinates were observed as Unix timestamp
  * @property float|null $hv_hpc_x Helioviewer HPC X coordinate
  * @property float|null $hv_hpc_y Helioviewer HPC Y coordinate
  * @property string|null $label Human-readable event label
- * @property string $translator Name of the data translator/processor
+ * @property string $short_label Shorter event label
  * @property string|null $legacy_version Legacy version identifier
  * @property string|null $legacy_type Legacy event type
  * @property string|null $legacy_pin Legacy pin identifier
@@ -46,7 +46,6 @@ use Illuminate\Database\Eloquent\Builder;
  * @method static Builder bySource(int $sourceId) Filter events by source ID
  * @method static Builder overlapping(int $start, int $end) Find overlapping events
  * @method static Builder timeRange(int $start, int $end) Filter by time range
- * @method static Builder byTranslator(string $translator) Filter by translator
  */
 class Event extends Model
 {
@@ -90,16 +89,16 @@ class Event extends Model
      */
     protected $fillable = [
         'remote_id',
-        'response_hash',
         'source_id',
         'path',
         'start',
         'peak',
         'end',
+        'coordinate_time',
         'hv_hpc_x',
         'hv_hpc_y',
         'label',
-        'translator',
+        'short_label',
         'legacy_version',
         'legacy_type',
         'legacy_pin',
@@ -114,6 +113,7 @@ class Event extends Model
         'start' => 'integer',
         'peak' => 'integer',
         'end' => 'integer',
+        'coordinate_time' => 'integer',
         'hv_hpc_x' => 'float',
         'hv_hpc_y' => 'float',
         'source_id' => 'integer',
@@ -126,9 +126,7 @@ class Event extends Model
      *
      * @var array<string>
      */
-    protected $hidden = [
-        'response_hash',
-    ];
+    protected $hidden = [];
 
     /**
      * Scope a query to only include events from a specific source.
@@ -175,17 +173,6 @@ class Event extends Model
                     ->where('end', '<=', $end);
     }
 
-    /**
-     * Scope a query to only include events processed by a specific translator.
-     *
-     * @param  Builder $query The query builder instance
-     * @param  string $translator The translator name to filter by
-     * @return Builder The modified query builder
-     */
-    public function scopeByTranslator(Builder $query, string $translator): Builder
-    {
-        return $query->where('translator', $translator);
-    }
 
     /**
      * Get the start time as a formatted date string.

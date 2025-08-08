@@ -6,6 +6,7 @@
         "php": "^8.4",
         "helioviewer/event-interface": "dev-main",
         "illuminate/database": "^12.20",
+        "psr/simple-cache": "^3.0",
         "ramsey/uuid": "^4.9",
         "robmorgan/phinx": "^0.16.10",
         "slim/psr7": "^1.7",

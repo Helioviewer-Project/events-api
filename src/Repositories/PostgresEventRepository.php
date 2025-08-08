@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 
 /**
- * Eloquent-based Event Repository Implementation
+ * PostgreSQL-based Event Repository Implementation
  *
  * This repository provides an Eloquent ORM-based implementation for solar event
  * data persistence and retrieval operations. It leverages Laravel's Eloquent ORM
@@ -47,7 +47,7 @@ use Illuminate\Database\Eloquent\Collection;
  * @author  Kasim Necdet Percinel <kasim.n.percinel@nasa.gov>
  * @since   1.0.0
  */
-class EloquentRepository implements EventRepositoryInterface
+class PostgresEventRepository implements EventRepositoryInterface
 {
     /**
      * Persist an Event to the underlying storage system.
@@ -87,7 +87,7 @@ class EloquentRepository implements EventRepositoryInterface
             // Wrap database exceptions in application-specific runtime exception
             throw new \RuntimeException(
                 "Failed to save event: " . $e->getMessage(),
-                $e->getCode(),
+                (int) $e->getCode(),
                 $e
             );
         }
@@ -310,6 +310,81 @@ class EloquentRepository implements EventRepositoryInterface
                 $e
             );
         }
+    }
+
+    /**
+     * Get total count of all events in the database.
+     *
+     * @return int Total number of events
+     */
+    public function count(): int
+    {
+        return Event::count();
+    }
+
+    /**
+     * Get statistics grouped by path.
+     *
+     * @return array Array of path statistics with 'path' and 'count' keys
+     */
+    public function getStatsByPath(): array
+    {
+        return Event::selectRaw('path, COUNT(*) as count')
+            ->groupBy('path')
+            ->orderBy('count', 'desc')
+            ->get()
+            ->toArray();
+    }
+
+    /**
+     * Get statistics grouped by date.
+     *
+     * @param int $limit Number of days to return
+     * @return array Array of date statistics with 'date' and 'count' keys
+     */
+    public function getStatsByDate(int $limit = 10): array
+    {
+        return Event::selectRaw('DATE(TO_TIMESTAMP(start)) as date, COUNT(*) as count')
+            ->groupBy('date')
+            ->orderBy('date', 'desc')
+            ->limit($limit)
+            ->get()
+            ->toArray();
+    }
+
+    /**
+     * Count events that started recently.
+     *
+     * @param int $since Unix timestamp to count from
+     * @return int Number of events started since the given time
+     */
+    public function countRecentlyStarted(int $since): int
+    {
+        return Event::where('start', '>=', $since)->count();
+    }
+
+    /**
+     * Get date range information for all events.
+     *
+     * @return array|null Array with 'oldest', 'newest', 'earliest_start', 'latest_end' keys
+     */
+    public function getDateRange(): ?array
+    {
+        $oldestEvent = Event::orderBy('created_at', 'asc')->first();
+        $newestEvent = Event::orderBy('created_at', 'desc')->first();
+        $earliestStart = Event::orderBy('start', 'asc')->first();
+        $latestEnd = Event::orderBy('end', 'desc')->first();
+
+        if (!$oldestEvent || !$newestEvent) {
+            return null;
+        }
+
+        return [
+            'oldest' => $oldestEvent->created_at->format('Y-m-d H:i:s'),
+            'newest' => $newestEvent->created_at->format('Y-m-d H:i:s'),
+            'earliest_start' => $earliestStart ? date('Y-m-d H:i:s', $earliestStart->start) : null,
+            'latest_end' => $latestEnd ? date('Y-m-d H:i:s', $latestEnd->end) : null,
+        ];
     }
 
     /**

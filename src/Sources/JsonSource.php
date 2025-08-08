@@ -222,7 +222,14 @@ abstract class JsonSource implements SourceInterface
             }
 
             // Ensure consistent return type (always array)
-            return is_array($jsonData) ? $jsonData : [];
+            $result = is_array($jsonData) ? $jsonData : [];
+            
+            // Add random delay between 0.5 and 1.5 seconds to avoid overwhelming the API
+            $sleepTime = mt_rand(500000, 1500000); // microseconds (0.5 to 1.5 seconds)
+            usleep($sleepTime);
+            echo "DEBUG: Slept for " . round($sleepTime / 1000000, 2) . " seconds\n";
+            
+            return $result;
         } catch (\Exception $e) {
             error_log("Failed to fetch " . $this->getName() . " data from {$url}: " . $e->getMessage());
             return [];

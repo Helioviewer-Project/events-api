@@ -18,7 +18,6 @@ final class CreateEventsTable extends AbstractMigration
             
             // Core required fields
             $table->string('remote_id')->unique(); // Remote system ID, must be unique
-            $table->string('response_hash')->unique(); // Hash of the response, must be unique
             $table->integer('source_id'); // Source identifier
             $table->string('path', 500); // Source path, up to 500 chars
             
@@ -26,6 +25,7 @@ final class CreateEventsTable extends AbstractMigration
             $table->integer('start'); // Start timestamp - cannot be null
             $table->integer('peak'); // Peak timestamp - cannot be null  
             $table->integer('end'); // End timestamp - cannot be null
+            $table->integer('coordinate_time'); // Time when coordinates were observed - cannot be null
             
             // Coordinate fields (signed floats)
             $table->float('hv_hpc_x'); // Helioviewer HPC X coordinate
@@ -33,7 +33,7 @@ final class CreateEventsTable extends AbstractMigration
             
             // Label and legacy fields
             $table->string('label', 256); // Event label, max 256 chars
-            $table->string('translator'); // Translator identifier (static text)
+            $table->string('short_label', 128); // Shorter event label, max 128 chars
             $table->string('legacy_version', 50)->nullable(); // Legacy version string
             $table->string('legacy_type', 4)->nullable(); // Legacy type, max 4 chars
             $table->string('legacy_pin', 4); // Legacy pin, max 4 chars, required
@@ -43,7 +43,6 @@ final class CreateEventsTable extends AbstractMigration
             
             // Indexes for optimal query performance
             $table->index('remote_id'); // Index on remote_id for lookups
-            $table->index('response_hash'); // Index on response_hash for lookups
             
             // Basic source_id index for simple filtering
             $table->index('source_id'); // Index on source_id for filtering

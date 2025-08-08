@@ -133,4 +133,37 @@ class TimeRange
     {
         return $timestamp >= $this->start && $timestamp <= $this->end;
     }
+    
+    /**
+     * Split the time range into daily chunks.
+     *
+     * @return array<TimeRange> Array of TimeRange objects, one for each day
+     */
+    public function splitByDays(): array
+    {
+        $chunks = [];
+        
+        // Start from the beginning of the start date
+        $currentStart = strtotime(date('Y-m-d 00:00:00', $this->start));
+        
+        while ($currentStart < $this->end) {
+            // Calculate end of current day
+            $currentEnd = strtotime(date('Y-m-d 23:59:59', $currentStart));
+            
+            // Don't go beyond the original end time
+            $chunkEnd = min($currentEnd, $this->end);
+            
+            // Only add chunk if there's actual time in it
+            if ($currentStart <= $chunkEnd) {
+                $chunks[] = new self(max($currentStart, $this->start), $chunkEnd);
+            }
+            
+            // Move to next day
+            $currentStart = strtotime('+1 day', $currentStart);
+            // Reset to start of day
+            $currentStart = strtotime(date('Y-m-d 00:00:00', $currentStart));
+        }
+        
+        return $chunks;
+    }
 }

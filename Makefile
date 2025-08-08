@@ -1,4 +1,4 @@
-.PHONY: composer-install composer-require up down build shell migrate-status migrate-create migrate-run migrate-rollback seed-run collect recents reset
+.PHONY: composer-install composer-require up down build shell migrate-status migrate-create migrate-run migrate-rollback seed-run collect recents reset stats
 .DEFAULT_GOAL := help
 
 composer-install:
@@ -41,6 +41,10 @@ collect:
 recents:
 	docker compose -f docker/docker-compose.yml run --rm --user 1000:1000 phpfpm php bin/recents.php $(filter-out $@,$(MAKECMDGOALS))
 
+stats:
+	docker compose -f docker/docker-compose.yml run --rm --user 1000:1000 phpfpm php bin/stats.php
+
+
 reset:
 	@echo "Resetting database (rollback all + migrate + seed)..."
 	docker compose -f docker/docker-compose.yml run --rm --user 1000:1000 phpfpm vendor/bin/phinx rollback -t 0
@@ -66,6 +70,10 @@ help:
 	@echo "  migrate-run           - Run pending migrations"
 	@echo "  migrate-rollback      - Rollback the last migration"
 	@echo "  seed-run              - Run database seeders"
-	@echo "  collect               - Collect events from all sources (use: make collect 2024-01-01 2024-01-31)"
+	@echo "  collect               - Collect events from all sources"
+	@echo "                          Examples: make collect                    (today)"
+	@echo "                                   make collect 2024-01-01"
+	@echo "                                   make collect 2024-01-01 2024-01-31"
 	@echo "  recents               - Show the most recent events from the database (use: make recents 10)"
+	@echo "  stats                 - Show database statistics grouped by source and path"
 	@echo "  reset                 - Reset database (rollback all migrations, migrate, and seed)"

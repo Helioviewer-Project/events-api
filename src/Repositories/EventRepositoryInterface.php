@@ -98,4 +98,50 @@ interface EventRepositoryInterface
      */
     public function getRecent(int $limit = 100): array;
 
+    /**
+     * Find an event by its remote ID.
+     *
+     * @param string $remoteId The unique identifier from the source system
+     *
+     * @return Event|null The matching event record, or null if not found
+     */
+    public function findByRemoteId(string $remoteId): ?Event;
+
+    /**
+     * Get total count of all events in the database.
+     *
+     * @return int Total number of events
+     */
+    public function count(): int;
+
+    /**
+     * Get statistics grouped by path.
+     *
+     * @return array Array of path statistics with 'path' and 'count' keys
+     */
+    public function getStatsByPath(): array;
+
+    /**
+     * Get statistics grouped by date.
+     *
+     * @param int $limit Number of days to return
+     * @return array Array of date statistics with 'date' and 'count' keys
+     */
+    public function getStatsByDate(int $limit = 10): array;
+
+    /**
+     * Count events that started recently.
+     *
+     * @param int $since Unix timestamp to count from
+     * @return int Number of events started since the given time
+     */
+    public function countRecentlyStarted(int $since): int;
+
+    /**
+     * Get date range information for all events.
+     *
+     * @return array|null Array with 'oldest', 'newest', 'earliest_start', 'latest_end' keys
+     */
+    public function getDateRange(): ?array;
+
 }

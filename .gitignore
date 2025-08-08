@@ -29,3 +29,8 @@ Thumbs.db
 # Build artifacts
 /build/
 /dist/
+
+# Storage directories - ignore all contents but keep directory structure
+storage/**
+!storage/**/
+!**/.gitkeep

@@ -1,135 +1,138 @@
 <?php
 
-require_once __DIR__ . '/../bootstrap.php';
+$container = require __DIR__ . '/../src/container.php';
+
+// Get services from container
+$coordinator = $container['coordinator'];
+$jsonStorage = $container['jsonStorage'];
+$eventRepository = $container['eventRepository'];
 
 use Slim\Factory\AppFactory;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
-use Illuminate\Database\Capsule\Manager as Capsule;
-use HelioviewerEventInterface\Types\HelioviewerEvent;
-use HelioviewerEventInterface\Sources as EventInterfaceSources;
 use Helioviewer\EventsApi\Models\Event;
 use HelioviewerEventInterface\Coordinator\Coordinator;
-use Helioviewer\EventsApi\Repositories\EloquentRepository;
 use Helioviewer\EventsApi\Sources\JsonSource;
-use Helioviewer\EventsApi\Utils\TimeRange;
+use Helioviewer\EventsApi\Utils\TimestampParser;
+use Helioviewer\EventsApi\Response\Legacy as LegacyEventResponse;
 
 // Create Slim app
 $app = AppFactory::create();
 
-// Create repository directly
-$repository = new EloquentRepository();
+// Use repository from container
 
 // Add routing middleware
 $app->addRoutingMiddleware();
 
 // Add error handling
 $app->addErrorMiddleware(true, true, true);
-
-// GET /events - Get first 100 events as JSON
-$app->get('/events', function (Request $request, Response $response, array $args) {
-    $events = Event::all();
     
-    $response->getBody()->write(json_encode($events, JSON_PRETTY_PRINT));
+// GET /api/v2/events - Get last 100 updated events as JSON
+$app->get('/api/v2/events', function (Request $request, Response $response, array $args) use ($eventRepository, $jsonStorage) {
+    $events = $eventRepository->getRecent(100);
+    
+    // Enhance events with source, views, and links data
+    $enhancedEvents = array_map(function ($eventArray) use ($jsonStorage) {
+        $uuid = $eventArray['id'];
+        
+        // Load source JSON data
+        $sourceData = $jsonStorage->load("/u/apps/data/sources/{$uuid}.json");
+        $eventArray['source'] = $sourceData ?: null;
+        
+        // Load views JSON data
+        $viewsData = $jsonStorage->load("/u/apps/data/views/{$uuid}.json");
+        $eventArray['views'] = $viewsData ?: [];
+        
+        // Load links JSON data
+        $linksData = $jsonStorage->load("/u/apps/data/links/{$uuid}.json");
+        // Links can be either an array or object, preserve what's loaded
+        $eventArray['link'] = $linksData;
+        
+        return $eventArray;
+    }, $events);
+    
+    $response->getBody()->write(json_encode($enhancedEvents));
     return $response->withHeader('Content-Type', 'application/json');
 });
 
-
-// curl "https://www.lmsal.com/hek/her?cmd=search&cosec=2&type=column&event_type=ar&event_starttime=2025-04-14T00:00:00&event_endtime=2025-04-14T00:00:00&event_coordsys=helioprojective&x1=-30000&x2=30000&y1=-30000&y2=30000&param0=ar_noaanum&op0==&value0=14056&param1=frm_name&op1==&value1=NOAA%20SWPC%20Observer&return=required" | jq .
-
-// GET /events/{source}/observation/{timestamp} - Get events happening at timestamp for specific source
-$app->get('/events/{source:(?i)(CCMC|HEK|WSA|RHESSI)}/observation/{timestamp:(\d{10}|\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})}', function (Request $request, Response $response, array $args) {
+// GET /api/v1/events/{source}/observation/{timestamp} - Get events happening at timestamp for specific source
+$app->get('/api/v1/events/{source}/observation/{timestamp}', function (Request $request, Response $response, array $args) use ($eventRepository, $coordinator, $jsonStorage) {
 
     $source = strtoupper($args['source']);
+    
+    // Validate source
+    if (!in_array($source, ['CCMC', 'HEK', 'WSA', 'RHESSI'])) {
+        $error = ['error' => 'Invalid source. Must be one of: CCMC, HEK, WSA, RHESSI'];
+        $response->getBody()->write(json_encode($error, JSON_PRETTY_PRINT));
+        return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+    }
     $timestamp = $args['timestamp'];
     
-    // Get source ID using AbstractSource constants
-    $sourceId = constant("Helioviewer\\EventsApi\\Sources\\AbstractSource::{$source}");
-    
-    // Parse timestamp
-    if (is_numeric($timestamp)) {
-        $parsedTimestamp = (int) $timestamp;
-    } else {
-        try {
-            $dateTime = new DateTime($timestamp);
-            $parsedTimestamp = $dateTime->getTimestamp();
-        } catch (Exception $e) {
-            $error = ['error' => 'Invalid timestamp or date format'];
-            $response->getBody()->write(json_encode($error, JSON_PRETTY_PRINT));
-            return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
-        }
+    // Parse timestamp using TimestampParser
+    $timestampParser = new TimestampParser();
+    try {
+        $parsedTimestamp = $timestampParser->parse($timestamp);
+    } catch (Exception $e) {
+        $error = ['error' => 'Invalid timestamp or date format: ' . $e->getMessage()];
+        $response->getBody()->write(json_encode($error, JSON_PRETTY_PRINT));
+        return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
     }
     
-    // Get events that were happening at the specified timestamp
-    $events = Event::where('source_id', $sourceId)
-                   ->where('start', '<=', $parsedTimestamp)
-                   ->where('end', '>=', $parsedTimestamp)
-                   ->get();
+    // Get events that were happening at the specified timestamp using repository
+    $eventsArray = $eventRepository->findActiveAtTime($source, $parsedTimestamp);
     
-    // Rotate coordinates to observation time
-    $observationTime = date('Y-m-d\TH:i:s\Z', $parsedTimestamp);
+    // Batch rotate coordinates using coordinator from bootstrap
+    $rotatedCoordinates = $coordinator->rotateAll($eventsArray, $parsedTimestamp);
     
-    $eventsWithRotatedCoords = $events->map(function ($event) use ($observationTime) {
-        $eventArray = $event->toArray();
+    // Apply rotated coordinates to events
+    $eventsWithRotatedCoords = [];
+    foreach ($eventsArray as $event) {
+        $eventId = $event['id'];
         
-        // Get original event time for coordinate rotation
-        $eventTime = date('Y-m-d\TH:i:s\Z', $event->start);
-        
-        try {
-            // Convert HGS (Stonyhurst) coordinates to HPC at observation time
-            // hv_hpc_x stores latitude, hv_hpc_y stores longitude
-            $rotatedCoords = Coordinator::Hgs2Hpc(
-                $event->hv_hpc_x,  // latitude (stored in hv_hpc_x)
-                $event->hv_hpc_y,  // longitude (stored in hv_hpc_y)
-                $eventTime, 
-                $observationTime
-            );
-            
-            // Add rotated HPC coordinates to the response
-            $eventArray['rotated_hv_hpc_x'] = $rotatedCoords['x'];
-            $eventArray['rotated_hv_hpc_y'] = $rotatedCoords['y'];
-            $eventArray['observation_time'] = $observationTime;
-            $eventArray['original_hgs_lat'] = $event->hv_hpc_x;  // Original latitude
-            $eventArray['original_hgs_lon'] = $event->hv_hpc_y;  // Original longitude
-            
-        } catch (Exception $e) {
-            // If coordinate rotation fails, keep original coordinates
-            $eventArray['rotated_hv_hpc_x'] = $event->hv_hpc_x;
-            $eventArray['rotated_hv_hpc_y'] = $event->hv_hpc_y;
-            $eventArray['coordinate_rotation_error'] = $e->getMessage();
+        // Add rotated coordinates if available
+        if (isset($rotatedCoordinates[$eventId])) {
+            // Map hpc_x/hpc_y to rotated_hv_hpc_x/rotated_hv_hpc_y for backward compatibility
+            $rotated = $rotatedCoordinates[$eventId];
+            $event['rotated_hv_hpc_x'] = $rotated['hpc_x'] ?? null;
+            $event['rotated_hv_hpc_y'] = $rotated['hpc_y'] ?? null;
+            if (isset($rotated['rotation_error'])) {
+                $event['coordinate_rotation_error'] = $rotated['rotation_error'];
+            }
         }
         
-        return $eventArray;
-    });
+        $eventsWithRotatedCoords[] = $event;
+    }
     
-    $response->getBody()->write(json_encode($eventsWithRotatedCoords, JSON_PRETTY_PRINT));
+    // Use Legacy formatter to format events
+    $legacyResponse = new LegacyEventResponse($jsonStorage);
+    $formattedEvents = $legacyResponse->formatEvents($eventsWithRotatedCoords, true);
+    
+    $response->getBody()->write(json_encode($formattedEvents, JSON_PRETTY_PRINT));
     return $response->withHeader('Content-Type', 'application/json');
 });
 
 // V2: Get events at observation time (using EloquentRepository directly)
-$app->get('/v2/events/{source:(?i)(CCMC|HEK|WSA|RHESSI)}/observation/{timestamp:(\d{10}|\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})}', 
-    function (Request $request, Response $response, array $args) use ($repository) {
+$app->get('/api/v2/events/{source}/observation/{timestamp}', 
+    function (Request $request, Response $response, array $args) use ($eventRepository, $jsonStorage) {
         try {
             $source = strtoupper($args['source']);
+            
+            // Validate source
+            if (!in_array($source, ['CCMC', 'HEK', 'WSA', 'RHESSI'])) {
+                throw new Exception('Invalid source. Must be one of: CCMC, HEK, WSA, RHESSI');
+            }
             $timestamp = $args['timestamp'];
             
-            // Parse timestamp
-            if (is_numeric($timestamp)) {
-                $parsedTimestamp = (int) $timestamp;
-            } else {
-                $time = strtotime($timestamp);
-                if ($time === false) {
-                    throw new Exception('Invalid timestamp format');
-                }
-                $parsedTimestamp = $time;
-            }
+            // Parse timestamp using TimestampParser
+            $timestampParser = new TimestampParser();
+            $parsedTimestamp = $timestampParser->parse($timestamp);
             
-            $events = $repository->findActiveAtTime($source, $parsedTimestamp);
+            $events = $eventRepository->findActiveAtTime($source, $parsedTimestamp);
             
             // Apply coordinate transformation to observation time
             $observationTime = date('Y-m-d\TH:i:s\Z', $parsedTimestamp);
             
-            $eventsWithRotatedCoords = array_map(function($eventArray) use ($observationTime) {
+            $eventsWithRotatedCoords = array_map(function($eventArray) use ($observationTime, $jsonStorage) {
                 try {
                     $eventTime = date('Y-m-d\TH:i:s\Z', $eventArray['start']);
                     
@@ -155,9 +158,24 @@ $app->get('/v2/events/{source:(?i)(CCMC|HEK|WSA|RHESSI)}/observation/{timestamp:
                     $eventArray['rotated_hv_hpc_y'] = $eventArray['hv_hpc_y'];
                     $eventArray['coordinate_rotation_error'] = $e->getMessage();
                     $eventArray['observation_time'] = $observationTime;
-                    
-                    return $eventArray;
                 }
+                
+                // Load source, views, and links data
+                $uuid = $eventArray['id'];
+                
+                // Load source JSON data
+                $sourceData = $jsonStorage->load("/u/apps/data/sources/{$uuid}.json");
+                $eventArray['source'] = $sourceData ?: null;
+                
+                // Load views JSON data
+                $viewsData = $jsonStorage->load("/u/apps/data/views/{$uuid}.json");
+                $eventArray['views'] = $viewsData ?: [];
+                
+                // Load links JSON data
+                $linksData = $jsonStorage->load("/u/apps/data/links/{$uuid}.json");
+                $eventArray['link'] = $linksData;
+                
+                return $eventArray;
             }, $events);
             
             $result = [
@@ -180,8 +198,19 @@ $app->get('/v2/events/{source:(?i)(CCMC|HEK|WSA|RHESSI)}/observation/{timestamp:
 
 // Default route
 $app->get('/', function (Request $request, Response $response, array $args) {
-    $data = ['message' => 'Events API - Use /events to get events data'];
-    $response->getBody()->write(json_encode($data, JSON_PRETTY_PRINT));
+    $data = [
+        'message' => 'Helioviewer Events API',
+        'endpoints' => [
+            'v1' => [
+                '/api/v1/events/{source}/observation/{timestamp}' => 'Get events at observation time with coordinate rotation'
+            ],
+            'v2' => [
+                '/api/v2/events' => 'Get last 100 updated events with source, views, and links',
+                '/api/v2/events/{source}/observation/{timestamp}' => 'Get events at observation time (enhanced)'
+            ]
+        ]
+    ];
+    $response->getBody()->write(json_encode($data));
     return $response->withHeader('Content-Type', 'application/json');
 });
 
