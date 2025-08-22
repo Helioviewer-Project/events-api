@@ -225,12 +225,12 @@ class Collector
                         }
                         
                         
-                        // Store views, links, and region info temporarily before DB save
+                        // Store views, link, and region info temporarily before DB save
                         $tempViews = $event->legacy_views;
-                        $tempLinks = $event->legacy_links;
+                        $tempLink = $event->legacy_link;
                         $tempRegionInfo = $event->region_info ?? null;
                         $tempRegionsInfo = $event->regions_info ?? null;
-                        unset($event->legacy_views, $event->legacy_links, $event->region_info, $event->regions_info);
+                        unset($event->legacy_views, $event->legacy_link, $event->region_info, $event->regions_info);
 
                         // Handle upsert logic: find existing event or create new one
                         $existingEvent = $this->repository->findByRemoteId($event->remote_id);
@@ -255,8 +255,8 @@ class Collector
                         // Save views data using sharded storage
                         $this->json_storage->storeById($uuid, 'views', $tempViews);
                         
-                        // Save links data using sharded storage
-                        $this->json_storage->storeById($uuid, 'links', $tempLinks);
+                        // Save link data using sharded storage (as single object, not array)
+                        $this->json_storage->storeById($uuid, 'links', $tempLink);
                         
                         // Handle region associations (single or multiple)
                         $regionsToProcess = [];

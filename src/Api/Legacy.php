@@ -150,6 +150,16 @@ class Legacy
                     
                     // Load links JSON data using sharded storage
                     $linksData = $this->storage->loadById($uuid, 'links');
+                    
+                    // If no link exists, create a default link to the event URL
+                    if (empty($linksData)) {
+                        $apiUrl = rtrim($_ENV['APIURL'] ?? 'https://events.helioviewer.org/', '/');
+                        $linksData = [
+                            'url' => "{$apiUrl}/api/v2/events/{$uuid}",
+                            'text' => 'Helioviewer Event URL'
+                        ];
+                    }
+                    
                     $eventArray['link'] = $linksData;
                 }
                 

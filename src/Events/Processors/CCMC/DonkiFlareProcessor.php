@@ -208,7 +208,7 @@ class DonkiFlareProcessor implements ProcessorInterface
         }
         
         if (isset($translatedEvent['link'])) {
-           $event->legacy_links = is_array($translatedEvent['link']) ? $translatedEvent['link'] : [$translatedEvent['link']];
+           $event->legacy_link = $translatedEvent['link'];
         }
         
         // Add region info to event for Collector to process
