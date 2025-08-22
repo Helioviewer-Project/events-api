@@ -307,7 +307,7 @@ class Processor implements ProcessorInterface
                     'content' => $rawRecord
                 ]
             ],
-            'legacy_links' => []
+            'legacy_link' => null
         ];
         
         // Step 5: Merge base data with additional data
@@ -317,12 +317,12 @@ class Processor implements ProcessorInterface
         $event = new Event();
         $event->fill($eventData);
         
-        // Step 7: Handle legacy views and links separately
+        // Step 7: Handle legacy views and link separately
         if (isset($additionalData['legacy_views'])) {
             $event->legacy_views = $additionalData['legacy_views'];
         }
-        if (isset($additionalData['legacy_links'])) {
-            $event->legacy_links = $additionalData['legacy_links'];
+        if (isset($additionalData['legacy_link'])) {
+            $event->legacy_link = $additionalData['legacy_link'];
         }
         
         // Add regions info to event for Collector to process

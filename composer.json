@@ -4,7 +4,7 @@
     "type": "project",
     "require": {
         "php": "^8.4",
-        "helioviewer/event-interface": "dev-main",
+        "helioviewer/event-interface": "dev-static/events-api",
         "illuminate/database": "^12.20",
         "monolog/monolog": "^3.9",
         "psr/simple-cache": "^3.0",
@@ -25,11 +25,8 @@
     },
     "repositories": {
         "helioviewer-event-interface": {
-            "type": "path",
-            "url": "./helioviewer-event-interface",
-            "options": {
-                "symlink": true
-            }
+            "type": "vcs",
+            "url": "https://github.com/mudhoney/helioviewer-event-interface"
         }
     },
     "prefer-stable": true,

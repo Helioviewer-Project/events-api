@@ -194,7 +194,7 @@ class Event extends Model
     /**
      * Get the peak time as a formatted date string.
      *
-     * @return string The formatted peak date (Y-m-d H:i:s)
+     * @return string tHE FORmatted peak date (Y-m-d H:i:s)
      */
     public function getPeakDateAttribute(): string
     {

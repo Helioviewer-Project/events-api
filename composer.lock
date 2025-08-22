@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "a6940faa041a5603d9c48011e3e68545",
+    "content-hash": "56c4ddb12d3223ea290af8446b53003a",
     "packages": [
         {
             "name": "brick/math",
@@ -995,11 +995,17 @@
         },
         {
             "name": "helioviewer/event-interface",
-            "version": "dev-main",
+            "version": "dev-static/events-api",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/mudhoney/helioviewer-event-interface.git",
+                "reference": "b743ff6bd617941d3fdffb1359f49ddf3e6b480f"
+            },
             "dist": {
-                "type": "path",
-                "url": "./helioviewer-event-interface",
-                "reference": "7f73bbccbef07acee40348bae377a6bada06f63e"
+                "type": "zip",
+                "url": "https://api.github.com/repos/mudhoney/helioviewer-event-interface/zipball/b743ff6bd617941d3fdffb1359f49ddf3e6b480f",
+                "reference": "b743ff6bd617941d3fdffb1359f49ddf3e6b480f",
+                "shasum": ""
             },
             "require": {
                 "guzzlehttp/guzzle": "^7.5",
@@ -1033,10 +1039,10 @@
                 "MPL-2.0"
             ],
             "description": "Interface for querying external data sources for Helioviewer",
-            "transport-options": {
-                "symlink": true,
-                "relative": true
-            }
+            "support": {
+                "source": "https://github.com/mudhoney/helioviewer-event-interface/tree/static/events-api"
+            },
+            "time": "2025-08-22T02:15:41+00:00"
         },
         {
             "name": "illuminate/collections",

@@ -253,10 +253,14 @@ class Collector
                         $this->json_storage->storeById($uuid, 'sources', $rawRecord);
                         
                         // Save views data using sharded storage
-                        $this->json_storage->storeById($uuid, 'views', $tempViews);
+                        if (!empty($tempViews)) {
+                            $this->json_storage->storeById($uuid, 'views', $tempViews);
+                        }
                         
-                        // Save link data using sharded storage (as single object, not array)
-                        $this->json_storage->storeById($uuid, 'links', $tempLink);
+                        // Save link data using sharded storage (only if not null/empty)
+                        if (!empty($tempLink)) {
+                            $this->json_storage->storeById($uuid, 'links', $tempLink);
+                        }
                         
                         // Handle region associations (single or multiple)
                         $regionsToProcess = [];
