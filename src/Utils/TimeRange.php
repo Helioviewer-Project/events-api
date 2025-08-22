@@ -141,27 +141,41 @@ class TimeRange
      */
     public function splitByDays(): array
     {
+        return $this->splitByInterval(1);
+    }
+    
+    /**
+     * Split the time range into chunks of specified interval in days.
+     *
+     * @param int $intervalDays Number of days per chunk (default: 1)
+     *
+     * @return array<TimeRange> Array of TimeRange objects, one for each interval
+     */
+    public function splitByInterval(int $intervalDays = 1): array
+    {
+        if ($intervalDays < 1) {
+            throw new \InvalidArgumentException('Interval must be at least 1 day');
+        }
+        
         $chunks = [];
         
         // Start from the beginning of the start date
         $currentStart = strtotime(date('Y-m-d 00:00:00', $this->start));
         
         while ($currentStart < $this->end) {
-            // Calculate end of current day
-            $currentEnd = strtotime(date('Y-m-d 23:59:59', $currentStart));
+            // Calculate end of current interval
+            $intervalEnd = strtotime("+{$intervalDays} days", $currentStart) - 1; // -1 to end at 23:59:59
             
             // Don't go beyond the original end time
-            $chunkEnd = min($currentEnd, $this->end);
+            $chunkEnd = min($intervalEnd, $this->end);
             
             // Only add chunk if there's actual time in it
             if ($currentStart <= $chunkEnd) {
                 $chunks[] = new self(max($currentStart, $this->start), $chunkEnd);
             }
             
-            // Move to next day
-            $currentStart = strtotime('+1 day', $currentStart);
-            // Reset to start of day
-            $currentStart = strtotime(date('Y-m-d 00:00:00', $currentStart));
+            // Move to next interval
+            $currentStart = strtotime("+{$intervalDays} days", $currentStart);
         }
         
         return $chunks;

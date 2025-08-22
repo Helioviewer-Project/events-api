@@ -5,19 +5,35 @@ declare(strict_types=1);
 // === AUTOLOAD ===
 require_once __DIR__ . '/../vendor/autoload.php';
 
+// === ENVIRONMENT VARIABLES ===
+// Load .env file if it exists
+$dotenv = Dotenv\Dotenv::createImmutable(__DIR__ . '/../');
+if (file_exists(__DIR__ . '/../.env')) {
+    $dotenv->load();
+}
+
 // === IMPORTS ===
 use Illuminate\Database\Capsule\Manager as Capsule;
 
+// Logging
+use Monolog\Logger;
+use Monolog\Handler\StreamHandler;
+use Monolog\Handler\RotatingFileHandler;
+use Monolog\Handler\ErrorLogHandler;
+use Monolog\Formatter\LineFormatter;
+
 // Services
-use Helioviewer\EventsApi\Cache\RedisCache;
+use Helioviewer\EventsApi\Storage\RedisCache;
 use Helioviewer\EventsApi\Utils\CachedHttpClient;
 use Helioviewer\EventsApi\Coordinator\DanielCoordinator;
-use Helioviewer\EventsApi\JsonStorage\LocalFile;
-use Helioviewer\EventsApi\JSOC\HarpService;
-use Helioviewer\EventsApi\JSOC\NoaaService;
+use Helioviewer\EventsApi\Storage\Json\LocalFile;
+use Helioviewer\EventsApi\Storage\Json\ShardedLocalFile;
+use Helioviewer\EventsApi\Jsoc\HarpService;
+use Helioviewer\EventsApi\Jsoc\NoaaService;
 
 // Repositories
-use Helioviewer\EventsApi\Repositories\PostgresEventRepository;
+use Helioviewer\EventsApi\Events\Repositories\Postgres;
+use Helioviewer\EventsApi\Regions\Repositories\Postgres as RegionPostgres;
 
 // === HELPER FUNCTIONS ===
 function pr($m): void {
@@ -70,10 +86,97 @@ $redis->ping();
 // Core services
 $redisCache = new RedisCache($redis, 'hv:events-api:');
 $coordinator = new DanielCoordinator($redisCache);
-$jsonStorage = new LocalFile();
-$eventRepository = new PostgresEventRepository();
+$jsonStorage = new ShardedLocalFile('/u/apps/data');
+$failureStorage = new LocalFile();
+$eventRepository = new Postgres();
+$regionRepository = new RegionPostgres();
+
+// === LOGGER INITIALIZATION ===
+// Get log level from environment (default to DEBUG for current verbose behavior)
+$logLevel = strtoupper($_ENV['LOG_LEVEL'] ?? 'DEBUG');
+$monologLevel = match($logLevel) {
+    'EMERGENCY' => Logger::EMERGENCY,
+    'ALERT' => Logger::ALERT,
+    'CRITICAL' => Logger::CRITICAL,
+    'ERROR' => Logger::ERROR,
+    'WARNING' => Logger::WARNING,
+    'NOTICE' => Logger::NOTICE,
+    'INFO' => Logger::INFO,
+    'DEBUG' => Logger::DEBUG,
+    default => Logger::DEBUG
+};
+
+// Create logger instance
+$logger = new Logger('hv.events.api');
+
+// Create logs directory if it doesn't exist
+$logsDir = '/u/apps/data/logs';
+if (!is_dir($logsDir)) {
+    mkdir($logsDir, 0755, true);
+}
+
+// Custom formatter that adds tags cleanly
+class TagLineFormatter extends LineFormatter {
+    public function format(\Monolog\LogRecord $record): string {
+        $output = parent::format($record);
+        
+        // Add tags in a clean format if present
+        if (!empty($record->extra['tags'])) {
+            $tags = $record->extra['tags'];
+            $tagStr = '';
+            
+            if (isset($tags['source'])) {
+                $tagStr = $tags['source'];
+            }
+            
+            if (isset($tags['date'])) {
+                $tagStr .= ($tagStr ? ' | ' : '') . $tags['date'];
+            }
+            
+            if (isset($tags['day'])) {
+                $tagStr .= ($tagStr ? ' | Day ' : 'Day ') . $tags['day'];
+            }
+            
+            if (isset($tags['processor'])) {
+                $tagStr .= ($tagStr ? ' | ' : '') . $tags['processor'];
+            }
+            
+            if ($tagStr) {
+                $output .= " [{$tagStr}]";
+            }
+        }
+        
+        return $output;
+    }
+}
+
+// Configure line formatter (no \n for console since error_log adds one)
+$formatter = new TagLineFormatter(
+    "[%datetime%] %channel%.%level_name%: %message%",
+    'Y-m-d H:i:s',
+    false,  // allowInlineLineBreaks
+    true    // ignoreEmptyContextAndExtra
+);
+
+// File formatter needs the newline
+$fileFormatter = new TagLineFormatter(
+    "[%datetime%] %channel%.%level_name%: %message%\n",
+    'Y-m-d H:i:s',
+    false,  // allowInlineLineBreaks
+    true    // ignoreEmptyContextAndExtra
+);
+
+// Add rotating file handler (daily rotation, keep 7 days)
+$fileHandler = new RotatingFileHandler($logsDir . '/app.log', 7, Logger::DEBUG);
+$fileHandler->setFormatter($fileFormatter);
+$logger->pushHandler($fileHandler);
+
+// Add console handler (respects LOG_LEVEL environment variable)
+$consoleHandler = new ErrorLogHandler(ErrorLogHandler::OPERATING_SYSTEM, $monologLevel);
+$consoleHandler->setFormatter($formatter);
+$logger->pushHandler($consoleHandler);
 
 // HTTP and external services
-$httpClient = new CachedHttpClient(null, $redisCache, 1800); // 30 minute cache
-$harpService = new HarpService($httpClient, $redisCache);
-$noaaService = new NoaaService($httpClient, $redisCache);
+$httpClient = new CachedHttpClient(null, $redisCache, 120, 'http_client:', $logger); // 2 minute cache
+$harpService = new HarpService($httpClient, $redisCache, $logger);
+$noaaService = new NoaaService($httpClient, $redisCache, $logger);
