@@ -7,7 +7,7 @@ declare(strict_types=1);
 $container = require __DIR__ . '/../src/container.php';
 
 // === IMPORTS ===
-use Helioviewer\EventsApi\Sources\JsonSource;
+use Helioviewer\EventsApi\Events\Sources\JsonSource;
 
 echo "=== Events Database Statistics ===\n\n";
 
@@ -85,7 +85,7 @@ try {
     echo "\n";
     
 } catch (Exception $e) {
-    echo "ERROR: " . $e->getMessage() . "\n";
-    echo "Stack trace:\n" . $e->getTraceAsString() . "\n";
+    $container['logger']->error("Stats failed: " . $e->getMessage());
+    $container['logger']->debug("Stack trace: " . $e->getTraceAsString());
     exit(1);
 }

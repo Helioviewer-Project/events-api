@@ -35,7 +35,7 @@ try {
     $eventsData = [];
     foreach ($recentEvents as $event) {
         // Check if it's an Event model or array
-        $eventArray = $event->toArray();
+        $eventArray = $event;
         
         // Convert timestamps to readable format for display
         // The timestamps are numeric (Unix timestamps)
@@ -47,20 +47,20 @@ try {
         // Load and include JSON files
         $uuid = $eventArray['id'];
         
-        // Load source JSON data
-        $sourceData = $storage->load("/u/apps/data/sources/{$uuid}.json");
+        // Load source JSON data using sharded storage
+        $sourceData = $storage->loadById($uuid, 'sources');
         if ($sourceData) {
             $eventArray['source'] = $sourceData;
         }
         
-        // Load views JSON data
-        $viewsData = $storage->load("/u/apps/data/views/{$uuid}.json");
+        // Load views JSON data using sharded storage
+        $viewsData = $storage->loadById($uuid, 'views');
         if ($viewsData) {
             $eventArray['views'] = $viewsData;
         }
         
-        // Load links JSON data
-        $linksData = $storage->load("/u/apps/data/links/{$uuid}.json");
+        // Load links JSON data using sharded storage
+        $linksData = $storage->loadById($uuid, 'links');
         if ($linksData) {
             $eventArray['links'] = $linksData;
         }
@@ -73,7 +73,7 @@ try {
     echo "\n";
     
 } catch (Exception $e) {
-    echo "ERROR: " . $e->getMessage() . "\n";
-    echo "Stack trace:\n" . $e->getTraceAsString() . "\n";
+    $container['logger']->error("Recent events query failed: " . $e->getMessage());
+    $container['logger']->debug("Stack trace: " . $e->getTraceAsString());
     exit(1);
 }

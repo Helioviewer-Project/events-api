@@ -10,7 +10,8 @@ use InvalidArgumentException;
 /**
  * Command Line Argument Parser
  *
- * Simple utility for parsing date arguments in Y-m-d format.
+ * Simple utility for parsing date arguments and interval in Y-m-d format.
+ * Supports optional chunk interval for processing data in multi-day batches.
  */
 class ArgumentParser
 {
@@ -51,5 +52,27 @@ class ArgumentParser
         }
 
         return [$start->timestamp, $end->timestamp];
+    }
+    
+    /**
+     * Parse chunk interval from command line argument.
+     *
+     * @param string|null $intervalArg Interval argument (integer days)
+     *
+     * @return int Number of days per chunk (default: 1)
+     *
+     * @throws InvalidArgumentException If interval is not a positive integer
+     */
+    public static function parseChunkInterval(?string $intervalArg): int
+    {
+        if (!$intervalArg) {
+            return 1;
+        }
+        
+        if (!is_numeric($intervalArg) || $intervalArg <= 0) {
+            throw new InvalidArgumentException("Chunk interval must be a positive integer (number of days)");
+        }
+        
+        return (int) $intervalArg;
     }
 }

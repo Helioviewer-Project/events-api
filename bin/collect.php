@@ -7,53 +7,78 @@ declare(strict_types=1);
 $container = require __DIR__ . '/../src/container.php';
 
 // === IMPORTS ===
-use Helioviewer\EventsApi\Collector\Collector as EventCollector;
+use Helioviewer\EventsApi\Events\Collector as EventCollector;
 use Helioviewer\EventsApi\Utils\TimeRange;
 use Helioviewer\EventsApi\Utils\ArgumentParser;
+use Helioviewer\EventsApi\Utils\SignalHandler;
 
-// Coordinate Resolvers
-use Helioviewer\EventsApi\Collector\Coordinate\ResolverInterface;
-use Helioviewer\EventsApi\Collector\Coordinate\HarpResolver;
-use Helioviewer\EventsApi\Collector\Coordinate\NoaaFromHarpResolver;
-use Helioviewer\EventsApi\Collector\Coordinate\DirectNoaaResolver;
-use Helioviewer\EventsApi\Collector\Coordinate\NoaaFieldResolver;
-use Helioviewer\EventsApi\Collector\Coordinate\CataniaFieldResolver;
-use Helioviewer\EventsApi\Collector\Coordinate\ModelFieldResolver;
+// === SIGNAL HANDLING ===
+SignalHandler::setup();
 
 // Sources
-use Helioviewer\EventsApi\Sources\CCMC\DonkiFlareSource;
-use Helioviewer\EventsApi\Sources\CCMC\DonkiCmeSource;
-use Helioviewer\EventsApi\Sources\CCMC\FlareScoreboardSource;
+use Helioviewer\EventsApi\Events\Sources\CCMC\DonkiFlareSource;
+use Helioviewer\EventsApi\Events\Sources\CCMC\DonkiCmeSource;
+use Helioviewer\EventsApi\Events\Sources\CCMC\FlareScoreboardSource;
 
 // Processors
-use Helioviewer\EventsApi\Processors\CCMC\DonkiFlareProcessor;
-use Helioviewer\EventsApi\Processors\CCMC\DonkiCmeProcessor;
-use Helioviewer\EventsApi\Processors\CCMC\FlareScoreboard\Processor as FlareScoreboardProcessor;
-use Helioviewer\EventsApi\Processors\CCMC\FlareScoreboard\DaffProcessor;
+use Helioviewer\EventsApi\Events\Processors\CCMC\DonkiFlareProcessor;
+use Helioviewer\EventsApi\Events\Processors\CCMC\DonkiCmeProcessor;
+use Helioviewer\EventsApi\Events\Processors\CCMC\FlareScoreboard\Processor as FlareScoreboardProcessor;
+use Helioviewer\EventsApi\Events\Processors\CCMC\FlareScoreboard\DaffProcessor;
+use Helioviewer\EventsApi\Events\Processors\CCMC\FlareScoreboard\AssaProcessor;
 
-echo "=== Helioviewer Events Collector ===\n";
+// === ARGUMENT PARSING ===
+$startDate = $argv[1] ?? null;
+$endDate = $argv[2] ?? null;
+$chunkInterval = $argv[3] ?? null;
+
+try {
+    [$start, $end] = ArgumentParser::parseDateRange($startDate, $endDate);
+    $intervalDays = ArgumentParser::parseChunkInterval($chunkInterval);
+} catch (InvalidArgumentException $e) {
+    echo $e->getMessage() . "\n";
+    echo "Usage: php collect.php [start_date] [end_date] [chunk_interval_days]\n";
+    echo "Examples:\n";
+    echo "  php collect.php                         (today, 1-day chunks)\n";
+    echo "  php collect.php 2023-10-25              (single day)\n";
+    echo "  php collect.php 2023-10-25 2023-10-28   (date range, 1-day chunks)\n";
+    echo "  php collect.php 2023-10-25 2023-10-31 3 (date range, 3-day chunks)\n";
+    exit(1);
+}
+
+$timeRange = TimeRange::fromTimestamps($start, $end);
+
+$duration = $end - $start;
+$days = round($duration / 86400, 1);
+
+// Log collection start with chunk interval info
+$chunkInfo = $intervalDays > 1 ? " in {$intervalDays}-day chunks" : " in daily chunks";
+$logger->info("Starting event collection for " . date('Y-m-d', $start) . " to " . date('Y-m-d', $end) . 
+              " ({$days} days total){$chunkInfo}");
+
 
 // === SERVICE SETUP ===
 $eventRepository = $container['eventRepository'];
+$regionRepository = $container['regionRepository'];
 $jsonStorage = $container['jsonStorage'];
+$failureStorage = $container['failureStorage'];
 $httpClient = $container['httpClient'];
 $harpService = $container['harp'];
 $noaaService = $container['noaa'];
+$logger = $container['logger'];
 
-$collector = new EventCollector($eventRepository, $jsonStorage);
+$collector = new EventCollector($eventRepository, $regionRepository, $jsonStorage, $failureStorage, $logger);
 
 // === SOURCES ===
-$collector->addSource('CCMC>>DONKI>>CME', new DonkiCmeSource());
-$collector->addSource('CCMC>>DONKI>>Solar Flares', new DonkiFlareSource());
+// $collector->addSource('CCMC>>DONKI>>CME', new DonkiCmeSource($httpClient));
+// $collector->addSource('CCMC>>DONKI>>Solar Flares', new DonkiFlareSource($httpClient));
 
 $predictionModels = [
     // 'SIDC_Operator_REGIONS' => 'SIDC Operator',
     // 'BoM_flare1_REGIONS' => 'Bureau of Meteorology',
     // 'ASSA_1_REGIONS' => 'ASSA',
-    // 'ASSA_24H_1_REGIONS' => 'ASSA 24H',
     // 'AMOS_v1_REGIONS' => 'AMOS',
     // 'ASAP_1_REGIONS' => 'ASAP',
-    // 'NOAA_1_REGIONS' => 'NOAA',
     // 'MAG4_LOS_FEr_REGIONS' => 'MAG4 LoS FEr',
     // 'MAG4_LOS_r_REGIONS' => 'MAG4 LoS r',
     'DAFFS_REGIONS' => 'DAFFS',
@@ -63,88 +88,48 @@ foreach ($predictionModels as $modelId => $modelName) {
     $collector->addSource("CCMC>>Solar Flare Predictions>>$modelName", new FlareScoreboardSource($modelId, $modelName, $httpClient));
 }
 
-// === COORDINATE RESOLVERS ===
-// Create individual service-based resolvers
-$harpResolver = new HarpResolver($harpService);
-$noaaFromHarpResolver = new NoaaFromHarpResolver($noaaService);
-$directNoaaResolver = new DirectNoaaResolver($noaaService);
-
-// Create individual field-based resolvers for processors that read from raw record fields
-$noaaFieldResolver = new NoaaFieldResolver();
-$cataniaFieldResolver = new CataniaFieldResolver();
-$modelFieldResolver = new ModelFieldResolver();
-
 // === PROCESSORS ===
 // DONKI processors don't need coordinate resolution (coordinates in raw data)
-$collector->addProcessor(new DonkiFlareProcessor());
-$collector->addProcessor(new DonkiCmeProcessor());
+$collector->addProcessor(new DonkiFlareProcessor($logger));
+$collector->addProcessor(new DonkiCmeProcessor($logger));
 
-// DAFF processor uses only service-based resolvers
-$daffProcessor = new DaffProcessor();
-$daffProcessor->addCoordinateResolver($harpResolver);           // ATTEMPT 1: HARP direct lookup
-$daffProcessor->addCoordinateResolver($noaaFromHarpResolver);   // ATTEMPT 2: NOAA via HARP logs
-$daffProcessor->addCoordinateResolver($directNoaaResolver);     // ATTEMPT 3: NOAA direct lookup
+// DAFF processor uses direct service integration (no resolvers)
+$daffProcessor = new DaffProcessor($harpService, $noaaService, $logger);
 $collector->addProcessor($daffProcessor);
 
-// FlareScoreboard processor uses only field-based resolvers
-$flareScoreboardProcessor = new FlareScoreboardProcessor();
-$flareScoreboardProcessor->addCoordinateResolver($noaaFieldResolver);      // Try NOAA raw fields
-$flareScoreboardProcessor->addCoordinateResolver($cataniaFieldResolver);   // Try Catania raw fields
-$flareScoreboardProcessor->addCoordinateResolver($modelFieldResolver);     // Try Model raw fields
+// ASSA processor with custom coordinate extraction
+$assaProcessor = new AssaProcessor($logger);
+$collector->addProcessor($assaProcessor);
+
+// FlareScoreboard processor reads coordinates directly from fields (no resolvers needed)
+$flareScoreboardProcessor = new FlareScoreboardProcessor($logger);
 $collector->addProcessor($flareScoreboardProcessor);
 
-// === ARGUMENT PARSING ===
-$startDate = $argv[1] ?? null;
-$endDate = $argv[2] ?? null;
-
-try {
-    [$start, $end] = ArgumentParser::parseDateRange($startDate, $endDate);
-} catch (InvalidArgumentException $e) {
-    echo $e->getMessage() . "\n";
-    echo "Usage: php collect.php [start_date] [end_date]\n";
-    echo "Examples:\n";
-    echo "  php collect.php                    (today)\n";
-    echo "  php collect.php 2023-10-25\n";
-    echo "  php collect.php 2023-10-25 2023-10-28\n";
-    exit(1);
+// Log registered sources
+$sources = $collector->getSources();
+foreach ($sources as $path => $source) {
+    $logger->debug("Source: {$path} => {$source->getName()}");
 }
-
-$timeRange = TimeRange::fromTimestamps($start, $end);
-
-echo "Collecting events from " . date('Y-m-d H:i:s', $start) . " to " . date('Y-m-d H:i:s', $end) . "\n";
-echo "Duration: " . ($end - $start) . " seconds (" . round(($end - $start) / 86400, 1) . " days)\n\n";
-
-// Show source information
-echo $collector->getSourceInfo();
-echo "\n";
 
 $totalEvents = 0;
 $startTime = microtime(true);
 
+
 try {
-    // Collect from all sources
-    echo "=== Collecting from all sources ===\n";
-    $events = $collector->collect($timeRange);
-    $totalEvents = count($events);
-    echo "Total events collected: {$totalEvents}\n\n";
+
+    // Collect from all sources with specified chunk interval
+    $events = $collector->collect($timeRange, $intervalDays);
+    $totalEvents = count($events); 
     
     $endTime = microtime(true);
     $duration = round($endTime - $startTime, 2);
     
     // Show summary
-    echo "=== Collection Summary ===\n";
-    echo "Total events processed: {$totalEvents}\n";
-    echo "Processing time: {$duration} seconds\n";
-    echo "Average: " . round($totalEvents / max($duration, 0.1), 2) . " events/second\n";
-    
-    // Show updated stats
-    $newStats = $collector->getStats();
-    echo "Total CCMC events in database: " . $newStats['ccmc_events'] . "\n";
-    
-    echo "\nCollection completed successfully!\n";
+    $avgRate = round($totalEvents / max($duration, 0.1), 2);
+    $logger->info("Collection completed with total {$totalEvents} events, average {$avgRate} events/sec");
     
 } catch (Exception $e) {
-    echo "ERROR: " . $e->getMessage() . "\n";
-    echo "Stack trace:\n" . $e->getTraceAsString() . "\n";
+    $logger->critical("Collection failed: " . $e->getMessage());
+    $logger->debug("Stack trace: " . $e->getTraceAsString());
     exit(1);
 }

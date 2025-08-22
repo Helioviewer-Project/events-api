@@ -18,7 +18,10 @@ $container = [
     'cache' => $redisCache,
     'coordinator' => $coordinator,
     'jsonStorage' => $jsonStorage,
+    'failureStorage' => $failureStorage,
     'eventRepository' => $eventRepository,
+    'regionRepository' => $regionRepository,
+    'logger' => $logger,
     
     // HTTP and external services
     'httpClient' => $httpClient,

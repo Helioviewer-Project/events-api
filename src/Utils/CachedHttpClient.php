@@ -8,6 +8,7 @@ use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\SimpleCache\CacheInterface;
+use Psr\Log\LoggerInterface;
 use GuzzleHttp\Client;
 use GuzzleHttp\Psr7\Response;
 use GuzzleHttp\Psr7\Request;
@@ -23,6 +24,7 @@ class CachedHttpClient implements ClientInterface
 {
     private ClientInterface $client;
     private ?CacheInterface $cache;
+    private LoggerInterface $logger;
     private int $cacheTtl;
     private string $cachePrefix;
 
@@ -30,7 +32,8 @@ class CachedHttpClient implements ClientInterface
         ?ClientInterface $client = null, 
         ?CacheInterface $cache = null, 
         int $cacheTtl = 3600,
-        string $cachePrefix = 'http_client:'
+        string $cachePrefix = 'http_client:',
+        ?LoggerInterface $logger = null
     ) {
         $this->client = $client ?? new Client([
             'timeout' => 60.0,
@@ -43,6 +46,7 @@ class CachedHttpClient implements ClientInterface
         $this->cache = $cache;
         $this->cacheTtl = $cacheTtl;
         $this->cachePrefix = $cachePrefix;
+        $this->logger = $logger ?? new \Psr\Log\NullLogger();
     }
 
     /**
@@ -62,16 +66,16 @@ class CachedHttpClient implements ClientInterface
             try {
                 $cachedResponse = $this->cache->get($cacheKey);
                 if ($cachedResponse !== null) {
-                    echo "Cache HIT for: " . $request->getUri() . "\n";
+                    $this->logger->debug("HTTP Client | Cache HIT: " . $request->getUri());
                     return $this->deserializeResponse($cachedResponse);
                 }
-            } catch (\Exception $e) {
-                error_log("Cache read error for HTTP request: " . $e->getMessage());
+            } catch (\Psr\SimpleCache\CacheException $e) {
+                $this->logger->error("HTTP Client | Cache read error: " . $e->getMessage());
             }
         }
         
         // Make the actual HTTP request
-        echo "Cache MISS for: " . $request->getUri() . "\n";
+        $this->logger->debug("HTTP Client | Cache MISS: " . $request->getUri());
         $response = $this->client->sendRequest($request);
         
         // Cache successful GET responses
@@ -79,8 +83,8 @@ class CachedHttpClient implements ClientInterface
             try {
                 $serializedResponse = $this->serializeResponse($response);
                 $this->cache->set($cacheKey, $serializedResponse, $this->cacheTtl);
-            } catch (\Exception $e) {
-                error_log("Cache write error for HTTP request: " . $e->getMessage());
+            } catch (\Psr\SimpleCache\CacheException $e) {
+                $this->logger->error("HTTP Client | Cache write error: " . $e->getMessage());
             }
         }
         
