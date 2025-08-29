@@ -53,10 +53,10 @@ class LocalFile implements JsonStorageInterface
      * 
      * @param string $id File identifier  
      * @param string $type Type of data (directory path)
-     * @param array $data JSON data
+     * @param mixed $data JSON data (array or object)
      * @return string The full path where the file was stored
      */
-    public function storeById(string $id, string $type, array $data): string
+    public function storeById(string $id, string $type, mixed $data): string
     {
         $basePath = '/u/apps/data';
         $fullPath = $basePath . '/' . $type . '/' . $id . '.json';

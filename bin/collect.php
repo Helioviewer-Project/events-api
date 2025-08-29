@@ -15,17 +15,6 @@ use Helioviewer\EventsApi\Utils\SignalHandler;
 // === SIGNAL HANDLING ===
 SignalHandler::setup();
 
-// Sources
-use Helioviewer\EventsApi\Events\Sources\CCMC\DonkiFlareSource;
-use Helioviewer\EventsApi\Events\Sources\CCMC\DonkiCmeSource;
-use Helioviewer\EventsApi\Events\Sources\CCMC\FlareScoreboardSource;
-
-// Processors
-use Helioviewer\EventsApi\Events\Processors\CCMC\DonkiFlareProcessor;
-use Helioviewer\EventsApi\Events\Processors\CCMC\DonkiCmeProcessor;
-use Helioviewer\EventsApi\Events\Processors\CCMC\FlareScoreboard\Processor as FlareScoreboardProcessor;
-use Helioviewer\EventsApi\Events\Processors\CCMC\FlareScoreboard\DaffProcessor;
-use Helioviewer\EventsApi\Events\Processors\CCMC\FlareScoreboard\AssaProcessor;
 
 // === ARGUMENT PARSING ===
 $startDate = $argv[1] ?? null;
@@ -56,7 +45,6 @@ $chunkInfo = $intervalDays > 1 ? " in {$intervalDays}-day chunks" : " in daily c
 $logger->info("Starting event collection for " . date('Y-m-d', $start) . " to " . date('Y-m-d', $end) . 
               " ({$days} days total){$chunkInfo}");
 
-
 // === SERVICE SETUP ===
 $eventRepository = $container['eventRepository'];
 $regionRepository = $container['regionRepository'];
@@ -67,43 +55,17 @@ $harpService = $container['harp'];
 $noaaService = $container['noaa'];
 $logger = $container['logger'];
 
-$collector = new EventCollector($eventRepository, $regionRepository, $jsonStorage, $failureStorage, $logger);
-
-// === SOURCES ===
-// $collector->addSource('CCMC>>DONKI>>CME', new DonkiCmeSource($httpClient));
-// $collector->addSource('CCMC>>DONKI>>Solar Flares', new DonkiFlareSource($httpClient));
-
-$predictionModels = [
-    // 'SIDC_Operator_REGIONS' => 'SIDC Operator',
-    // 'BoM_flare1_REGIONS' => 'Bureau of Meteorology',
-    // 'ASSA_1_REGIONS' => 'ASSA',
-    // 'AMOS_v1_REGIONS' => 'AMOS',
-    // 'ASAP_1_REGIONS' => 'ASAP',
-    // 'MAG4_LOS_FEr_REGIONS' => 'MAG4 LoS FEr',
-    // 'MAG4_LOS_r_REGIONS' => 'MAG4 LoS r',
-    'DAFFS_REGIONS' => 'DAFFS',
-];
-
-foreach ($predictionModels as $modelId => $modelName) {
-    $collector->addSource("CCMC>>Solar Flare Predictions>>$modelName", new FlareScoreboardSource($modelId, $modelName, $httpClient));
-}
-
-// === PROCESSORS ===
-// DONKI processors don't need coordinate resolution (coordinates in raw data)
-$collector->addProcessor(new DonkiFlareProcessor($logger));
-$collector->addProcessor(new DonkiCmeProcessor($logger));
-
-// DAFF processor uses direct service integration (no resolvers)
-$daffProcessor = new DaffProcessor($harpService, $noaaService, $logger);
-$collector->addProcessor($daffProcessor);
-
-// ASSA processor with custom coordinate extraction
-$assaProcessor = new AssaProcessor($logger);
-$collector->addProcessor($assaProcessor);
-
-// FlareScoreboard processor reads coordinates directly from fields (no resolvers needed)
-$flareScoreboardProcessor = new FlareScoreboardProcessor($logger);
-$collector->addProcessor($flareScoreboardProcessor);
+// Use the standard collector factory method
+$collector = EventCollector::createStandard(
+    $eventRepository,
+    $regionRepository,
+    $jsonStorage,
+    $failureStorage,
+    $httpClient,
+    $harpService,
+    $noaaService,
+    $logger
+);
 
 // Log registered sources
 $sources = $collector->getSources();
@@ -128,7 +90,7 @@ try {
     $avgRate = round($totalEvents / max($duration, 0.1), 2);
     $logger->info("Collection completed with total {$totalEvents} events, average {$avgRate} events/sec");
     
-} catch (Exception $e) {
+} catch (\Throwable $e) {
     $logger->critical("Collection failed: " . $e->getMessage());
     $logger->debug("Stack trace: " . $e->getTraceAsString());
     exit(1);

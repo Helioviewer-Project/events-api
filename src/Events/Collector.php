@@ -18,6 +18,16 @@ use Helioviewer\EventsApi\Exception\SourceException;
 use Helioviewer\EventsApi\Exception\InvalidEventException;
 use Psr\Log\LoggerInterface;
 use Monolog\Processor\TagProcessor;
+// Sources for createStandard factory method
+use Helioviewer\EventsApi\Events\Sources\CCMC\DonkiFlareSource;
+use Helioviewer\EventsApi\Events\Sources\CCMC\DonkiCmeSource;
+use Helioviewer\EventsApi\Events\Sources\CCMC\FlareScoreboardSource;
+// Processors for createStandard factory method
+use Helioviewer\EventsApi\Events\Processors\CCMC\DonkiFlareProcessor;
+use Helioviewer\EventsApi\Events\Processors\CCMC\DonkiCmeProcessor;
+use Helioviewer\EventsApi\Events\Processors\CCMC\FlareScoreboard\Processor as FlareScoreboardProcessor;
+use Helioviewer\EventsApi\Events\Processors\CCMC\FlareScoreboard\DaffProcessor;
+use Helioviewer\EventsApi\Events\Processors\CCMC\FlareScoreboard\AssaProcessor;
 
 /**
  * Event Collection Service
@@ -71,6 +81,76 @@ class Collector
         private ?LoggerInterface $logger = null
     ) {
         $this->logger = $logger ?? new \Psr\Log\NullLogger();
+    }
+    
+    /**
+     * Create a pre-configured collector with standard sources and processors
+     *
+     * This factory method creates a collector instance with all the standard
+     * sources and processors configured as used in bin/collect.php
+     *
+     * @param RepositoryInterface $repository Repository for event persistence
+     * @param RegionRepositoryInterface $regionRepository Repository for region persistence
+     * @param JsonStorageInterface $json_storage Storage service for raw JSON data
+     * @param JsonStorageInterface $failure_storage Storage service for failure data
+     * @param \Helioviewer\EventsApi\Utils\CachedHttpClient $httpClient HTTP client for API calls
+     * @param \Helioviewer\EventsApi\Jsoc\HarpService $harpService HARP service for coordinate resolution
+     * @param \Helioviewer\EventsApi\Jsoc\NoaaService $noaaService NOAA service for coordinate resolution
+     * @param LoggerInterface|null $logger Logger for recording activities
+     * @return self Fully configured collector instance
+     */
+    public static function createStandard(
+        RepositoryInterface $repository,
+        RegionRepositoryInterface $regionRepository,
+        JsonStorageInterface $json_storage,
+        JsonStorageInterface $failure_storage,
+        \Helioviewer\EventsApi\Utils\CachedHttpClient $httpClient,
+        \Helioviewer\EventsApi\Jsoc\HarpService $harpService,
+        \Helioviewer\EventsApi\Jsoc\NoaaService $noaaService,
+        ?LoggerInterface $logger = null
+    ): self {
+        // Create collector instance
+        $collector = new self($repository, $regionRepository, $json_storage, $failure_storage, $logger);
+        
+        // === SOURCES ===
+        $collector->addSource('CCMC>>DONKI>>CME', new DonkiCmeSource($httpClient));
+        $collector->addSource('CCMC>>DONKI>>Solar Flares', new DonkiFlareSource($httpClient));
+        
+        // Prediction models
+        $predictionModels = [
+            'SIDC_Operator_REGIONS' => 'SIDC Operator',
+            'BoM_flare1_REGIONS' => 'Bureau of Meteorology',
+            'ASSA_1_REGIONS' => 'ASSA',
+            'AMOS_v1_REGIONS' => 'AMOS',
+            'ASAP_1_REGIONS' => 'ASAP',
+            'MAG4_LOS_FEr_REGIONS' => 'MAG4 LoS FEr',
+            'MAG4_LOS_r_REGIONS' => 'MAG4 LoS r',
+            'DAFFS_REGIONS' => 'DAFFS',
+        ];
+        
+        foreach ($predictionModels as $modelId => $modelName) {
+            $collector->addSource("CCMC>>Solar Flare Predictions>>$modelName", 
+                new FlareScoreboardSource($modelId, $modelName, $httpClient));
+        }
+        
+        // === PROCESSORS ===
+        // DONKI processors don't need coordinate resolution (coordinates in raw data)
+        $collector->addProcessor(new DonkiFlareProcessor($logger));
+        $collector->addProcessor(new DonkiCmeProcessor($logger));
+        
+        // DAFF processor uses direct service integration (no resolvers)
+        $daffProcessor = new DaffProcessor($harpService, $noaaService, $logger);
+        $collector->addProcessor($daffProcessor);
+        
+        // ASSA processor with custom coordinate extraction
+        $assaProcessor = new AssaProcessor($logger);
+        $collector->addProcessor($assaProcessor);
+        
+        // FlareScoreboard processor reads coordinates directly from fields (no resolvers needed)
+        $flareScoreboardProcessor = new FlareScoreboardProcessor($logger);
+        $collector->addProcessor($flareScoreboardProcessor);
+        
+        return $collector;
     }
     
     /**
@@ -165,11 +245,13 @@ class Collector
                         usleep($sleepTime);
                     }
                 } catch (SourceException $e) {
-                    $this->logger->critical("Source failed: {$e->getSourcePath()} => {$e->getSourceName()}: {$e->getMessage()}");
-                    pre($e);
+                    $this->logger->critical("Source exception: {$e->getSourcePath()} => {$e->getSourceName()}: {$e->getMessage()}");
+                    $this->logger->debug("SourceException details: " . $e->getTraceAsString());
+                    throw $e;
                 } catch (\Exception $e) {
                     $this->logger->critical("Failed to collect: {$e->getMessage()}");
-                    pre($e);
+                    $this->logger->debug("Exception details: " . get_class($e) . " - " . $e->getTraceAsString());
+                    throw $e;
                 } finally {
                     // Remove the processor when done with this source
                     $this->logger->popProcessor();
@@ -257,9 +339,16 @@ class Collector
                             $this->json_storage->storeById($uuid, 'views', $tempViews);
                         }
                         
-                        // Save link data using sharded storage (only if not null/empty)
+                        // Save link data using sharded storage 
                         if (!empty($tempLink)) {
                             $this->json_storage->storeById($uuid, 'links', $tempLink);
+                        } else {
+                            // Create default link structure when tempLink is empty
+                            $defaultLink = [
+                                'url' => rtrim($_ENV['APIURL'], '/') . "/api/v2/events/{$uuid}",
+                                'text' => 'Helioviewer Events API JSON'
+                            ];
+                            $this->json_storage->storeById($uuid, 'links', $defaultLink);
                         }
                         
                         // Handle region associations (single or multiple)
@@ -305,28 +394,27 @@ class Collector
                         $processedCount++;
                         
                         // Get API URL for event view links
-                        $apiUrl = rtrim($_ENV['APIURL'] ?? 'https://events.helioviewer.org/', '/');
-                        $eventViewUrl = $apiUrl . "/api/v2/events/{$savedEvent->id}";
+                        $eventViewUrl = rtrim($_ENV['APIURL'], '/') . "/api/v2/events/{$savedEvent->id}";
                         
                         // Log processing progress with event details and view link
                         $this->logger->info("{$action} event: {$savedEvent->remote_id} | {$eventViewUrl}");
+
                         
-                    } catch (\Exception $e) {
+                    } catch (InvalidEventException | CoordinateResolutionException $e) {
 
                         $failureId = hash('sha256', json_encode($rawRecord)) . '.json';
                         
                         // Set path based on exception type
                         $failurePath = match (true) {
-                            $e instanceof InvalidEventException => "failures/invalid_events/{$sourceName}",
-                            $e instanceof CoordinateResolutionException => "failures/coordinate_errors/{$sourceName}",
-                            default => "failures/general_errors/{$sourceName}"
+                            $e instanceof InvalidEventException => "/u/apps/data/failures/invalid_events/{$sourceName}/{$failureId}",
+                            $e instanceof CoordinateResolutionException => "/u/apps/data/failures/coordinate_errors/{$sourceName}/{$failureId}"
                         };
-                        
-                        // Get exception type short name
-                        $exceptionType = match (true) {
-                            $e instanceof InvalidEventException => 'InvalidEventException',
-                            $e instanceof CoordinateResolutionException => 'CoordinateResolutionException',
-                            default => 'Exception'
+
+                        $apiUrl = rtrim($_ENV['APIURL'], '/');
+
+                        $failureURL = match (true) {
+                            $e instanceof InvalidEventException => "{$apiUrl}/storage/failures/invalid_events/{$sourceName}/{$failureId}",
+                            $e instanceof CoordinateResolutionException => "{$apiUrl}/storage/failures/coordinate_errors/{$sourceName}/{$failureId}"
                         };
                         
                         // Save failure using hash of raw record
@@ -339,19 +427,10 @@ class Collector
                         ];
                         
                         // Store the failure and get the actual file path (using non-sharded storage)
-                        $storedPath = $this->failure_storage->storeById(str_replace('.json', '', $failureId), $failurePath, $failureData);
-                        
-                        // Convert file path to URL by replacing base path with API URL
-                        $apiUrl = rtrim($_ENV['APIURL'] ?? 'https://events.helioviewer.org/', '/');
-                        $basePath = '/u/apps/data';
-                        $fullUrl = str_replace($basePath, $apiUrl . '/storage', $storedPath);
-                        
-                        // Log with appropriate level based on exception type
-                        if ($e instanceof CoordinateResolutionException) {
-                            $this->logger->warning("{$exceptionType} | {$e->getMessage()} | {$fullUrl}");
-                        } else {
-                            $this->logger->error("{$exceptionType} | {$e->getMessage()} | {$fullUrl}");
-                        }
+                        $storedPath = $this->failure_storage->store($failurePath, $failureData);
+
+                        // Log warning with exception details
+                        $this->logger->warning((new \ReflectionClass($e))->getShortName() . " | {$e->getMessage()} | {$failureURL}");
                         
                     }
 

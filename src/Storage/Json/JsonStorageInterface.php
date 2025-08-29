@@ -31,4 +31,15 @@ interface JsonStorageInterface
      * @return array|null JSON data or null if not found
      */
     public function load(string $path): ?array;
+    
+    /**
+     * Store with explicit type and ID.
+     *
+     * @param string $id UUID or identifier
+     * @param string $type Type of data (sources, views, links)
+     * @param mixed $data JSON data (array or object)
+     * 
+     * @return string The full path where the file was stored
+     */
+    public function storeById(string $id, string $type, mixed $data): string;
 }

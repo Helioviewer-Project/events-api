@@ -25,7 +25,7 @@ class NoaaService
 
     public function __construct(?ClientInterface $client = null, ?CacheInterface $cache = null, ?LoggerInterface $logger = null)
     {
-        $this->jsoc = new JsocClient($client);
+        $this->jsoc = new JsocClient($client, $logger);
         $this->cache = $cache;
         $this->logger = $logger ?? new \Psr\Log\NullLogger();
     }
@@ -131,12 +131,14 @@ class NoaaService
     }
 
     /**
-     * Get last known NOAA region coordinate data by NOAA Active Region number before specified datetime (from HARP logs).
+     * UNUSED: Get last known NOAA region coordinate data by NOAA Active Region number before specified datetime (from HARP logs).
+     * This method is not called anywhere in the codebase.
      *
      * @param int $noaaNumber The NOAA active region number
      * @param string $datetime The datetime to find coordinates before (Y-m-d H:i:s format)
      * @return array|null NOAA record array or null if not found
      */
+    /*
     public function getLastCoordinateForNoaaFromHarpLogs(int $noaaNumber, string $datetime): ?array
     {
         
@@ -199,14 +201,17 @@ class NoaaService
         
         return $result;
     }
+    */
 
     /**
-     * Convert JSOC HMI time format to standard datetime format
+     * UNUSED: Convert JSOC HMI time format to standard datetime format
+     * Only used by the unused getLastCoordinateForNoaaFromHarpLogs method
      * Handles formats like: 2013.06.19_12:00:00_TAI
      *
      * @param string $jsocTime Time from JSOC T_REC field
      * @return string Time in Y-m-d H:i:s format
      */
+    /*
     private function formatJsocTimeHmi(string $jsocTime): string
     {
         // Remove _TAI suffix and replace dots/underscores
@@ -217,6 +222,7 @@ class NoaaService
         $timestamp = strtotime($timeString);
         return $timestamp ? date('Y-m-d H:i:s', $timestamp) : $jsocTime;
     }
+    */
 
     /**
      * Convert JSOC time format to standard datetime format
