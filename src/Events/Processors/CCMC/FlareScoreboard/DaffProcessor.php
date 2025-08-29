@@ -87,10 +87,11 @@ class DaffProcessor extends Processor
         // Parent failed, try NOAA service if NOAARegionId is available
         if (isset($rawRecord['NOAARegionId'])) {
             
-            $eventDateTime = $rawRecord['start_window'] ?? date('Y-m-d H:i:s');
+            $eventDateTime = $rawRecord['start_window'];
             $this->logger->info("DAFF: Trying NOAA service for region {$rawRecord['NOAARegionId']} to find closest coordinates before {$eventDateTime}");
             
             $noaaId = (int) $rawRecord['NOAARegionId'];
+
             $noaaData = $this->noaaService->getLastCoordinateForNoaa($noaaId, $eventDateTime);
             
             if ($noaaData) {

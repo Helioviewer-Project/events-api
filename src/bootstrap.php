@@ -5,6 +5,33 @@ declare(strict_types=1);
 // === AUTOLOAD ===
 require_once __DIR__ . '/../vendor/autoload.php';
 
+// === ERROR HANDLING - Convert errors to exceptions (except deprecations) ===
+error_reporting(E_ALL & ~E_DEPRECATED & ~E_USER_DEPRECATED);
+
+// Convert PHP errors to exceptions (excluding deprecations)
+set_error_handler(function ($severity, $message, $file, $line) {
+    // Ignore deprecation warnings
+    if ($severity === E_DEPRECATED || $severity === E_USER_DEPRECATED) {
+        return false;
+    }
+    
+    // Respect error_reporting level
+    if (!(error_reporting() & $severity)) {
+        return false;
+    }
+    
+    throw new ErrorException($message, 0, $severity, $file, $line);
+});
+
+// Handle fatal errors on shutdown
+register_shutdown_function(function () {
+    $error = error_get_last();
+    if ($error !== null && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR])) {
+        // Log to stderr since logger might not be available
+        error_log("Fatal error: {$error['message']} in {$error['file']} on line {$error['line']}");
+    }
+});
+
 // === ENVIRONMENT VARIABLES ===
 // Load .env file if it exists
 $dotenv = Dotenv\Dotenv::createImmutable(__DIR__ . '/../');

@@ -56,6 +56,8 @@ recents:
 stats:
 	docker compose -f docker/docker-compose.yml run --rm --user 1000:1000 phpfpm php bin/stats.php
 
+logs:
+	tail -f storage/logs/*.log
 
 reset:
 	@echo "Resetting database (rollback all + migrate + seed)..."
@@ -90,4 +92,5 @@ help:
 	@echo "                                   make collect 2024-01-01 2024-01-31 5 (date range, 5-day chunks)"
 	@echo "  recents               - Show the most recent events from the database (use: make recents 10)"
 	@echo "  stats                 - Show database statistics grouped by source and path"
+	@echo "  logs                  - Follow application logs (tail -f)"
 	@echo "  reset                 - Reset database (rollback all migrations, migrate, and seed)"

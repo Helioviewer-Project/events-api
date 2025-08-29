@@ -318,7 +318,7 @@ class DonkiCmeProcessor implements ProcessorInterface
         if (isset($translatedEvent['link'])) {
             $event->legacy_link = $translatedEvent['link'];
         }
-        
+
         // Add region info to event for Collector to process
         if ($regionInfo) {
             $event->region_info = $regionInfo;

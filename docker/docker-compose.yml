@@ -55,6 +55,29 @@ services:
     networks:
       - eventsapi
 
+  scheduler:
+    build: ./phpfpm
+    container_name: eventsapi-scheduler
+    user: "1000:1000"
+    volumes_from:
+      - phpfpm
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=eventsapi
+      - DB_USER=eventsapi
+      - DB_PASSWORD=eventsapi_pass
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=10
+    depends_on:
+      - postgres
+      - redis
+      - phpfpm
+    networks:
+      - eventsapi
+    command: bash -c "while true; do php /u/apps/site/bin/scheduler.php; sleep 60; done"
+
 volumes:
   postgres_data:
   redis_data:
