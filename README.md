@@ -1,6 +1,15 @@
 # events-api
 A unified API and event database that collects, normalizes, and serves solar event data from multiple sources (HEK, CCMC, WSA, RHESSI) for use in Helioviewer.org and related tools.
 
+## Features
+
+- **Multi-source Event Collection**: Collects and normalizes solar event data from CCMC DONKI, WSA, and other sources
+- **Coordinate Transformation**: High-performance batch coordinate transformation from HGS to HPC with caching
+- **RESTful API**: Modern REST API with v1 and v2 endpoints for event querying
+- **Real-time Processing**: Event collection with configurable chunk intervals for efficient data processing
+- **Redis Caching**: Comprehensive caching layer for HTTP requests and coordinate transformations
+- **PostgreSQL Storage**: Robust data storage with Eloquent ORM and database migrations
+
 ## Development Setup
 
 This project uses Docker Compose for local development with PHP 8.4, Nginx, and PostgreSQL.
@@ -50,12 +59,17 @@ make
 #### Docker Commands
 - `make up` - Start the Docker containers
 - `make down` - Stop the Docker containers
-- `make build` - Build the Docker images
-- `make shell` - Open a bash shell in the PHP container
+- `make build` - Build the Docker images (with --no-cache)
+- `make shell` - Open a bash shell in the PHP container (user 1000:1000)
+- `make shell-root` - Open a root bash shell in the PHP container
 
 #### Composer Commands
 - `make composer-install` - Install PHP dependencies via Composer
 - `make composer-require PACKAGE=package-name` - Add a new package
+- `make composer-dump` - Regenerate Composer autoloader
+
+#### Nginx Commands
+- `make nginx-reload` - Reload nginx configuration
 
 #### Database Migration Commands
 - `make migrate-status` - Check migration status
@@ -64,26 +78,61 @@ make
 - `make migrate-rollback` - Rollback the last migration
 - `make seed-run` - Run database seeders
 
-#### Event Collection Commands
-- `make collect` - Collect events for today
-- `make collect 2024-01-15` - Collect events for specific date (Y-m-d format)
-- `make collect 2024-01-01 2024-01-31` - Collect events for date range (inclusive)
+#### Event Collection & Monitoring Commands
+- `make collect` - Collect events for today (daily chunks)
+- `make collect 2024-01-01` - Collect events for single day
+- `make collect 2024-01-01 2024-01-31` - Collect events for date range (daily chunks)
+- `make collect 2024-01-01 2024-01-31 5` - Collect date range in 5-day chunks
+- `make recents` - Show the most recent events from the database
+- `make recents 10` - Show last 10 events
+- `make stats` - Show database statistics grouped by source and path
+- `make logs` - Follow application logs (tail -f storage/logs/*.log)
+- `make reset` - Reset database (rollback all migrations, migrate, and seed)
 
-### Architecture
+## API Endpoints
 
+The API provides several endpoints for accessing solar event data:
+
+### V1 API (Legacy)
+- `GET /api/v1/events/{source}/observation/{timestamp}` - Get events active at specific timestamp with coordinate rotation
+
+### V2 API (Enhanced)
+- `GET /api/v2/events/recents` - Get last 100 updated events with enhanced data
+- `GET /api/v2/events/{uuid}` - Get single event by UUID with full details
+- `GET /api/v2/events/{uuid}/source` - Get raw source data for an event
+- `GET /api/v2/events/{source}/observation/{timestamp}` - Enhanced observation endpoint
+
+**Supported Sources**: CCMC, HEK, WSA, RHESSI
+
+**Timestamp Formats**: ISO 8601, Y-m-d, Y-m-d H:i:s, Unix timestamps
+
+## Architecture
+
+### Services
 - **Nginx** (`eventsapi-nginx`) - Web server listening on port 8082
-- **PHP-FPM** (`eventsapi-phpfpm`) - PHP 8.4 with Composer and PostgreSQL support
-- **PostgreSQL** (`eventsapi-postgres`) - Database server (internal network only)
-- **Network** - All services communicate via `eventsapi` network
-- **Document Root** - `/u/apps/site/public` (maps to `./public/`)
+- **PHP-FPM** (`eventsapi-phpfpm`) - PHP 8.4 with coordinate transformation binaries
+- **PostgreSQL** (`eventsapi-postgres`) - Event database with Eloquent ORM
+- **Redis** (`eventsapi-redis`) - Caching layer for HTTP and coordinate transformations
+
+### Coordinate Transformation
+The system includes dual coordinate transformation services:
+- **DanielCoordinator** (Primary) - Fast coordinate rotation service
+- **CommandLineCoordinator** (Backup) - SunPy-based transformation using hgs_to_hpc binary
+
+Both coordinators support batch processing and Redis caching for optimal performance.
 
 ### Database Configuration
 
-The PostgreSQL database is configured with:
+PostgreSQL database configuration:
 - Database: `eventsapi`
 - User: `eventsapi`
 - Password: `eventsapi_pass`
 - Host: `postgres` (container name)
 - Port: `5432`
 
-Database migrations are managed using Phinx and configured to read connection details from environment variables.
+Redis configuration:
+- Host: `redis` (container name)
+- Port: `6379`
+- Database: `10`
+
+Database migrations are managed using Phinx with environment variable configuration.

@@ -6,7 +6,6 @@ namespace Helioviewer\EventsApi\Coordinator;
 
 use Psr\SimpleCache\CacheInterface;
 use HelioviewerEventInterface\Coordinator\Coordinator;
-use Helioviewer\EventsApi\Utils\TimestampParser;
 use Exception;
 
 /**
@@ -21,7 +20,6 @@ use Exception;
 class DanielCoordinator implements CoordinatorInterface
 {
     private ?CacheInterface $cache;
-    private TimestampParser $timestampParser;
     
     /**
      * Constructor
@@ -31,7 +29,6 @@ class DanielCoordinator implements CoordinatorInterface
     public function __construct(?CacheInterface $cache = null)
     {
         $this->cache = $cache;
-        $this->timestampParser = new TimestampParser();
     }
     
     /**
@@ -90,36 +87,24 @@ class DanielCoordinator implements CoordinatorInterface
     }
     
     /**
-     * Batch rotate multiple Stonyhurst coordinates to Helioprojective Cartesian
+     * Batch rotate coordinates using simplified array format
      * 
-     * @param array $events Array of events with coordinate data
+     * @param array $coordinateArray Array of coordinate data with 'lat', 'lon', 'coordinate_time' keys
      * @param int|string $targetTimestamp Target time for coordinate rotation
-     * @return array Dictionary with event ID as key and rotated HPC coordinates as value
+     * @return array Array of rotated coordinates in same order as input
      */
-    public function rotateAll(array $events, $targetTimestamp): array
+    public function rotateAll(array $coordinateArray, $targetTimestamp): array
     {
-        // Parse target timestamp
-        $parsedTimestamp = $this->timestampParser->parse($targetTimestamp);
+        // Convert target timestamp to ISO format
+        $parsedTimestamp = is_numeric($targetTimestamp) ? (int)$targetTimestamp : strtotime($targetTimestamp);
         $targetTime = date('Y-m-d\TH:i:s\Z', $parsedTimestamp);
         
         $rotatedCoordinates = [];
         
-        foreach ($events as $event) {
-            // Handle both Event models and arrays
-            $eventId = is_array($event) ? $event['id'] : $event->id;
-            $coordinateTime = is_array($event) ? $event['coordinate_time'] : $event->coordinate_time;
-            $hgsLatitude = is_array($event) ? $event['hv_hpc_x'] : $event->hv_hpc_x;
-            $hgsLongitude = is_array($event) ? $event['hv_hpc_y'] : $event->hv_hpc_y;
-            
-            // Skip if no coordinates
-            if ($hgsLatitude === null || $hgsLongitude === null || $coordinateTime === null) {
-                $rotatedCoordinates[$eventId] = [
-                    'hpc_x' => $hgsLatitude,
-                    'hpc_y' => $hgsLongitude,
-                    'rotation_error' => 'Missing coordinate data'
-                ];
-                continue;
-            }
+        foreach ($coordinateArray as $index => $coord) {
+            $hgsLatitude = $coord['lat'];
+            $hgsLongitude = $coord['lon'];
+            $coordinateTime = $coord['coordinate_time'];
             
             // Create cache key
             $cacheKey = sprintf(
@@ -134,7 +119,7 @@ class DanielCoordinator implements CoordinatorInterface
             if ($this->cache !== null) {
                 $cachedValue = $this->cache->get($cacheKey);
                 if ($cachedValue !== null) {
-                    $rotatedCoordinates[$eventId] = array_merge($cachedValue, [
+                    $rotatedCoordinates[$index] = array_merge($cachedValue, [
                         'original_hgs_lat' => $hgsLatitude,
                         'original_hgs_lon' => $hgsLongitude,
                         'target_time' => $targetTime,
@@ -156,7 +141,7 @@ class DanielCoordinator implements CoordinatorInterface
                     $targetTime
                 );
                 
-                $rotatedCoordinates[$eventId] = [
+                $rotatedCoordinates[$index] = [
                     'hpc_x' => $rotated['hpc_x'],
                     'hpc_y' => $rotated['hpc_y'],
                     'original_hgs_lat' => $hgsLatitude,
@@ -166,14 +151,11 @@ class DanielCoordinator implements CoordinatorInterface
                 ];
                 
             } catch (Exception $e) {
-                $rotatedCoordinates[$eventId] = [
-                    'hpc_x' => $hgsLatitude,
-                    'hpc_y' => $hgsLongitude,
-                    'rotation_error' => $e->getMessage()
-                ];
+                throw new CoordinatorException("Failed to rotate coordinates: " . $e->getMessage());
             }
         }
         
         return $rotatedCoordinates;
     }
+
 }

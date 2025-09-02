@@ -66,6 +66,7 @@ reset:
 	docker compose -f docker/docker-compose.yml run --rm --user 1000:1000 phpfpm vendor/bin/phinx seed:run
 	@echo "Database reset complete!"
 
+
 # Handle extra arguments for collect command
 %:
 	@:

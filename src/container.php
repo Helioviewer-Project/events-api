@@ -17,6 +17,7 @@ $container = [
     // Core services
     'cache' => $redisCache,
     'coordinator' => $coordinator,
+    'backup_coordinator' => $backup_coordinator,
     'jsonStorage' => $jsonStorage,
     'failureStorage' => $failureStorage,
     'eventRepository' => $eventRepository,

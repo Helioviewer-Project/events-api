@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Helioviewer\EventsApi\Utils;
 
 use DateTime;
-use Exception;
+use InvalidArgumentException;
 
 /**
  * Timestamp Parser Utility
@@ -35,7 +35,7 @@ class TimestampParser
      * 
      * @param string|int $timestamp The timestamp to parse (Unix timestamp or date string)
      * @return int Unix timestamp
-     * @throws Exception If timestamp format is invalid
+     * @throws InvalidArgumentException If timestamp format is invalid
      */
     public function parse($timestamp): int
     {
@@ -63,7 +63,7 @@ class TimestampParser
             return $time;
         }
         
-        throw new Exception('Invalid timestamp format: ' . $timestamp);
+        throw new InvalidArgumentException('Invalid timestamp format: ' . $timestamp);
     }
     
     /**
@@ -71,7 +71,7 @@ class TimestampParser
      * 
      * @param string|int $timestamp The timestamp to parse
      * @return string ISO 8601 formatted date string (Y-m-d\TH:i:s\Z)
-     * @throws Exception If timestamp format is invalid
+     * @throws InvalidArgumentException If timestamp format is invalid
      */
     public function toIso8601($timestamp): string
     {
@@ -85,7 +85,7 @@ class TimestampParser
      * @param string|int $timestamp The timestamp to parse
      * @param string $format Output format (default: Y-m-d H:i:s)
      * @return string Formatted date string
-     * @throws Exception If timestamp format is invalid
+     * @throws InvalidArgumentException If timestamp format is invalid
      */
     public function toDateString($timestamp, string $format = 'Y-m-d H:i:s'): string
     {
@@ -104,7 +104,7 @@ class TimestampParser
         try {
             $this->parse($timestamp);
             return true;
-        } catch (Exception $e) {
+        } catch (InvalidArgumentException $e) {
             return false;
         }
     }

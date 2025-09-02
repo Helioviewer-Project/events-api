@@ -42,14 +42,14 @@ if (!is_dir('/u/apps/data/scheduler')) {
     mkdir('/u/apps/data/scheduler', 0777, true);
 }
 
-// Schedule collection job (every minute) - collects today's events
+// Schedule collection job (every 6 minutes) - collects today's events
 $scheduler->call(function() use ($eventCollector, $logger) {
     // Collect today
     $start = strtotime('today');
     $end = strtotime('tomorrow') - 1;
     $timeRange = TimeRange::fromTimestamps($start, $end);
     
-    $logger->info("[EVERY MINUTE] Starting event collection for " . date('Y-m-d', $start));
+    $logger->info("[EVERY 6 MINUTES] Starting event collection for " . date('Y-m-d', $start));
     
     $startTime = microtime(true);
     
@@ -63,21 +63,21 @@ $scheduler->call(function() use ($eventCollector, $logger) {
         
         // Show summary
         $avgRate = round($totalEvents / max($duration, 0.1), 2);
-        $logger->info("[EVERY MINUTE] Collection completed with total {$totalEvents} events, average {$avgRate} events/sec");
+        $logger->info("[EVERY 6 MINUTES] Collection completed with total {$totalEvents} events, average {$avgRate} events/sec");
         
     } catch (\Throwable $e) {
-        $logger->critical("[EVERY MINUTE] Collection failed: " . $e->getMessage());
-        $logger->debug("[EVERY MINUTE] Stack trace: " . $e->getTraceAsString());
-        throw new \RuntimeException("[EVERY MINUTE] Scheduler failed: " . get_class($e) . " - " . $e->getMessage(), 0, $e);
+        $logger->critical("[EVERY 6 MINUTES] Collection failed: " . $e->getMessage());
+        $logger->debug("[EVERY 6 MINUTES] Stack trace: " . $e->getTraceAsString());
+        throw new \RuntimeException("[EVERY 6 MINUTES] Scheduler failed: " . get_class($e) . " - " . $e->getMessage(), 0, $e);
     }
-}, [], 'every_minute_collection')
-    ->everyMinute()                       // Run every minute
+}, [], 'every_6_minutes_collection')
+    ->everyMinute(6)                      // Run every 6 minutes
     ->onlyOne()  // Prevent overlapping with explicit lock directory
     ->before(function() use ($logger) {
-        $logger->info("[EVERY MINUTE] Starting scheduled collection");
+        $logger->info("[EVERY 6 MINUTES] Starting scheduled collection");
     })
     ->then(function($output) use ($logger) {
-        $logger->info("[EVERY MINUTE] Scheduled collection completed");
+        $logger->info("[EVERY 6 MINUTES] Scheduled collection completed");
     });
 
 // Daily full collection at 2 AM - collects yesterday and today
@@ -174,5 +174,5 @@ try {
     exit(1);
 }
 
-// Exit successfully - Docker will run this again in 60 seconds
+// Exit successfully - Docker will run this again in 360 seconds (6 minutes)
 exit(0);

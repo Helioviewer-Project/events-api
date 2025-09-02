@@ -34,9 +34,17 @@ interface CoordinatorInterface
     /**
      * Batch rotate multiple Stonyhurst coordinates to Helioprojective Cartesian
      * 
-     * @param array $events Array of events with coordinate data
+     * @param array $coordinateArray Array of coordinate data with 'lat', 'lon', 'coordinate_time' keys
+     * Example: [
+     *     ['lat' => 15.0, 'lon' => -2.0, 'coordinate_time' => 1715428800],
+     *     ['lat' => -10.0, 'lon' => 45.0, 'coordinate_time' => 1715432400]
+     * ]
      * @param int|string $targetTimestamp Target time for coordinate rotation
-     * @return array Dictionary with event ID as key and rotated HPC coordinates as value
+     * @return array Array of rotated coordinates in same order as input
+     * Example: [
+     *     ['hpc_x' => 123.45, 'hpc_y' => -67.89],
+     *     ['hpc_x' => -234.56, 'hpc_y' => 78.90]
+     * ]
      */
-    public function rotateAll(array $events, $targetTimestamp): array;
+    public function rotateAll(array $coordinateArray, $targetTimestamp): array;
 }

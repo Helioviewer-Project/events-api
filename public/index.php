@@ -4,6 +4,7 @@ $container = require __DIR__ . '/../src/container.php';
 
 // Get services from container
 $coordinator = $container['coordinator'];
+$backup_coordinator = $container['backup_coordinator'];
 $jsonStorage = $container['jsonStorage'];
 $eventRepository = $container['eventRepository'];
 $regionRepository = $container['regionRepository'];
@@ -89,7 +90,9 @@ $app->get('/api/v2/events/recents', function (Request $request, Response $respon
 });
 
 // GET /api/v1/events/{source}/observation/{timestamp} - Get events happening at timestamp for specific source
-$app->get('/api/v1/events/{source}/observation/{timestamp}', function (Request $request, Response $response, array $args) use ($eventRepository, $coordinator, $jsonStorage) {
+$app->get('/api/v1/events/{source}/observation/{timestamp}', function (Request $request, Response $response, array $args) use ($eventRepository, $coordinator, $backup_coordinator, $jsonStorage, $container) {
+    
+    $logger = $container['logger'];
 
     $source = strtoupper($args['source']);
     
@@ -100,37 +103,70 @@ $app->get('/api/v1/events/{source}/observation/{timestamp}', function (Request $
         return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
     }
     $timestamp = $args['timestamp'];
-    
+
     // Parse timestamp using TimestampParser
     $timestampParser = new TimestampParser();
     try {
         $parsedTimestamp = $timestampParser->parse($timestamp);
-    } catch (Exception $e) {
+    } catch (InvalidArgumentException $e) {
         $error = ['error' => 'Invalid timestamp or date format: ' . $e->getMessage()];
         $response->getBody()->write(json_encode($error, JSON_PRETTY_PRINT));
         return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
     }
-    
+
     // Get events that were happening at the specified timestamp using repository
     $eventsArray = $eventRepository->findActiveAtTime($source, $parsedTimestamp);
+    $logger->debug("API v1: Found " . count($eventsArray) . " events for {$source} at " . date('Y-m-d H:i:s', $parsedTimestamp));
+
+    // Create plucked array with lat, lon, and coordinate_time for batch processing
+    $pluckedArray = array_map(function($event) {
+        return [
+            'lat' => $event['hv_hpc_x'],
+            'lon' => $event['hv_hpc_y'], 
+            'coordinate_time' => $event['coordinate_time'],
+        ];
+    }, $eventsArray);
+
+    $rotatedCoordinates = null;
+
+    // Batch rotate coordinates using plucked array
+    try {
+        $startTime = microtime(true);
+        $rotatedCoordinates = $coordinator->rotateAll($pluckedArray, $parsedTimestamp);
+        $duration = round((microtime(true) - $startTime) * 1000, 2); // Convert to milliseconds
+        $logger->debug("API v1: DanielCoordinator succeeded for " . count($pluckedArray) . " coordinates in {$duration}ms");
+
+    } catch (\Helioviewer\EventsApi\Coordinator\CoordinatorException $e) {
+
+        $logger->warning("API v1: DanielCoordinator failed: " . $e->getMessage());
+        // Fallback to backup coordinator (CommandLineCoordinator)
+        try {
+            $startTime = microtime(true);
+            $rotatedCoordinates = $backup_coordinator->rotateAll($pluckedArray, $parsedTimestamp);
+            $duration = round((microtime(true) - $startTime) * 1000, 2); // Convert to milliseconds
+            $logger->debug("API v1: CommandLineCoordinator fallback succeeded in {$duration}ms");
+        } catch (\Helioviewer\EventsApi\Coordinator\CoordinatorException $backupError) {
+            // Both coordinators failed
+            $logger->error("API v1: Both coordinators failed: " . $backupError->getMessage());
+        }
+    }
+
+    // If both coordinators failed, return error
+    if ($rotatedCoordinates === null) {
+        $error = ['error' => 'Coordinate transformation service unavailable'];
+        $response->getBody()->write(json_encode($error, JSON_PRETTY_PRINT));
+        return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+    }
     
-    // Batch rotate coordinates using coordinator from bootstrap
-    $rotatedCoordinates = $coordinator->rotateAll($eventsArray, $parsedTimestamp);
-    
-    // Apply rotated coordinates to events
+    // Apply rotated coordinates to events ensuring same ordering
     $eventsWithRotatedCoords = [];
-    foreach ($eventsArray as $event) {
-        $eventId = $event['id'];
-        
-        // Add rotated coordinates if available
-        if (isset($rotatedCoordinates[$eventId])) {
-            // Map hpc_x/hpc_y to rotated_hv_hpc_x/rotated_hv_hpc_y for backward compatibility
-            $rotated = $rotatedCoordinates[$eventId];
+    foreach ($eventsArray as $index => $event) {
+        // Add rotated coordinates using the same index to ensure ordering
+        if (isset($rotatedCoordinates[$index])) {
+            // Map hpc_x/hpc_y to hv_hpc_x/hv_hpc_y for backwards compatibility
+            $rotated = $rotatedCoordinates[$index];
             $event['hv_hpc_x'] = $rotated['hpc_x'] ?? null;
             $event['hv_hpc_y'] = $rotated['hpc_y'] ?? null;
-            if (isset($rotated['rotation_error'])) {
-                $event['coordinate_rotation_error'] = $rotated['rotation_error'];
-            }
         }
         
         $eventsWithRotatedCoords[] = $event;
@@ -295,41 +331,6 @@ $app->get('/api/v2/events/{uuid}/source', function (Request $request, Response $
     return $response->withHeader('Content-Type', 'application/json');
 });
 
-// Test HEEQ to Stonyhurst transformation
-$app->get('/test', function (Request $request, Response $response, array $args) {
-    $input = "15.0 -2.0 2024-05-11T03:24:00Z\n130.0 10.0 2024-05-11T12:00:00Z\n";
-    
-    // Set environment variables for SunPy to use /tmp
-    $env = [
-        'SUNPY_CONFIGDIR' => '/tmp/sunpy_config',
-        'XDG_CONFIG_HOME' => '/tmp',
-        'HOME' => '/tmp'
-    ];
-    
-    $process = proc_open('/usr/local/bin/heeq_to_stonyhurst', [
-        0 => ["pipe", "r"],
-        1 => ["pipe", "w"],
-        2 => ["pipe", "w"]
-    ], $pipes, null, $env);
-    
-    fwrite($pipes[0], $input);
-    fclose($pipes[0]);
-    
-    $output = stream_get_contents($pipes[1]);
-    $errors = stream_get_contents($pipes[2]);
-    fclose($pipes[1]);
-    fclose($pipes[2]);
-    proc_close($process);
-    
-    $result = [
-        'input' => trim($input),
-        'output' => trim($output),
-        'errors' => trim($errors)
-    ];
-    
-    $response->getBody()->write(json_encode($result, JSON_PRETTY_PRINT));
-    return $response->withHeader('Content-Type', 'application/json');
-});
 
 // Default route
 $app->get('/', function (Request $request, Response $response, array $args) {
