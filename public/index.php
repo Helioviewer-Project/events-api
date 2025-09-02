@@ -134,11 +134,11 @@ $app->get('/api/v1/events/{source}/observation/{timestamp}', function (Request $
         $startTime = microtime(true);
         $rotatedCoordinates = $coordinator->rotateAll($pluckedArray, $parsedTimestamp);
         $duration = round((microtime(true) - $startTime) * 1000, 2); // Convert to milliseconds
-        $logger->debug("API v1: DanielCoordinator succeeded for " . count($pluckedArray) . " coordinates in {$duration}ms");
+        $logger->debug("API v1: HttpCoordinator succeeded for " . count($pluckedArray) . " coordinates in {$duration}ms");
 
     } catch (\Helioviewer\EventsApi\Coordinator\CoordinatorException $e) {
 
-        $logger->warning("API v1: DanielCoordinator failed: " . $e->getMessage());
+        $logger->warning("API v1: HttpCoordinator failed: " . $e->getMessage());
         // Fallback to backup coordinator (CommandLineCoordinator)
         try {
             $startTime = microtime(true);

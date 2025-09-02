@@ -9,15 +9,15 @@ use HelioviewerEventInterface\Coordinator\Coordinator;
 use Exception;
 
 /**
- * Daniel Coordinator Implementation
+ * HTTP Coordinator Implementation
  * 
- * Implements coordinate transformation using Daniel's Coordinator library
+ * Implements coordinate transformation using HTTP-based Coordinator service
  * with caching support for performance optimization
  * 
  * @package    Helioviewer\EventsApi\Coordinator
  * @since      1.0.0
  */
-class DanielCoordinator implements CoordinatorInterface
+class HttpCoordinator implements CoordinatorInterface
 {
     private ?CacheInterface $cache;
     
@@ -64,7 +64,7 @@ class DanielCoordinator implements CoordinatorInterface
             }
         }
         
-        // Perform coordinate rotation using Daniel's Coordinator
+        // Perform coordinate rotation using HTTP Coordinator
         $rotatedCoords = Coordinator::Hgs2Hpc(
             $latitude,
             $longitude,

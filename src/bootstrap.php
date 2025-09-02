@@ -52,7 +52,7 @@ use Monolog\Formatter\LineFormatter;
 // Services
 use Helioviewer\EventsApi\Storage\RedisCache;
 use Helioviewer\EventsApi\Utils\CachedHttpClient;
-use Helioviewer\EventsApi\Coordinator\DanielCoordinator;
+use Helioviewer\EventsApi\Coordinator\HttpCoordinator;
 use Helioviewer\EventsApi\Coordinator\CommandLineCoordinator;
 use Helioviewer\EventsApi\Storage\Json\LocalFile;
 use Helioviewer\EventsApi\Storage\Json\ShardedLocalFile;
@@ -113,11 +113,8 @@ $redis->ping();
 // === SERVICE INSTANCES ===
 // Core services
 $redisCache = new RedisCache($redis, 'hv:events-api:');
-$commandLineCoordinator = new CommandLineCoordinator($redisCache);
-$danielCoordinator = new DanielCoordinator($redisCache);
-// Primary coordinator (try DanielCoordinator first, fallback to CommandLineCoordinator)
-$coordinator = $danielCoordinator;
-$backup_coordinator = $commandLineCoordinator;
+$coordinator = new HttpCoordinator($redisCache);
+$backup_coordinator = new CommandLineCoordinator($redisCache);
 $jsonStorage = new ShardedLocalFile('/u/apps/data');
 $failureStorage = new LocalFile();
 $eventRepository = new Postgres();
