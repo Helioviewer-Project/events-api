@@ -413,8 +413,8 @@ class Collector
                         $apiUrl = rtrim($_ENV['APIURL'], '/');
 
                         $failureURL = match (true) {
-                            $e instanceof InvalidEventException => "{$apiUrl}/storage/failures/invalid_events/{$sourceName}/{$failureId}",
-                            $e instanceof CoordinateResolutionException => "{$apiUrl}/storage/failures/coordinate_errors/{$sourceName}/{$failureId}"
+                            $e instanceof InvalidEventException => "{$apiUrl}/static/failures/invalid_events/{$sourceName}/{$failureId}",
+                            $e instanceof CoordinateResolutionException => "{$apiUrl}/static/failures/coordinate_errors/{$sourceName}/{$failureId}"
                         };
                         
                         // Save failure using hash of raw record

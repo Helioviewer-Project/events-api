@@ -1,3 +1,15 @@
+x-phpfpm-common: &phpfpm-common
+  build: ./phpfpm
+  user: "${UID:-1000}:${GID:-1000}"
+  volumes:
+    - ${APP_ROOT:-..}:/u/apps/site:ro
+    - ${APP_SHARED:-../storage}:/u/apps/data:rw
+  depends_on:
+    - postgres
+    - redis
+  networks:
+    - eventsapi
+
 services:
   nginx:
     image: nginx:alpine
@@ -5,47 +17,39 @@ services:
     ports:
       - "8082:80"
     volumes:
-      - ../:/u/apps/site
-      - ../storage/:/u/apps/data
-      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf
+      - ${APP_ROOT:-..}:/u/apps/site:ro
+      - ${APP_SHARED:-../storage}:/u/apps/data:ro
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       - phpfpm
     networks:
       - eventsapi
 
   phpfpm:
-    build: ./phpfpm
+    <<: *phpfpm-common
     container_name: eventsapi-phpfpm
-    user: "1000:1000"
-    volumes:
-      - ../:/u/apps/site
-      - ../storage/:/u/apps/data
-    environment:
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_NAME=eventsapi
-      - DB_USER=eventsapi
-      - DB_PASSWORD=eventsapi_pass
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_DB=10
-    depends_on:
-      - postgres
-      - redis
-    networks:
-      - eventsapi
+
+  scheduler:
+    <<: *phpfpm-common
+    container_name: eventsapi-scheduler
+    command: bash -c "while true; do php /u/apps/site/bin/scheduler.php; sleep 60; done"
 
   postgres:
     image: postgres:15-alpine
     container_name: eventsapi-postgres
     environment:
-      - POSTGRES_DB=eventsapi
-      - POSTGRES_USER=eventsapi
-      - POSTGRES_PASSWORD=eventsapi_pass
+      POSTGRES_DB: ${DB_NAME:-eventsapi}
+      POSTGRES_USER: ${DB_USER:-eventsapi}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-eventsapi_pass}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - eventsapi
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-eventsapi} -d ${DB_NAME:-eventsapi}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
   redis:
     image: redis:7-alpine
@@ -55,29 +59,11 @@ services:
       - redis_data:/data
     networks:
       - eventsapi
-
-  scheduler:
-    build: ./phpfpm
-    container_name: eventsapi-scheduler
-    user: "1000:1000"
-    volumes_from:
-      - phpfpm
-    environment:
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_NAME=eventsapi
-      - DB_USER=eventsapi
-      - DB_PASSWORD=eventsapi_pass
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_DB=10
-    depends_on:
-      - postgres
-      - redis
-      - phpfpm
-    networks:
-      - eventsapi
-    command: bash -c "while true; do php /u/apps/site/bin/scheduler.php; sleep 60; done"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
 volumes:
   postgres_data:

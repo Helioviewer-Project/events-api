@@ -33,11 +33,25 @@ register_shutdown_function(function () {
 });
 
 // === ENVIRONMENT VARIABLES ===
-// Load .env file if it exists
-$dotenv = Dotenv\Dotenv::createImmutable(__DIR__ . '/../');
-if (file_exists(__DIR__ . '/../.env')) {
-    $dotenv->load();
+// Check if .env file exists - required for application to run
+if (!file_exists(__DIR__ . '/../.env')) {
+    // Set HTTP 500 status if not CLI
+    if (php_sapi_name() !== 'cli') {
+        http_response_code(500);
+    }
+    
+    throw new ErrorException(
+        ".env configuration file not found. Please copy .env.example to .env and configure your settings.",
+        500,  // Use 500 as error code
+        E_ERROR,
+        __FILE__,
+        __LINE__
+    );
 }
+
+// Load .env file
+$dotenv = Dotenv\Dotenv::createImmutable(__DIR__ . '/../');
+$dotenv->load();
 
 // === IMPORTS ===
 use Illuminate\Database\Capsule\Manager as Capsule;
@@ -79,6 +93,7 @@ function pre($m): void {
 if (!defined('HV_COORDINATOR_URL')) {
     define('HV_COORDINATOR_URL', $_ENV['HV_COORDINATOR_URL'] ?? 'https://api.helioviewer.org/coordinate');
 }
+
 
 // === DATABASE INITIALIZATION ===
 $capsule = new Capsule;

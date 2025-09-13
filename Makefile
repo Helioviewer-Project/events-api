@@ -1,4 +1,4 @@
-.PHONY: composer-install composer-require composer-dump up down build shell migrate-status migrate-create migrate-run migrate-rollback seed-run collect recents reset stats
+.PHONY: composer-install composer-require composer-dump up down build shell shell-root nginx-reload migrate-status migrate-create migrate-run migrate-rollback seed-run collect recents reset stats logs help
 .DEFAULT_GOAL := help
 
 composer-install:
@@ -74,24 +74,36 @@ reset:
 
 help:
 	@echo "Available commands:"
+	@echo ""
+	@echo "Docker Management:"
 	@echo "  up                    - Start the Docker containers"
 	@echo "  down                  - Stop the Docker containers"
 	@echo "  build                 - Build the Docker images"
-	@echo "  shell                 - Open a bash shell in the PHP container"
+	@echo "  shell                 - Open a bash shell in the PHP container (user 1000:1000)"
+	@echo "  shell-root            - Open a bash shell in the PHP container as root"
+	@echo "  nginx-reload          - Reload nginx configuration"
+	@echo ""
+	@echo "Composer Management:"
 	@echo "  composer-install      - Install PHP dependencies via Composer"
 	@echo "  composer-require      - Add a new package (use: make composer-require PACKAGE=package-name)"
 	@echo "  composer-dump         - Regenerate Composer autoloader"
+	@echo ""
+	@echo "Database Management:"
 	@echo "  migrate-status        - Check migration status"
 	@echo "  migrate-create        - Create a new migration (use: make migrate-create NAME=MigrationName)"
 	@echo "  migrate-run           - Run pending migrations"
 	@echo "  migrate-rollback      - Rollback the last migration"
 	@echo "  seed-run              - Run database seeders"
+	@echo "  reset                 - Reset database (rollback all migrations, migrate, and seed)"
+	@echo ""
+	@echo "Event Collection:"
 	@echo "  collect               - Collect events from all sources"
 	@echo "                          Examples: make collect                         (today, daily chunks)"
 	@echo "                                   make collect 2024-01-01              (single day)"
 	@echo "                                   make collect 2024-01-01 2024-01-31   (date range, daily chunks)"
 	@echo "                                   make collect 2024-01-01 2024-01-31 5 (date range, 5-day chunks)"
+	@echo ""
+	@echo "Data Analysis:"
 	@echo "  recents               - Show the most recent events from the database (use: make recents 10)"
 	@echo "  stats                 - Show database statistics grouped by source and path"
 	@echo "  logs                  - Follow application logs (tail -f)"
-	@echo "  reset                 - Reset database (rollback all migrations, migrate, and seed)"

@@ -266,7 +266,7 @@ $app->get('/api/v2/events/{source}/observation/{timestamp}',
 );
 
 // GET /api/v2/events/{uuid} - Get a single event by UUID
-$app->get('/api/v2/events/{uuid}', function (Request $request, Response $response, array $args) use ($eventRepository, $jsonStorage) {
+$app->get('/api/v2/events/{uuid:[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}}', function (Request $request, Response $response, array $args) use ($eventRepository, $jsonStorage) {
     $uuid = $args['uuid'];
     
     // Get event from repository using findById (id field is UUID in database)
@@ -308,7 +308,7 @@ $app->get('/api/v2/events/{uuid}', function (Request $request, Response $respons
 });
 
 // GET /api/v2/events/{uuid}/source - Get raw source data for a single event
-$app->get('/api/v2/events/{uuid}/source', function (Request $request, Response $response, array $args) use ($eventRepository, $jsonStorage) {
+$app->get('/api/v2/events/{uuid:[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}}/source', function (Request $request, Response $response, array $args) use ($eventRepository, $jsonStorage) {
     $uuid = $args['uuid'];
     
     // Verify event exists
