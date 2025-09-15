@@ -2,13 +2,13 @@
 .DEFAULT_GOAL := help
 
 composer-install:
-	docker compose -f docker/docker-compose.yml run --rm --user 1000:1000 phpfpm composer install
+	docker compose -f docker/docker-compose.yml run --rm --user $(shell id -u):$(shell id -g) phpfpm composer install
 
 composer-require:
-	docker compose -f docker/docker-compose.yml run --rm --user 1000:1000 phpfpm composer require $(PACKAGE)
+	docker compose -f docker/docker-compose.yml run --rm --user $(shell id -u):$(shell id -g) phpfpm composer require $(PACKAGE)
 
 composer-dump:
-	docker compose -f docker/docker-compose.yml run --rm --user 1000:1000 phpfpm composer dump-autoload
+	docker compose -f docker/docker-compose.yml run --rm --user $(shell id -u):$(shell id -g) phpfpm composer dump-autoload
 
 up:
 	docker compose -f docker/docker-compose.yml up
@@ -20,7 +20,7 @@ build:
 	docker compose -f docker/docker-compose.yml build --no-cache
 
 shell:
-	docker compose -f docker/docker-compose.yml exec --user 1000:1000 phpfpm bash
+	docker compose -f docker/docker-compose.yml exec --user $(shell id -u):$(shell id -g) phpfpm bash
 
 shell-root:
 	docker compose -f docker/docker-compose.yml exec phpfpm bash
@@ -33,37 +33,37 @@ nginx-reload:
 
 # Database Migration Commands
 migrate-status:
-	docker compose -f docker/docker-compose.yml run --rm --user 1000:1000 phpfpm vendor/bin/phinx status
+	docker compose -f docker/docker-compose.yml run --rm --user $(shell id -u):$(shell id -g) phpfpm vendor/bin/phinx status
 
 migrate-create:
-	docker compose -f docker/docker-compose.yml run --rm --user 1000:1000 phpfpm vendor/bin/phinx create $(NAME)
+	docker compose -f docker/docker-compose.yml run --rm --user $(shell id -u):$(shell id -g) phpfpm vendor/bin/phinx create $(NAME)
 
 migrate-run:
-	docker compose -f docker/docker-compose.yml run --rm --user 1000:1000 phpfpm vendor/bin/phinx migrate
+	docker compose -f docker/docker-compose.yml run --rm --user $(shell id -u):$(shell id -g) phpfpm vendor/bin/phinx migrate
 
 migrate-rollback:
-	docker compose -f docker/docker-compose.yml run --rm --user 1000:1000 phpfpm vendor/bin/phinx rollback
+	docker compose -f docker/docker-compose.yml run --rm --user $(shell id -u):$(shell id -g) phpfpm vendor/bin/phinx rollback
 
 seed-run:
-	docker compose -f docker/docker-compose.yml run --rm --user 1000:1000 phpfpm vendor/bin/phinx seed:run
+	docker compose -f docker/docker-compose.yml run --rm --user $(shell id -u):$(shell id -g) phpfpm vendor/bin/phinx seed:run
 
 collect:
-	docker compose -f docker/docker-compose.yml run --rm --user 1000:1000 phpfpm php bin/collect.php $(filter-out $@,$(MAKECMDGOALS))
+	docker compose -f docker/docker-compose.yml run --rm --user $(shell id -u):$(shell id -g) phpfpm php bin/collect.php $(filter-out $@,$(MAKECMDGOALS))
 
 recents:
-	docker compose -f docker/docker-compose.yml run --rm --user 1000:1000 phpfpm php bin/recents.php $(filter-out $@,$(MAKECMDGOALS))
+	docker compose -f docker/docker-compose.yml run --rm --user $(shell id -u):$(shell id -g) phpfpm php bin/recents.php $(filter-out $@,$(MAKECMDGOALS))
 
 stats:
-	docker compose -f docker/docker-compose.yml run --rm --user 1000:1000 phpfpm php bin/stats.php
+	docker compose -f docker/docker-compose.yml run --rm --user $(shell id -u):$(shell id -g) phpfpm php bin/stats.php
 
 logs:
 	tail -f storage/logs/*.log
 
 reset:
 	@echo "Resetting database (rollback all + migrate + seed)..."
-	docker compose -f docker/docker-compose.yml run --rm --user 1000:1000 phpfpm vendor/bin/phinx rollback -t 0
-	docker compose -f docker/docker-compose.yml run --rm --user 1000:1000 phpfpm vendor/bin/phinx migrate
-	docker compose -f docker/docker-compose.yml run --rm --user 1000:1000 phpfpm vendor/bin/phinx seed:run
+	docker compose -f docker/docker-compose.yml run --rm --user $(shell id -u):$(shell id -g) phpfpm vendor/bin/phinx rollback -t 0
+	docker compose -f docker/docker-compose.yml run --rm --user $(shell id -u):$(shell id -g) phpfpm vendor/bin/phinx migrate
+	docker compose -f docker/docker-compose.yml run --rm --user $(shell id -u):$(shell id -g) phpfpm vendor/bin/phinx seed:run
 	@echo "Database reset complete!"
 
 

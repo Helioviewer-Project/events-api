@@ -18,7 +18,16 @@ SignalHandler::setup();
 
 $logger = $container['logger'];
 
-$logger->info("Starting Helioviewer Events API Scheduler Daemon");
+// Get process user and group information
+$uid = posix_getuid();
+$gid = posix_getgid();
+$userInfo = posix_getpwuid($uid);
+$groupInfo = posix_getgrgid($gid);
+
+$userDisplay = $userInfo['name'] ?? $uid;
+$groupDisplay = $groupInfo['name'] ?? $gid;
+
+$logger->info("Starting Helioviewer Events API Scheduler Daemon (User: {$userDisplay}, Group: {$groupDisplay})");
 
 // Create EventCollector instance using standard factory
 $eventCollector = EventCollector::createStandard(
