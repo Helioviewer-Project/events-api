@@ -332,6 +332,118 @@ $app->get('/api/v2/events/{uuid:[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-
 });
 
 
+// GET /api/v2/regions - Get all regions ordered by creation time with links
+$app->get('/api/v2/regions', function (Request $request, Response $response, array $args) use ($regionRepository) {
+    // Get all regions ordered by creation time
+    $regions = \Helioviewer\EventsApi\Regions\Region::orderBy('created_at', 'desc')->get();
+
+    // Build response with links for each region
+    $apiUrl = rtrim($_ENV['APIURL'] ?? 'https://events.helioviewer.org/', '/');
+    $regionsData = $regions->map(function ($region) use ($apiUrl) {
+        return [
+            'id' => $region->id,
+            'organization' => strtolower($region->organization),
+            'external_id' => $region->external_id,
+            'name' => $region->name,
+            'created_at' => $region->created_at->toIso8601String(),
+            'updated_at' => $region->updated_at->toIso8601String(),
+            'url' => "{$apiUrl}/api/v2/regions/" . strtolower($region->organization) . "/{$region->external_id}"
+        ];
+    });
+
+    $result = [
+        'total' => $regions->count(),
+        'regions' => $regionsData
+    ];
+
+    $response->getBody()->write(json_encode($result, JSON_PRETTY_PRINT));
+    return $response->withHeader('Content-Type', 'application/json');
+});
+
+// GET /api/v2/regions/{organization}/{external_id} - Get events for a specific region
+$app->get('/api/v2/regions/{organization}/{external_id}', function (Request $request, Response $response, array $args) use ($jsonStorage) {
+    $organization = strtoupper($args['organization']);
+    $externalId = $args['external_id'];
+
+    // Validate organization
+    $validOrganizations = ['NOAA', 'HARP', 'CATANIA'];
+    if (!in_array($organization, $validOrganizations)) {
+        $error = ['error' => 'Invalid organization. Must be one of: ' . implode(', ', array_map('strtolower', $validOrganizations))];
+        $response->getBody()->write(json_encode($error, JSON_PRETTY_PRINT));
+        return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+    }
+
+    // Find the region
+    $region = \Helioviewer\EventsApi\Regions\Region::where('organization', $organization)
+        ->where('external_id', $externalId)
+        ->first();
+
+    if (!$region) {
+        $error = ['error' => 'Region not found'];
+        $response->getBody()->write(json_encode($error, JSON_PRETTY_PRINT));
+        return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+    }
+
+    // Get events for this region ordered by updated_at
+    $events = $region->events()
+        ->orderBy('updated_at', 'desc')
+        ->get();
+
+    // Enhance events with source, views, and links data
+    $apiUrl = rtrim($_ENV['APIURL'] ?? 'https://events.helioviewer.org/', '/');
+    $enhancedEvents = $events->map(function ($event) use ($jsonStorage, $apiUrl) {
+        $eventArray = $event->toArray();
+        $uuid = $eventArray['id'];
+
+        // Format timestamps
+        if (!empty($eventArray['start'])) {
+            $eventArray['start'] = date('Y-m-d H:i:s', $eventArray['start']);
+        }
+        if (!empty($eventArray['end'])) {
+            $eventArray['end'] = date('Y-m-d H:i:s', $eventArray['end']);
+        }
+        if (!empty($eventArray['peak'])) {
+            $eventArray['peak'] = date('Y-m-d H:i:s', $eventArray['peak']);
+        }
+        if (!empty($eventArray['coordinate_time'])) {
+            $eventArray['coordinate_time'] = date('Y-m-d H:i:s', $eventArray['coordinate_time']);
+        }
+
+        // Load source JSON data
+        $sourceData = $jsonStorage->load("/u/apps/data/sources/{$uuid}.json");
+        $eventArray['source'] = $sourceData ?: null;
+
+        // Load views JSON data
+        $viewsData = $jsonStorage->load("/u/apps/data/views/{$uuid}.json");
+        $eventArray['views'] = $viewsData ?: [];
+
+        // Load links JSON data
+        $linksData = $jsonStorage->load("/u/apps/data/links/{$uuid}.json");
+        $eventArray['link'] = $linksData;
+
+        // Add event URL
+        $eventArray['url'] = "{$apiUrl}/api/v2/events/{$uuid}";
+
+        return $eventArray;
+    });
+
+    $result = [
+        'region' => [
+            'id' => $region->id,
+            'organization' => strtolower($region->organization),
+            'external_id' => $region->external_id,
+            'name' => $region->name,
+            'created_at' => $region->created_at->toIso8601String(),
+            'updated_at' => $region->updated_at->toIso8601String()
+        ],
+        'total_events' => $events->count(),
+        'events' => $enhancedEvents
+    ];
+
+    $response->getBody()->write(json_encode($result, JSON_PRETTY_PRINT));
+    return $response->withHeader('Content-Type', 'application/json');
+});
+
 // Default route
 $app->get('/', function (Request $request, Response $response, array $args) {
     $data = [
@@ -343,7 +455,9 @@ $app->get('/', function (Request $request, Response $response, array $args) {
             'v2' => [
                 '/api/v2/events' => 'Get last 100 updated events with source, views, and links',
                 '/api/v2/events/{uuid}' => 'Get a single event by UUID',
-                '/api/v2/events/{source}/observation/{timestamp}' => 'Get events at observation time (enhanced)'
+                '/api/v2/events/{source}/observation/{timestamp}' => 'Get events at observation time (enhanced)',
+                '/api/v2/regions' => 'Get all regions ordered by creation time',
+                '/api/v2/regions/{organization}/{external_id}' => 'Get events for a specific region (organization: noaa, harp, catania)'
             ]
         ]
     ];
