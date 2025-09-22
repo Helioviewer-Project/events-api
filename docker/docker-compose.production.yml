@@ -9,13 +9,13 @@ x-phpfpm-common: &phpfpm-common
     - redis
   networks:
     - eventsapi
+  restart: unless-stopped
 
 services:
   nginx:
     image: nginx:alpine
     container_name: eventsapi-nginx
-    ports:
-      - "8082:80"
+    expose: ["80"]
     volumes:
       - ../:/u/apps/site:ro
       - ${APP_STORAGE:-../storage}:/u/apps/data:ro
@@ -24,15 +24,24 @@ services:
       - phpfpm
     networks:
       - eventsapi
+      - proxy
+    restart: unless-stopped
+    environment:
+      VIRTUAL_HOST: ${VIRTUAL_HOST}
+      VIRTUAL_PORT: 80
+      LETSENCRYPT_HOST: ${LETSENCRYPT_HOST}
+      LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL}
 
   phpfpm:
     <<: *phpfpm-common
     container_name: eventsapi-phpfpm
+    restart: unless-stopped
 
   scheduler:
     <<: *phpfpm-common
     container_name: eventsapi-scheduler
     command: bash -c "while true; do php /u/apps/site/bin/scheduler.php; sleep 60; done"
+    restart: unless-stopped
 
   postgres:
     image: postgres:15-alpine
@@ -45,6 +54,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - eventsapi
+    restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-eventsapi} -d ${DB_NAME:-eventsapi}"]
       interval: 5s
@@ -59,6 +69,7 @@ services:
       - redis_data:/data
     networks:
       - eventsapi
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -72,3 +83,6 @@ volumes:
 networks:
   eventsapi:
     driver: bridge
+  proxy:
+    external: true
+    name: proxy-net
