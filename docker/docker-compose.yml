@@ -5,8 +5,10 @@ x-phpfpm-common: &phpfpm-common
     - ../:/u/apps/site:ro
     - ${APP_STORAGE:-../storage}:/u/apps/data:rw
   depends_on:
-    - postgres
-    - redis
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
   networks:
     - eventsapi
 
