@@ -2,7 +2,7 @@ x-phpfpm-common: &phpfpm-common
   build: ./phpfpm
   user: "${UID:-1000}:${GID:-1000}"
   volumes:
-    - ../:/u/apps/site:ro
+    - ../:/u/apps/site
     - ${APP_STORAGE:-../storage}:/u/apps/data:rw
   depends_on:
     postgres:
