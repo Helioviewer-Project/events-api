@@ -1,69 +1,76 @@
 .PHONY: composer-install composer-require composer-dump up down build shell shell-root nginx-reload migrate-status migrate-create migrate-run migrate-rollback seed-run collect recents reset stats logs help
 .DEFAULT_GOAL := help
 
+# Set compose file based on ENV
+ifeq ($(ENV),production)
+    DOCKER_COMPOSE = docker compose -f docker/docker-compose.production.yml --env-file=.env
+else
+    DOCKER_COMPOSE = docker compose -f docker/docker-compose.yml
+endif
+
 composer-install:
-	docker compose -f docker/docker-compose.yml run --rm --user $(shell id -u):$(shell id -g) phpfpm composer install
+	$(DOCKER_COMPOSE) run --rm --user $(shell id -u):$(shell id -g) phpfpm composer install
 
 composer-require:
-	docker compose -f docker/docker-compose.yml run --rm --user $(shell id -u):$(shell id -g) phpfpm composer require $(PACKAGE)
+	$(DOCKER_COMPOSE) run --rm --user $(shell id -u):$(shell id -g) phpfpm composer require $(PACKAGE)
 
 composer-dump:
-	docker compose -f docker/docker-compose.yml run --rm --user $(shell id -u):$(shell id -g) phpfpm composer dump-autoload
+	$(DOCKER_COMPOSE) run --rm --user $(shell id -u):$(shell id -g) phpfpm composer dump-autoload
 
 up:
-	docker compose -f docker/docker-compose.yml up
+	$(DOCKER_COMPOSE) up
 
 down:
-	docker compose -f docker/docker-compose.yml down
+	$(DOCKER_COMPOSE) down
 
 build:
-	docker compose -f docker/docker-compose.yml build --no-cache
+	$(DOCKER_COMPOSE) build --no-cache
 
 shell:
-	docker compose -f docker/docker-compose.yml exec --user $(shell id -u):$(shell id -g) phpfpm bash
+	$(DOCKER_COMPOSE) exec --user $(shell id -u):$(shell id -g) phpfpm bash
 
 shell-root:
-	docker compose -f docker/docker-compose.yml exec phpfpm bash
+	$(DOCKER_COMPOSE) exec phpfpm bash
 
 # Nginx commands
 nginx-reload:
 	@echo "Reloading nginx configuration..."
-	@docker compose -f docker/docker-compose.yml exec nginx nginx -s reload
+	@$(DOCKER_COMPOSE) exec nginx nginx -s reload
 	@echo "Nginx configuration reloaded successfully"
 
 # Database Migration Commands
 migrate-status:
-	docker compose -f docker/docker-compose.yml run --rm --user $(shell id -u):$(shell id -g) phpfpm vendor/bin/phinx status
+	$(DOCKER_COMPOSE) run --rm --user $(shell id -u):$(shell id -g) phpfpm vendor/bin/phinx status
 
 migrate-create:
-	docker compose -f docker/docker-compose.yml run --rm --user $(shell id -u):$(shell id -g) phpfpm vendor/bin/phinx create $(NAME)
+	$(DOCKER_COMPOSE) run --rm --user $(shell id -u):$(shell id -g) phpfpm vendor/bin/phinx create $(NAME)
 
 migrate-run:
-	docker compose -f docker/docker-compose.yml run --rm --user $(shell id -u):$(shell id -g) phpfpm vendor/bin/phinx migrate
+	$(DOCKER_COMPOSE) run --rm --user $(shell id -u):$(shell id -g) phpfpm vendor/bin/phinx migrate
 
 migrate-rollback:
-	docker compose -f docker/docker-compose.yml run --rm --user $(shell id -u):$(shell id -g) phpfpm vendor/bin/phinx rollback
+	$(DOCKER_COMPOSE) run --rm --user $(shell id -u):$(shell id -g) phpfpm vendor/bin/phinx rollback
 
 seed-run:
-	docker compose -f docker/docker-compose.yml run --rm --user $(shell id -u):$(shell id -g) phpfpm vendor/bin/phinx seed:run
+	$(DOCKER_COMPOSE) run --rm --user $(shell id -u):$(shell id -g) phpfpm vendor/bin/phinx seed:run
 
 collect:
-	docker compose -f docker/docker-compose.yml run --rm --user $(shell id -u):$(shell id -g) phpfpm php bin/collect.php $(filter-out $@,$(MAKECMDGOALS))
+	$(DOCKER_COMPOSE) run --rm --user $(shell id -u):$(shell id -g) phpfpm php bin/collect.php $(filter-out $@,$(MAKECMDGOALS))
 
 recents:
-	docker compose -f docker/docker-compose.yml run --rm --user $(shell id -u):$(shell id -g) phpfpm php bin/recents.php $(filter-out $@,$(MAKECMDGOALS))
+	$(DOCKER_COMPOSE) run --rm --user $(shell id -u):$(shell id -g) phpfpm php bin/recents.php $(filter-out $@,$(MAKECMDGOALS))
 
 stats:
-	docker compose -f docker/docker-compose.yml run --rm --user $(shell id -u):$(shell id -g) phpfpm php bin/stats.php
+	$(DOCKER_COMPOSE) run --rm --user $(shell id -u):$(shell id -g) phpfpm php bin/stats.php
 
 logs:
 	tail -f storage/logs/*.log
 
 reset:
 	@echo "Resetting database (rollback all + migrate + seed)..."
-	docker compose -f docker/docker-compose.yml run --rm --user $(shell id -u):$(shell id -g) phpfpm vendor/bin/phinx rollback -t 0
-	docker compose -f docker/docker-compose.yml run --rm --user $(shell id -u):$(shell id -g) phpfpm vendor/bin/phinx migrate
-	docker compose -f docker/docker-compose.yml run --rm --user $(shell id -u):$(shell id -g) phpfpm vendor/bin/phinx seed:run
+	$(DOCKER_COMPOSE) run --rm --user $(shell id -u):$(shell id -g) phpfpm vendor/bin/phinx rollback -t 0
+	$(DOCKER_COMPOSE) run --rm --user $(shell id -u):$(shell id -g) phpfpm vendor/bin/phinx migrate
+	$(DOCKER_COMPOSE) run --rm --user $(shell id -u):$(shell id -g) phpfpm vendor/bin/phinx seed:run
 	@echo "Database reset complete!"
 
 
@@ -74,6 +81,10 @@ reset:
 
 help:
 	@echo "Available commands:"
+	@echo ""
+	@echo "Usage:"
+	@echo "  Development:  make up"
+	@echo "  Production:   ENV=production make up"
 	@echo ""
 	@echo "Docker Management:"
 	@echo "  up                    - Start the Docker containers"
