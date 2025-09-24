@@ -11,6 +11,7 @@ use Helioviewer\EventsApi\Events\Sources\SourceInterface;
 use HelioviewerEventInterface\Translator\DonkiFlare as EventInterfaceDonkiFlare;
 use HelioviewerEventInterface\Util\LocationParser;
 use Helioviewer\EventsApi\Exception\CoordinateResolutionException;
+use Helioviewer\EventsApi\Exception\InvalidEventException;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -165,12 +166,23 @@ class DonkiFlareProcessor implements ProcessorInterface
             : strtotime($translatedEvent['peak']);
 
         // Build standardized event data array for the Event model
+        $startTime = strtotime($translatedEvent['start']);
+        $endTime = strtotime($translatedEvent['end']);
+
+        // Validate temporal ordering: start ≤ peak ≤ end
+        if ($startTime > $peakTime || $peakTime > $endTime || $startTime > $endTime) {
+            throw new InvalidEventException(
+                "Invalid temporal ordering for flare event - start: {$translatedEvent['start']} ({$startTime}), " .
+                "peak: {$peakTime}, end: {$translatedEvent['end']} ({$endTime})"
+            );
+        }
+
         $eventData = [
             'source_id' => JsonSource::CCMC,
             'path' => '',
-            'start' => strtotime($translatedEvent['start']),
+            'start' => $startTime,
             'peak' => $peakTime,
-            'end' => strtotime($translatedEvent['end']),
+            'end' => $endTime,
             'coordinate_time' => $coordinates['coordinate_time'],
             'hv_hpc_x' => $coordinates['longitude'],  // Map longitude to HPC X coordinate
             'hv_hpc_y' => $coordinates['latitude'],   // Map latitude to HPC Y coordinate
