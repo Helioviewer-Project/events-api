@@ -267,26 +267,26 @@ class DonkiCmeProcessor implements ProcessorInterface
         if (isset($rawRecord['cmeAnalyses']) && is_array($rawRecord['cmeAnalyses'])) {
             $analysis = $this->selectBestAnalysis($rawRecord['cmeAnalyses']);
 
-            // Validate time21_5 before using it
             if ($analysis && isset($analysis['time21_5'])) {
                 $time21_5 = strtotime($analysis['time21_5']);
+                $startTime = strtotime($translatedEvent['start']);
 
-                // Only use time21_5 if it's valid
-                if ($time21_5 !== false && $time21_5 > 0) {
+                // Only use time21_5 if it's valid and not earlier than start time
+                if ($time21_5 !== false && $time21_5 > 0 && $time21_5 >= $startTime) {
                     $peakTime = $time21_5; // Peak time is when CME reaches 21.5 Rs
+                    
 
-                    // Calculate end time
+
+                    // Calculate end time using the valid peak time
                     if (isset($analysis['speed'])) {
-                        // Best case: use ballistic calculation with actual speed
-                        $speed = (float) $analysis['speed']; // Speed in km/s
-                        $endTime = $this->calculateBallisticArrivalTime($time21_5, $speed);
+                        $speed = (float) $analysis['speed'];
+                        $endTime = $this->calculateBallisticArrivalTime($peakTime, $speed);
                     } else {
-                        // Fallback: if no speed available, use 5 days as default
-                        $endTime = $time21_5 + (5 * 24 * 60 * 60); // Add 5 days
-                        $this->logger->debug("CME: No speed available, using default 5-day propagation");
+                        $endTime = $peakTime + (5 * 24 * 60 * 60); // Add 5 days
                     }
+
                 } else {
-                    $this->logger->warning("CME: Invalid time21_5 '{$analysis['time21_5']}', using default peak/end times");
+                    $this->logger->warning("CME: time21_5 not valid for event times calculation - time21_5: '{$analysis['time21_5']}' ({$time21_5}), start: '{$translatedEvent['start']}' ({$startTime})");
                 }
             }
         }
