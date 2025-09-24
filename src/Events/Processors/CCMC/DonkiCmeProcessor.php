@@ -179,14 +179,25 @@ class DonkiCmeProcessor implements ProcessorInterface
         if (isset($rawRecord['cmeAnalyses']) && is_array($rawRecord['cmeAnalyses'])) {
             $analysis = $this->selectBestAnalysis($rawRecord['cmeAnalyses']);
             
-            if ($analysis && isset($analysis['latitude']) && isset($analysis['longitude']) 
+            if ($analysis && isset($analysis['latitude']) && isset($analysis['longitude'])
                 && !is_null($analysis['latitude']) && !is_null($analysis['longitude'])) {
-                
-                // Use time21_5 for coordinate_time when using cmeAnalyses
-                $coordinateTime = isset($analysis['time21_5']) 
-                    ? strtotime($analysis['time21_5']) 
-                    : strtotime($rawRecord['startTime']); // Fallback to startTime if time21_5 not available
-                
+
+                // Validate and use time21_5 for coordinate_time when using cmeAnalyses
+                $coordinateTime = null;
+
+                if (isset($analysis['time21_5'])) {
+                    $time21_5_parsed = strtotime($analysis['time21_5']);
+                    if ($time21_5_parsed === false || $time21_5_parsed <= 0) {
+                        throw new CoordinateResolutionException(
+                            "Invalid time21_5 timestamp: '{$analysis['time21_5']}' is not a valid time string"
+                        );
+                    }
+                    $coordinateTime = $time21_5_parsed;
+                } else {
+                    // Fallback to startTime if time21_5 not available
+                    $coordinateTime = strtotime($rawRecord['startTime']);
+                }
+
                 return [
                     'latitude' => (float) $analysis['latitude'],
                     'longitude' => (float) $analysis['longitude'],
@@ -255,20 +266,27 @@ class DonkiCmeProcessor implements ProcessorInterface
         // Calculate peak and end times from cmeAnalyses if available
         if (isset($rawRecord['cmeAnalyses']) && is_array($rawRecord['cmeAnalyses'])) {
             $analysis = $this->selectBestAnalysis($rawRecord['cmeAnalyses']);
-            
+
+            // Validate time21_5 before using it
             if ($analysis && isset($analysis['time21_5'])) {
                 $time21_5 = strtotime($analysis['time21_5']);
-                $peakTime = $time21_5; // Peak time is when CME reaches 21.5 Rs
-                
-                // Calculate end time
-                if (isset($analysis['speed'])) {
-                    // Best case: use ballistic calculation with actual speed
-                    $speed = (float) $analysis['speed']; // Speed in km/s
-                    $endTime = $this->calculateBallisticArrivalTime($time21_5, $speed);
+
+                // Only use time21_5 if it's valid
+                if ($time21_5 !== false && $time21_5 > 0) {
+                    $peakTime = $time21_5; // Peak time is when CME reaches 21.5 Rs
+
+                    // Calculate end time
+                    if (isset($analysis['speed'])) {
+                        // Best case: use ballistic calculation with actual speed
+                        $speed = (float) $analysis['speed']; // Speed in km/s
+                        $endTime = $this->calculateBallisticArrivalTime($time21_5, $speed);
+                    } else {
+                        // Fallback: if no speed available, use 5 days as default
+                        $endTime = $time21_5 + (5 * 24 * 60 * 60); // Add 5 days
+                        $this->logger->debug("CME: No speed available, using default 5-day propagation");
+                    }
                 } else {
-                    // Fallback: if no speed available, use 5 days as default
-                    $endTime = $time21_5 + (5 * 24 * 60 * 60); // Add 5 days
-                    $this->logger->debug("CME: No speed available, using default 5-day propagation");
+                    $this->logger->warning("CME: Invalid time21_5 '{$analysis['time21_5']}', using default peak/end times");
                 }
             }
         }
