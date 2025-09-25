@@ -3,6 +3,9 @@
 
 declare(strict_types=1);
 
+// Set memory limit for collection script
+ini_set('memory_limit', '2G');
+
 // === CONTAINER SETUP ===
 $container = require __DIR__ . '/../src/container.php';
 
