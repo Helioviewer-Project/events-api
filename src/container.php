@@ -9,11 +9,13 @@ declare(strict_types=1);
  * All services are created once in bootstrap and referenced here.
  */
 
+use Helioviewer\EventsApi\Container;
+
 // === BOOTSTRAP ===
 require_once __DIR__ . '/bootstrap.php';
 
 // === CONTAINER DEFINITION ===
-$container = [
+$services = [
     // Core services
     'cache' => $redisCache,
     'coordinator' => $coordinator,
@@ -23,11 +25,12 @@ $container = [
     'eventRepository' => $eventRepository,
     'regionRepository' => $regionRepository,
     'logger' => $logger,
-    
+
     // HTTP and external services
     'httpClient' => $httpClient,
     'harp' => $harpService,
     'noaa' => $noaaService,
 ];
 
-return $container;
+// Wrap in Container class that implements ContainerInterface
+return new Container($services);
