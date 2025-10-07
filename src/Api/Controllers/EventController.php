@@ -96,14 +96,29 @@ class EventController extends Controller
         $eventsArray = $this->eventRepository->findActiveAtTime($source, $parsedTimestamp);
         $this->logger->debug("API v1: Found " . count($eventsArray) . " events for {$source} at " . date('Y-m-d H:i:s', $parsedTimestamp));
 
+        // Filter out events with invalid latitude values and track them
+        $validEvents = [];
+
+        foreach ($eventsArray as $event) {
+            $lat = $event['hv_hpc_x'];
+
+            // Check if latitude is outside valid range (-90 to 90)
+            if ($lat < -90 || $lat > 90) {
+                $this->logger->warning("Event has invalid latitude {$lat}: /api/v2/events/{$event['id']}/source");
+            } else {
+                $validEvents[] = $event; // Keep original index for coordinate mapping
+            }
+        }
+
         // Create plucked array with lat, lon, and coordinate_time for batch processing
-        $pluckedArray = array_map(function($event) {
-            return [
+        $pluckedArray = [];
+        foreach ($validEvents as $index => $event) {
+            $pluckedArray[$index] = [
                 'lat' => $event['hv_hpc_x'],
                 'lon' => $event['hv_hpc_y'],
                 'coordinate_time' => $event['coordinate_time'],
             ];
-        }, $eventsArray);
+        }
 
         $rotatedCoordinates = null;
 
@@ -134,9 +149,9 @@ class EventController extends Controller
             return $this->error($response, 'Coordinate transformation service unavailable', 500);
         }
 
-        // Apply rotated coordinates to events ensuring same ordering
+        // Apply rotated coordinates to valid events ensuring same ordering
         $eventsWithRotatedCoords = [];
-        foreach ($eventsArray as $index => $event) {
+        foreach ($validEvents as $index => $event) {
             // Add rotated coordinates using the same index to ensure ordering
             if (isset($rotatedCoordinates[$index])) {
                 // Map hpc_x/hpc_y to hv_hpc_x/hv_hpc_y for backwards compatibility
