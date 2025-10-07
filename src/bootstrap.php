@@ -128,8 +128,6 @@ $redis->ping();
 // === SERVICE INSTANCES ===
 // Core services
 $redisCache = new RedisCache($redis, 'hv:events-api:');
-$coordinator = new HttpCoordinator($redisCache);
-$backup_coordinator = new CommandLineCoordinator($redisCache);
 $jsonStorage = new ShardedLocalFile('/u/apps/data');
 $failureStorage = new LocalFile();
 $eventRepository = new Postgres();
@@ -222,5 +220,7 @@ $logger->pushHandler($consoleHandler);
 
 // HTTP and external services
 $httpClient = new CachedHttpClient(null, $redisCache, 120, 'http_client:', $logger); // 2 minute cache
+$coordinator = new HttpCoordinator($httpClient, $redisCache);
+$backup_coordinator = new CommandLineCoordinator($redisCache);
 $harpService = new HarpService($httpClient, $redisCache, $logger);
 $noaaService = new NoaaService($httpClient, $redisCache, $logger);
