@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Helioviewer\EventsApi\Coordinator;
 
 use Psr\SimpleCache\CacheInterface;
+use Psr\Http\Client\ClientInterface;
 use HelioviewerEventInterface\Coordinator\Coordinator;
 use Exception;
 
@@ -19,15 +20,18 @@ use Exception;
  */
 class HttpCoordinator implements CoordinatorInterface
 {
+    private ClientInterface $client;
     private ?CacheInterface $cache;
-    
+
     /**
      * Constructor
-     * 
+     *
+     * @param ClientInterface $client HTTP client for coordinate transformation requests
      * @param CacheInterface|null $cache Optional cache interface for caching transformations
      */
-    public function __construct(?CacheInterface $cache = null)
+    public function __construct(ClientInterface $client, ?CacheInterface $cache = null)
     {
+        $this->client = $client;
         $this->cache = $cache;
     }
     
@@ -98,64 +102,54 @@ class HttpCoordinator implements CoordinatorInterface
         // Convert target timestamp to ISO format
         $parsedTimestamp = is_numeric($targetTimestamp) ? (int)$targetTimestamp : strtotime($targetTimestamp);
         $targetTime = date('Y-m-d\TH:i:s\Z', $parsedTimestamp);
-        
-        $rotatedCoordinates = [];
-        
-        foreach ($coordinateArray as $index => $coord) {
-            $hgsLatitude = $coord['lat'];
-            $hgsLongitude = $coord['lon'];
-            $coordinateTime = $coord['coordinate_time'];
-            
-            // Create cache key
-            $cacheKey = sprintf(
-                '%s:%s:%d:%d',
-                $hgsLatitude,
-                $hgsLongitude,
-                $coordinateTime,
-                $parsedTimestamp
+
+        // Prepare coordinates for batch request
+        $coordinates = [];
+        foreach ($coordinateArray as $coord) {
+            $coordinates[] = [
+                'lat' => $coord['lat'],
+                'lon' => $coord['lon'],
+                'coord_time' => date('Y-m-d\TH:i:s\Z', $coord['coordinate_time'])
+            ];
+        }
+        // Make POST request to coordinator service using convenient postJson method
+        try {
+            $response = $this->client->postJson(
+                HV_COORDINATOR_URL . '/hgs2hpc',
+                [
+                    'coordinates' => $coordinates,
+                    'target' => $targetTime
+                ]
             );
-            
-            // Check cache if available
-            if ($this->cache !== null) {
-                $cachedValue = $this->cache->get($cacheKey);
-                if ($cachedValue !== null) {
-                    $rotatedCoordinates[$index] = array_merge($cachedValue, [
-                        'original_hgs_lat' => $hgsLatitude,
-                        'original_hgs_lon' => $hgsLongitude,
-                        'target_time' => $targetTime,
-                        'from_cache' => true
-                    ]);
-                    continue;
-                }
+
+            if ($response->getStatusCode() !== 200) {
+                throw new CoordinatorException("Coordinator service returned status: " . $response->getStatusCode());
             }
-            
-            // Format coordinate time
-            $coordTime = date('Y-m-d\TH:i:s\Z', $coordinateTime);
-            
-            try {
-                // Perform rotation
-                $rotated = $this->rotate(
-                    (float)$hgsLatitude,
-                    (float)$hgsLongitude,
-                    $coordTime,
-                    $targetTime
-                );
-                
+
+            $responseData = json_decode($response->getBody()->getContents(), true);
+
+            if (!isset($responseData['coordinates']) || !is_array($responseData['coordinates'])) {
+                throw new CoordinatorException("Invalid response format from coordinator service");
+            }
+
+            // Format the results
+            $rotatedCoordinates = [];
+            foreach ($responseData['coordinates'] as $index => $result) {
                 $rotatedCoordinates[$index] = [
-                    'hpc_x' => $rotated['hpc_x'],
-                    'hpc_y' => $rotated['hpc_y'],
-                    'original_hgs_lat' => $hgsLatitude,
-                    'original_hgs_lon' => $hgsLongitude,
+                    'hpc_x' => $result['x'],
+                    'hpc_y' => $result['y'],
+                    'original_hgs_lat' => $coordinateArray[$index]['lat'],
+                    'original_hgs_lon' => $coordinateArray[$index]['lon'],
                     'target_time' => $targetTime,
                     'from_cache' => false
                 ];
-                
-            } catch (Exception $e) {
-                throw new CoordinatorException("Failed to rotate coordinates: " . $e->getMessage());
             }
+
+            return $rotatedCoordinates;
+
+        } catch (Exception $e) {
+            throw new CoordinatorException("Failed to rotate coordinates: " . $e->getMessage());
         }
-        
-        return $rotatedCoordinates;
     }
 
 }

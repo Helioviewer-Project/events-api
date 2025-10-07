@@ -60,26 +60,26 @@ class CachedHttpClient implements ClientInterface
     {
         // Create cache key from request
         $cacheKey = $this->createCacheKey($request);
-        
-        // Try to get from cache first (only for GET requests)
-        if ($this->cache && $request->getMethod() === 'GET') {
+
+        // Try to get from cache first for all requests
+        if ($this->cache) {
             try {
                 $cachedResponse = $this->cache->get($cacheKey);
                 if ($cachedResponse !== null) {
-                    $this->logger->debug("HTTP Client | Cache HIT: " . $request->getUri());
+                    $this->logger->debug("HTTP Client | Cache HIT | " . $request->getMethod() . " " . $request->getUri());
                     return $this->deserializeResponse($cachedResponse);
                 }
             } catch (\Psr\SimpleCache\CacheException $e) {
                 $this->logger->error("HTTP Client | Cache read error: " . $e->getMessage());
             }
         }
-        
+
         // Make the actual HTTP request
-        $this->logger->debug("HTTP Client | Cache MISS: " . $request->getUri());
+        $this->logger->debug("HTTP Client | Cache MISS | " . $request->getMethod() . " " . $request->getUri());
         $response = $this->client->sendRequest($request);
-        
-        // Cache successful GET responses
-        if ($this->cache && $request->getMethod() === 'GET' && $response->getStatusCode() < 400) {
+
+        // Cache successful responses for all requests
+        if ($this->cache && $response->getStatusCode() < 400) {
             try {
                 $serializedResponse = $this->serializeResponse($response);
                 $this->cache->set($cacheKey, $serializedResponse, $this->cacheTtl);
@@ -87,7 +87,7 @@ class CachedHttpClient implements ClientInterface
                 $this->logger->error("HTTP Client | Cache write error: " . $e->getMessage());
             }
         }
-        
+
         // Rewind body stream before returning fresh response
         $response->getBody()->rewind();
         return $response;
@@ -107,10 +107,31 @@ class CachedHttpClient implements ClientInterface
         // Create PSR-7 request from Guzzle-style parameters
         $headers = $options['headers'] ?? [];
         $body = $options['body'] ?? null;
-        
+
         $request = new Request($method, $uri, $headers, $body);
-        
+
         // Use our cached sendRequest implementation
+        return $this->sendRequest($request);
+    }
+
+    /**
+     * Convenient method to POST JSON data
+     *
+     * @param string $uri URI to request
+     * @param array $data Data to be JSON encoded and sent
+     * @return ResponseInterface The HTTP response
+     * @throws \Psr\Http\Client\ClientExceptionInterface If an error happens while processing the request
+     */
+    public function postJson(string $uri, array $data): ResponseInterface
+    {
+        $headers = [
+            'Content-Type' => 'application/json',
+            'Accept' => 'application/json'
+        ];
+        $body = json_encode($data);
+
+        $request = new Request('POST', $uri, $headers, $body);
+
         return $this->sendRequest($request);
     }
 
