@@ -37,7 +37,12 @@ class TimestampParser
      * @return int Unix timestamp
      * @throws InvalidArgumentException If timestamp format is invalid
      */
-    public function parse($timestamp): int
+    public static function parseTimestamp($timestamp): int
+    {
+        return self::parse($timestamp);
+    }
+
+    public static function parse($timestamp): int
     {
         // Handle URL encoding first
         if (is_string($timestamp)) {
