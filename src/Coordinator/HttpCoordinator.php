@@ -6,6 +6,7 @@ namespace Helioviewer\EventsApi\Coordinator;
 
 use Psr\SimpleCache\CacheInterface;
 use Psr\Http\Client\ClientInterface;
+use Psr\Log\LoggerInterface;
 use HelioviewerEventInterface\Coordinator\Coordinator;
 use Exception;
 
@@ -22,17 +23,20 @@ class HttpCoordinator implements CoordinatorInterface
 {
     private ClientInterface $client;
     private ?CacheInterface $cache;
+    private ?LoggerInterface $logger;
 
     /**
      * Constructor
      *
      * @param ClientInterface $client HTTP client for coordinate transformation requests
      * @param CacheInterface|null $cache Optional cache interface for caching transformations
+     * @param LoggerInterface|null $logger Optional logger for debugging
      */
-    public function __construct(ClientInterface $client, ?CacheInterface $cache = null)
+    public function __construct(ClientInterface $client, ?CacheInterface $cache = null, ?LoggerInterface $logger = null)
     {
         $this->client = $client;
         $this->cache = $cache;
+        $this->logger = $logger;
     }
     
     /**
@@ -91,8 +95,24 @@ class HttpCoordinator implements CoordinatorInterface
     }
     
     /**
+     * Generate cache key for batch rotation request
+     *
+     * @param array $coordinates Formatted coordinates array
+     * @param string $targetTime Target time in ISO format
+     * @return string Cache key
+     */
+    private function generateBatchCacheKey(array $coordinates, string $targetTime): string
+    {
+        $cacheKeyData = json_encode([
+            'coordinates' => $coordinates,
+            'target' => $targetTime
+        ]);
+        return 'coordinator:rotateAll:' . md5($cacheKeyData);
+    }
+
+    /**
      * Batch rotate coordinates using simplified array format
-     * 
+     *
      * @param array $coordinateArray Array of coordinate data with 'lat', 'lon', 'coordinate_time' keys
      * @param int|string $targetTimestamp Target time for coordinate rotation
      * @return array Array of rotated coordinates in same order as input
@@ -112,8 +132,29 @@ class HttpCoordinator implements CoordinatorInterface
                 'coord_time' => date('Y-m-d\TH:i:s\Z', $coord['coordinate_time'])
             ];
         }
+
+        // Generate unique cache key based on all inputs
+        $cacheKey = $this->generateBatchCacheKey($coordinates, $targetTime);
+
+        // Check cache first if available
+        if ($this->cache !== null) {
+            $cachedResult = $this->cache->get($cacheKey);
+            if ($cachedResult !== null) {
+                if ($this->logger) {
+                    $coordCount = count($coordinateArray);
+                    $this->logger->debug("HttpCoordinator | Cache HIT for batch transformation of {$coordCount} coordinates | Target: {$targetTime}");
+                }
+                return $cachedResult;
+            }
+        }
+
         // Make POST request to coordinator service using convenient postJson method
         try {
+            if ($this->logger) {
+                $coordCount = count($coordinateArray);
+                $this->logger->debug("HttpCoordinator | Cache MISS for batch transformation of {$coordCount} coordinates | Target: {$targetTime}");
+            }
+
             $response = $this->client->postJson(
                 HV_COORDINATOR_URL . '/hgs2hpc',
                 [
@@ -140,9 +181,13 @@ class HttpCoordinator implements CoordinatorInterface
                     'hpc_y' => $result['y'],
                     'original_hgs_lat' => $coordinateArray[$index]['lat'],
                     'original_hgs_lon' => $coordinateArray[$index]['lon'],
-                    'target_time' => $targetTime,
-                    'from_cache' => false
+                    'target_time' => $targetTime
                 ];
+            }
+
+            // Cache the result for 1 day (86400 seconds)
+            if ($this->cache !== null) {
+                $this->cache->set($cacheKey, $rotatedCoordinates, 86400);
             }
 
             return $rotatedCoordinates;

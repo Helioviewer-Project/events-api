@@ -220,7 +220,7 @@ $logger->pushHandler($consoleHandler);
 
 // HTTP and external services
 $httpClient = new CachedHttpClient(null, $redisCache, 120, 'http_client:', $logger); // 2 minute cache
-$coordinator = new HttpCoordinator($httpClient, $redisCache);
+$coordinator = new HttpCoordinator($httpClient, $redisCache, $logger);
 $backup_coordinator = new CommandLineCoordinator($redisCache);
 $harpService = new HarpService($httpClient, $redisCache, $logger);
 $noaaService = new NoaaService($httpClient, $redisCache, $logger);
