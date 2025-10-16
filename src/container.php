@@ -9,7 +9,7 @@ declare(strict_types=1);
  * All services are created once in bootstrap and referenced here.
  */
 
-use Helioviewer\EventsApi\Container;
+use Helioviewer\EventsApi\Utils\Container;
 
 // === BOOTSTRAP ===
 require_once __DIR__ . '/bootstrap.php';
