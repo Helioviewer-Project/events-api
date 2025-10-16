@@ -1,6 +1,6 @@
 <?php
 
-namespace Helioviewer\EventsApi;
+namespace Helioviewer\EventsApi\Utils;
 
 use Psr\Container\ContainerInterface;
 use ArrayAccess;
