@@ -48,13 +48,8 @@ return [
         "contact" => " ",
         "url" => "https://ccmc.gsfc.nasa.gov/scoreboards/flare/"
     ],
-    "CCMC>>Solar Flare Predictions>>BoM" => [
+    "CCMC>>Solar Flare Predictions>>Bureau of Meteorology" => [
         "name" => "Bureau of Meteorology",
-        "contact" => " ",
-        "url" => "https://ccmc.gsfc.nasa.gov/scoreboards/flare/"
-    ],
-    "CCMC>>Solar Flare Predictions>>NOAA" => [
-        "name" => "NOAA",
         "contact" => " ",
         "url" => "https://ccmc.gsfc.nasa.gov/scoreboards/flare/"
     ],
@@ -78,6 +73,35 @@ return [
         "contact" => " ",
         "url" => "https://ccmc.gsfc.nasa.gov/scoreboards/flare/"
     ],
-    
-    // Add more paths as needed
+
+    "CCMC>>Solar Flare Predictions>>MAG4 LoS FEr" => [
+        "name" => "MAG4 LoS FEr",
+        "contact" => " ",
+        "url" => "https://ccmc.gsfc.nasa.gov/scoreboards/flare/"
+    ],
+    "CCMC>>Solar Flare Predictions>>MAG4 LoS r" => [
+        "name" => "MAG4 LoS r",
+        "contact" => " ",
+        "url" => "https://ccmc.gsfc.nasa.gov/scoreboards/flare/"
+    ],
+    "CCMC>>Solar Flare Predictions>>MAG4 Sharp FE" => [
+        "name" => "MAG4 Sharp FE",
+        "contact" => " ",
+        "url" => "https://ccmc.gsfc.nasa.gov/scoreboards/flare/"
+    ],
+    "CCMC>>Solar Flare Predictions>>MAG4 Sharp" => [
+        "name" => "MAG4 Sharp",
+        "contact" => " ",
+        "url" => "https://ccmc.gsfc.nasa.gov/scoreboards/flare/"
+    ],
+    "CCMC>>Solar Flare Predictions>>MAG4 Sharp HMI" => [
+        "name" => "MAG4 Sharp HMI",
+        "contact" => " ",
+        "url" => "https://ccmc.gsfc.nasa.gov/scoreboards/flare/"
+    ],
+    "CCMC>>Solar Flare Predictions>>AEffort" => [
+        "name" => "AEffort",
+        "contact" => " ",
+        "url" => "https://ccmc.gsfc.nasa.gov/scoreboards/flare/"
+    ],
 ];

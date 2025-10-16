@@ -126,6 +126,10 @@ class Collector
             'MAG4_LOS_FEr_REGIONS' => 'MAG4 LoS FEr',
             'MAG4_LOS_r_REGIONS' => 'MAG4 LoS r',
             'DAFFS_REGIONS' => 'DAFFS',
+            'MAG4_SHARP_FE_REGIONS' => 'MAG4 Sharp FE',
+            'MAG4_SHARP_REGIONS' => 'MAG4 Sharp',
+            'MAG4_SHARP_HMI_REGIONS' => 'MAG4 Sharp HMI',
+            'AEffort_REGIONS' => 'AEffort',
         ];
         
         foreach ($predictionModels as $modelId => $modelName) {
