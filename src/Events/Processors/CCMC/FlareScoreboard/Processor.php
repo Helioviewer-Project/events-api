@@ -263,8 +263,6 @@ class Processor implements ProcessorInterface
         $coordinates = $this->readCoordinates($rawRecord);
 
         // Throw exception if no coordinates could be found
-        // ';lllll[]\][]
-        // ]
         if ($coordinates === null) {
             throw new CoordinateResolutionException(
                 "No valid coordinates found in raw record. " .
@@ -273,11 +271,20 @@ class Processor implements ProcessorInterface
         }
         
         // Step 3: Build base event data with coordinates and timeline
+        // Use coordinate_time if available and valid, otherwise fallback to start_window
+        $coordinateTime = $coordinates['coordinate_time'];
+        if (empty($coordinateTime)) {
+            $coordinateTime = $rawRecord['start_window'] ?? null;
+            if ($coordinateTime) {
+                $this->logger->debug("Using start_window as coordinate_time fallback");
+            }
+        }
+
         $baseEventData = [
             'start' => $timeline['start'],
             'peak' => $timeline['peak'],
             'end' => $timeline['end'],
-            'coordinate_time' => strtotime($coordinates['coordinate_time']),
+            'coordinate_time' => strtotime($coordinateTime),
             'hv_hpc_x' => $coordinates['longitude'],  // longitude maps to X
             'hv_hpc_y' => $coordinates['latitude'],   // latitude maps to Y
         ];
