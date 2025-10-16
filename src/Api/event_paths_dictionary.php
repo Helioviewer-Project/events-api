@@ -6,56 +6,77 @@
  */
 
 return [
-    // 2-level paths (have name and pin)
-    "CCMC>>Solar Flare Predictions" => [
-        "name" => "Solar Flare Predictions",
-        "pin" => "FP"
-    ],
+
+    // CCMC DONKI
     "CCMC>>DONKI" => [
         "name" => "DONKI",
         "pin" => "C3"
     ],
-    
-    // 3-level paths (have name, contact, url)
+    "CCMC>>DONKI>>CME" => [
+        "name" => "CME",
+        "contact" => "Space Weather Database of NOtifications, Knowledge, Information (DONKI)",
+        "url" => "https://kauai.ccmc.gsfc.nasa.gov/DONKI/"
+    ],
+    "CCMC>>DONKI>>Solar Flares" => [
+        "name" => "Solar Flares",
+        "contact" => " ",
+        "url" => "https://kauai.ccmc.gsfc.nasa.gov/DONKI/"
+    ],
+
+    // CCMC Solar Flare Predictions 
+    "CCMC>>Solar Flare Predictions" => [
+        "name" => "Solar Flare Predictions",
+        "pin" => "FP"
+    ],
     "CCMC>>Solar Flare Predictions>>DAFFS" => [
         "name" => "DAFFS",
-        "contact" => "",
-        "url" => ""
+        "contact" => " ",
+        "url" => "https://ccmc.gsfc.nasa.gov/scoreboards/flare/"
+    ],
+    "CCMC>>Solar Flare Predictions>>ASAP" => [
+        "name" => "ASAP",
+        "contact" => " ",
+        "url" => "https://ccmc.gsfc.nasa.gov/scoreboards/flare/"
+    ],
+    "CCMC>>Solar Flare Predictions>>AMOS" => [
+        "name" => "AMOS",
+        "contact" => " ",
+        "url" => "https://ccmc.gsfc.nasa.gov/scoreboards/flare/"
     ],
     "CCMC>>Solar Flare Predictions>>ASSA" => [
         "name" => "ASSA",
-        "contact" => "",
-        "url" => ""
+        "contact" => " ",
+        "url" => "https://ccmc.gsfc.nasa.gov/scoreboards/flare/"
     ],
     "CCMC>>Solar Flare Predictions>>BoM" => [
         "name" => "Bureau of Meteorology",
-        "contact" => "",
-        "url" => ""
+        "contact" => " ",
+        "url" => "https://ccmc.gsfc.nasa.gov/scoreboards/flare/"
     ],
     "CCMC>>Solar Flare Predictions>>NOAA" => [
         "name" => "NOAA",
-        "contact" => "",
-        "url" => ""
+        "contact" => " ",
+        "url" => "https://ccmc.gsfc.nasa.gov/scoreboards/flare/"
     ],
-    "CCMC>>Solar Flare Predictions>>SIDC" => [
-        "name" => "SIDC",
-        "contact" => "",
-        "url" => ""
+    "CCMC>>Solar Flare Predictions>>SIDC Operator" => [
+        "name" => "SIDC Operator",
+        "contact" => " ",
+        "url" => "https://ccmc.gsfc.nasa.gov/scoreboards/flare/"
     ],
     "CCMC>>Solar Flare Predictions>>MOSWOC" => [
         "name" => "MOSWOC",
-        "contact" => "",
-        "url" => ""
+        "contact" => " ",
+        "url" => "https://ccmc.gsfc.nasa.gov/scoreboards/flare/"
     ],
     "CCMC>>Solar Flare Predictions>>Met Office" => [
         "name" => "Met Office",
-        "contact" => "",
-        "url" => ""
+        "contact" => " ",
+        "url" => "https://ccmc.gsfc.nasa.gov/scoreboards/flare/"
     ],
     "CCMC>>Solar Flare Predictions>>SAWS" => [
         "name" => "SAWS",
-        "contact" => "",
-        "url" => ""
+        "contact" => " ",
+        "url" => "https://ccmc.gsfc.nasa.gov/scoreboards/flare/"
     ],
     
     // Add more paths as needed
