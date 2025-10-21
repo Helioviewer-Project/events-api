@@ -37,6 +37,12 @@ class HttpCoordinator implements CoordinatorInterface
         $this->client = $client;
         $this->cache = $cache;
         $this->logger = $logger;
+
+        if ($this->logger) {
+            $clientClass = get_class($client);
+            $cacheClass = $cache ? get_class($cache) : 'none';
+            $this->logger->debug("HttpCoordinator | Initialized | Client: {$clientClass} | Cache: {$cacheClass}");
+        }
     }
     
     /**
@@ -55,6 +61,10 @@ class HttpCoordinator implements CoordinatorInterface
         string $coordinateTime,
         string $targetTime
     ): array {
+        if ($this->logger) {
+            $this->logger->debug("HttpCoordinator | Single coordinate transformation | HGS: ({$latitude}, {$longitude}) | CoordTime: {$coordinateTime} | Target: {$targetTime}");
+        }
+
         // Create cache key if cache is available
         if ($this->cache !== null) {
             $cacheKey = sprintf(
@@ -64,34 +74,56 @@ class HttpCoordinator implements CoordinatorInterface
                 $coordinateTime,
                 $targetTime
             );
-            
+
             // Check cache
             $cachedValue = $this->cache->get($cacheKey);
             if ($cachedValue !== null) {
+                if ($this->logger) {
+                    $this->logger->debug("HttpCoordinator | Cache HIT for single transformation | HPC: ({$cachedValue['hpc_x']}, {$cachedValue['hpc_y']})");
+                }
                 return $cachedValue;
             }
+
+            if ($this->logger) {
+                $this->logger->debug("HttpCoordinator | Cache MISS for single transformation | Calling Coordinator::Hgs2Hpc");
+            }
         }
-        
-        // Perform coordinate rotation using HTTP Coordinator
-        $rotatedCoords = Coordinator::Hgs2Hpc(
-            $latitude,
-            $longitude,
-            $coordinateTime,
-            $targetTime
-        );
-        
-        // Format result with clear HPC labels
-        $result = [
-            'hpc_x' => $rotatedCoords['x'],
-            'hpc_y' => $rotatedCoords['y']
-        ];
-        
-        // Cache result if cache is available (24 hours TTL)
-        if ($this->cache !== null && isset($cacheKey)) {
-            $this->cache->set($cacheKey, $result, 86400);
+
+        try {
+            // Perform coordinate rotation using HTTP Coordinator
+            $rotatedCoords = Coordinator::Hgs2Hpc(
+                $latitude,
+                $longitude,
+                $coordinateTime,
+                $targetTime
+            );
+
+            // Format result with clear HPC labels
+            $result = [
+                'hpc_x' => $rotatedCoords['x'],
+                'hpc_y' => $rotatedCoords['y']
+            ];
+
+            if ($this->logger) {
+                $this->logger->debug("HttpCoordinator | Single transformation completed | HPC: ({$result['hpc_x']}, {$result['hpc_y']})");
+            }
+
+            // Cache result if cache is available (24 hours TTL)
+            if ($this->cache !== null && isset($cacheKey)) {
+                $this->cache->set($cacheKey, $result, 86400);
+                if ($this->logger) {
+                    $this->logger->debug("HttpCoordinator | Cached single transformation result with TTL 86400s");
+                }
+            }
+
+            return $result;
+
+        } catch (Exception $e) {
+            if ($this->logger) {
+                $this->logger->error("HttpCoordinator | Single transformation failed | Error: " . $e->getMessage());
+            }
+            throw $e;
         }
-        
-        return $result;
     }
     
     /**
@@ -107,7 +139,14 @@ class HttpCoordinator implements CoordinatorInterface
             'coordinates' => $coordinates,
             'target' => $targetTime
         ]);
-        return 'coordinator:rotateAll:' . md5($cacheKeyData);
+        $cacheKey = 'coordinator:rotateAll:' . md5($cacheKeyData);
+
+        if ($this->logger) {
+            $coordCount = count($coordinates);
+            $this->logger->debug("HttpCoordinator | Generated batch cache key | Coordinates: {$coordCount} | Target: {$targetTime} | Key: {$cacheKey}");
+        }
+
+        return $cacheKey;
     }
 
     /**
@@ -133,6 +172,25 @@ class HttpCoordinator implements CoordinatorInterface
             ];
         }
 
+        if ($this->logger) {
+            $coordCount = count($coordinates);
+            $this->logger->debug("HttpCoordinator | Prepared {$coordCount} coordinates for batch transformation:");
+
+            // Show first few coordinates and summary for large batches
+            $maxShow = 5;
+            $showCount = min($coordCount, $maxShow);
+
+            for ($i = 0; $i < $showCount; $i++) {
+                $coord = $coordinates[$i];
+                $this->logger->debug("  [{$i}] HGS: ({$coord['lat']}, {$coord['lon']}) at {$coord['coord_time']}");
+            }
+
+            if ($coordCount > $maxShow) {
+                $remaining = $coordCount - $maxShow;
+                $this->logger->debug("  ... and {$remaining} more coordinates");
+            }
+        }
+
         // Generate unique cache key based on all inputs
         $cacheKey = $this->generateBatchCacheKey($coordinates, $targetTime);
 
@@ -143,6 +201,21 @@ class HttpCoordinator implements CoordinatorInterface
                 if ($this->logger) {
                     $coordCount = count($coordinateArray);
                     $this->logger->debug("HttpCoordinator | Cache HIT for batch transformation of {$coordCount} coordinates | Target: {$targetTime}");
+                    $this->logger->debug("HttpCoordinator | Cached coordinates result:");
+
+                    // Show first few results and summary for large batches
+                    $maxShow = 5;
+                    $showCount = min($coordCount, $maxShow);
+
+                    for ($i = 0; $i < $showCount; $i++) {
+                        $result = $cachedResult[$i];
+                        $this->logger->debug("  [{$i}] HGS: ({$result['original_hgs_lat']}, {$result['original_hgs_lon']}) → HPC: ({$result['hpc_x']}, {$result['hpc_y']})");
+                    }
+
+                    if ($coordCount > $maxShow) {
+                        $remaining = $coordCount - $maxShow;
+                        $this->logger->debug("  ... and {$remaining} more coordinate transformations");
+                    }
                 }
                 return $cachedResult;
             }
@@ -152,7 +225,9 @@ class HttpCoordinator implements CoordinatorInterface
         try {
             if ($this->logger) {
                 $coordCount = count($coordinateArray);
+                $url = HV_COORDINATOR_URL . '/hgs2hpc';
                 $this->logger->debug("HttpCoordinator | Cache MISS for batch transformation of {$coordCount} coordinates | Target: {$targetTime}");
+                $this->logger->debug("HttpCoordinator | Making POST request to {$url}");
             }
 
             $response = $this->client->postJson(
@@ -163,14 +238,30 @@ class HttpCoordinator implements CoordinatorInterface
                 ]
             );
 
+            if ($this->logger) {
+                $statusCode = $response->getStatusCode();
+                $this->logger->debug("HttpCoordinator | Coordinator service response | Status: {$statusCode}");
+            }
+
             if ($response->getStatusCode() !== 200) {
+                if ($this->logger) {
+                    $this->logger->error("HttpCoordinator | Coordinator service error | Status: " . $response->getStatusCode());
+                }
                 throw new CoordinatorException("Coordinator service returned status: " . $response->getStatusCode());
             }
 
             $responseData = json_decode($response->getBody()->getContents(), true);
 
             if (!isset($responseData['coordinates']) || !is_array($responseData['coordinates'])) {
+                if ($this->logger) {
+                    $this->logger->error("HttpCoordinator | Invalid response format from coordinator service | Missing 'coordinates' array");
+                }
                 throw new CoordinatorException("Invalid response format from coordinator service");
+            }
+
+            if ($this->logger) {
+                $resultCount = count($responseData['coordinates']);
+                $this->logger->debug("HttpCoordinator | Received {$resultCount} transformed coordinates from service");
             }
 
             // Format the results
@@ -185,14 +276,43 @@ class HttpCoordinator implements CoordinatorInterface
                 ];
             }
 
+            if ($this->logger) {
+                $this->logger->debug("HttpCoordinator | Transformed coordinates result:");
+
+                // Show first few results and summary for large batches
+                $maxShow = 5;
+                $resultCount = count($rotatedCoordinates);
+                $showCount = min($resultCount, $maxShow);
+
+                for ($i = 0; $i < $showCount; $i++) {
+                    $result = $rotatedCoordinates[$i];
+                    $this->logger->debug("  [{$i}] HGS: ({$result['original_hgs_lat']}, {$result['original_hgs_lon']}) → HPC: ({$result['hpc_x']}, {$result['hpc_y']})");
+                }
+
+                if ($resultCount > $maxShow) {
+                    $remaining = $resultCount - $maxShow;
+                    $this->logger->debug("  ... and {$remaining} more coordinate transformations");
+                }
+            }
+
             // Cache the result for 1 day (86400 seconds)
             if ($this->cache !== null) {
                 $this->cache->set($cacheKey, $rotatedCoordinates, 86400);
+                if ($this->logger) {
+                    $this->logger->debug("HttpCoordinator | Cached batch transformation result with TTL 86400s");
+                }
+            }
+
+            if ($this->logger) {
+                $this->logger->debug("HttpCoordinator | Batch transformation completed successfully");
             }
 
             return $rotatedCoordinates;
 
         } catch (Exception $e) {
+            if ($this->logger) {
+                $this->logger->error("HttpCoordinator | Batch transformation failed | Error: " . $e->getMessage());
+            }
             throw new CoordinatorException("Failed to rotate coordinates: " . $e->getMessage());
         }
     }
