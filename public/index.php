@@ -57,6 +57,8 @@ $app->get('/api/v2/stats', [$statsController, 'getStats']);
 // ===========================
 $app->get('/stats', [$pageController, 'statsPage']);
 
+$app->get('/predictions', [$pageController, 'predictionsPage']);
+
 $app->get('/', [$pageController, 'home']);
 
 // Run application
