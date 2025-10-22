@@ -100,7 +100,7 @@ class EventController extends Controller
         $validEvents = [];
 
         foreach ($eventsArray as $event) {
-            $lat = $event['hv_hpc_x'];
+            $lat = $event['hv_hpc_y'];
 
             // Check if latitude is outside valid range (-90 to 90)
             if ($lat < -90 || $lat > 90) {
@@ -114,8 +114,8 @@ class EventController extends Controller
         $pluckedArray = [];
         foreach ($validEvents as $index => $event) {
             $pluckedArray[$index] = [
-                'lat' => $event['hv_hpc_x'],
-                'lon' => $event['hv_hpc_y'],
+                'lon' => $event['hv_hpc_x'],
+                'lat' => $event['hv_hpc_y'],
                 'coordinate_time' => $event['coordinate_time'],
             ];
         }
