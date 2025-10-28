@@ -168,17 +168,19 @@ class Legacy
             }
             // Ignore paths with more than 3 levels
         }
+
+        ksort($processedResult);
         
         // Convert associative arrays to indexed arrays
         $finalResult = array_values($processedResult);
-        
+
         // Also convert groups from associative to indexed arrays
         foreach ($finalResult as &$item) {
             if (isset($item['groups']) && is_array($item['groups'])) {
                 $item['groups'] = array_values($item['groups']);
             }
         }
-        
+
         return $finalResult;
     }
     
