@@ -124,7 +124,7 @@ class Legacy
                 $eventArray['type'] = $eventArray['legacy_type'] ?? null;
                 $eventArray['version'] = $eventArray['legacy_version'] ?? null;
                 $eventArray['pin'] = $eventArray['legacy_pin'] ?? null;
-                
+
                 // Format timestamps to ISO 8601 with T separator
                 if (isset($eventArray['start'])) {
                     $eventArray['start'] = date('Y-m-d\TH:i:s', $eventArray['start']);
@@ -161,6 +161,19 @@ class Legacy
                     }
                     
                     $eventArray['link'] = $linksData;
+                }
+
+                // Add legacy id to safe guard all event system , before transition to v2 endpoints
+                if (isset($eventArray['path'])) {
+                    if ($eventArray['path'] === 'CCMC>>DONKI>>CME') {
+                        $eventArray['legacy_id'] = $eventArray['source']['activityID'];
+                    } elseif ($eventArray['path'] === 'CCMC>>DONKI>>Solar Flares') {
+                        $eventArray['legacy_id'] = $eventArray['source']['flrID'];
+                    } elseif(str_starts_with($eventArray['path'], 'CCMC>>Solar Flare Predictions>>') && count(explode('>>', $eventArray['path'])) === 3) {
+                        $eventArray['legacy_id'] = hash('sha256', json_encode($eventArray['source']));
+                    } else {
+                        $eventArray['legacy_id'] = $eventArray['id'];
+                    }
                 }
                 
                 // Add event to data array
