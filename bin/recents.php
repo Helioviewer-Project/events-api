@@ -3,10 +3,13 @@
 
 declare(strict_types=1);
 
-// === CONTAINER SETUP ===
-$container = require __DIR__ . '/../src/container.php';
+// === BOOTSTRAP ===
+require __DIR__ . '/../src/bootstrap.php';
 
 // === IMPORTS ===
+use Helioviewer\EventsApi\Utils\Container;
+
+$container = Container::getInstance();
 
 echo "=== Most Recent Events (ordered by creation time) ===\n\n";
 

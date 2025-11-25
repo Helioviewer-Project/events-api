@@ -224,3 +224,21 @@ $coordinator = new HttpCoordinator($httpClient, $redisCache, $logger);
 $backup_coordinator = new CommandLineCoordinator($redisCache);
 $harpService = new HarpService($httpClient, $redisCache, $logger);
 $noaaService = new NoaaService($httpClient, $redisCache, $logger);
+
+// Initialize container with all services
+\Helioviewer\EventsApi\Utils\Container::setServices([
+    // Core services
+    'cache' => $redisCache,
+    'coordinator' => $coordinator,
+    'backup_coordinator' => $backup_coordinator,
+    'jsonStorage' => $jsonStorage,
+    'failureStorage' => $failureStorage,
+    'eventRepository' => $eventRepository,
+    'regionRepository' => $regionRepository,
+    'logger' => $logger,
+
+    // HTTP and external services
+    'httpClient' => $httpClient,
+    'harp' => $harpService,
+    'noaa' => $noaaService,
+]);

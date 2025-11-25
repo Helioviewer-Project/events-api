@@ -3,12 +3,11 @@
 
 declare(strict_types=1);
 
-require_once __DIR__ . '/../vendor/autoload.php';
-
-// === CONTAINER SETUP ===
-$container = require __DIR__ . '/../src/container.php';
+// === BOOTSTRAP ===
+require __DIR__ . '/../src/bootstrap.php';
 
 use GO\Scheduler;
+use Helioviewer\EventsApi\Utils\Container;
 use Helioviewer\EventsApi\Utils\SignalHandler;
 use Helioviewer\EventsApi\Events\Collector as EventCollector;
 use Helioviewer\EventsApi\Utils\TimeRange;
@@ -16,6 +15,7 @@ use Helioviewer\EventsApi\Utils\TimeRange;
 // === SIGNAL HANDLING ===
 SignalHandler::setup();
 
+$container = Container::getInstance();
 $logger = $container['logger'];
 
 // Get process user and group information

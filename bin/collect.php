@@ -6,10 +6,11 @@ declare(strict_types=1);
 // Set memory limit for collection script
 ini_set('memory_limit', '2G');
 
-// === CONTAINER SETUP ===
-$container = require __DIR__ . '/../src/container.php';
+// === BOOTSTRAP ===
+require __DIR__ . '/../src/bootstrap.php';
 
 // === IMPORTS ===
+use Helioviewer\EventsApi\Utils\Container;
 use Helioviewer\EventsApi\Events\Collector as EventCollector;
 use Helioviewer\EventsApi\Utils\TimeRange;
 use Helioviewer\EventsApi\Utils\ArgumentParser;
@@ -43,12 +44,8 @@ $timeRange = TimeRange::fromTimestamps($start, $end);
 $duration = $end - $start;
 $days = round($duration / 86400, 1);
 
-// Log collection start with chunk interval info
-$chunkInfo = $intervalDays > 1 ? " in {$intervalDays}-day chunks" : " in daily chunks";
-$logger->info("Starting event collection for " . date('Y-m-d', $start) . " to " . date('Y-m-d', $end) . 
-              " ({$days} days total){$chunkInfo}");
-
 // === SERVICE SETUP ===
+$container = Container::getInstance();
 $eventRepository = $container['eventRepository'];
 $regionRepository = $container['regionRepository'];
 $jsonStorage = $container['jsonStorage'];
@@ -57,6 +54,11 @@ $httpClient = $container['httpClient'];
 $harpService = $container['harp'];
 $noaaService = $container['noaa'];
 $logger = $container['logger'];
+
+// Log collection start with chunk interval info
+$chunkInfo = $intervalDays > 1 ? " in {$intervalDays}-day chunks" : " in daily chunks";
+$logger->info("Starting event collection for " . date('Y-m-d', $start) . " to " . date('Y-m-d', $end) .
+              " ({$days} days total){$chunkInfo}");
 
 // Use the standard collector factory method
 $collector = EventCollector::createStandard(

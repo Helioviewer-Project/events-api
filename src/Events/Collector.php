@@ -444,7 +444,6 @@ class Collector
             }
         }
         
-        // $this->logger->info("Successfully processed " . count($events) . " events from {$sourceName}");
         return $events;
     }
 
