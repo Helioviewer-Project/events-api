@@ -1,11 +1,11 @@
-.PHONY: composer-install composer-require composer-dump up down build shell shell-root nginx-reload migrate-status migrate-create migrate-run migrate-rollback seed-run collect recents reset stats logs help
+.PHONY: composer-install composer-require composer-dump up down build shell shell-root nginx-reload migrate-status migrate-create migrate-run migrate-rollback seed-run collect recents reset stats logs db-shell help
 .DEFAULT_GOAL := help
 
 # Set compose file based on ENV
 ifeq ($(ENV),production)
     DOCKER_COMPOSE = docker compose -f docker/docker-compose.production.yml --env-file=.env
 else
-    DOCKER_COMPOSE = docker compose -f docker/docker-compose.yml
+    DOCKER_COMPOSE = docker compose -f docker/docker-compose.yml --env-file=.env 
 endif
 
 composer-install:
@@ -31,6 +31,9 @@ shell:
 
 shell-root:
 	$(DOCKER_COMPOSE) exec phpfpm bash
+
+db-shell:
+	$(DOCKER_COMPOSE) exec postgres psql -U $${DB_USER:-eventsapi} -d $${DB_NAME:-eventsapi}
 
 # Nginx commands
 nginx-reload:
@@ -92,6 +95,7 @@ help:
 	@echo "  build                 - Build the Docker images"
 	@echo "  shell                 - Open a bash shell in the PHP container (user 1000:1000)"
 	@echo "  shell-root            - Open a bash shell in the PHP container as root"
+	@echo "  db-shell              - Connect to PostgreSQL database"
 	@echo "  nginx-reload          - Reload nginx configuration"
 	@echo ""
 	@echo "Composer Management:"
