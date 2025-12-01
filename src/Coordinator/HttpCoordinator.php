@@ -9,6 +9,7 @@ use Psr\Http\Client\ClientInterface;
 use Psr\Log\LoggerInterface;
 use HelioviewerEventInterface\Coordinator\Coordinator;
 use Exception;
+use BadMethodCallException;
 
 /**
  * HTTP Coordinator Implementation
@@ -317,4 +318,29 @@ class HttpCoordinator implements CoordinatorInterface
         }
     }
 
+    /**
+     * Transform HPC coordinates to Stonyhurst (not implemented for HTTP)
+     *
+     * @param float $hpcX Helioprojective X in arcseconds
+     * @param float $hpcY Helioprojective Y in arcseconds
+     * @param string $obsTime Observation time in ISO 8601 format
+     * @return array
+     * @throws BadMethodCallException Always thrown - not implemented
+     */
+    public function hpcEarthToStonyhurst(float $hpcX, float $hpcY, string $obsTime): array
+    {
+        throw new BadMethodCallException('HPC to Stonyhurst coordinates transformation is not implemented in the Coordinator API (yet!)');
+    }
+
+    /**
+     * Batch transform HPC coordinates to Stonyhurst (not implemented for HTTP)
+     *
+     * @param array $coordinateArray Array of coordinates
+     * @return array
+     * @throws BadMethodCallException Always thrown - not implemented
+     */
+    public function hpcEarthToStonyhurstAll(array $coordinateArray): array
+    {
+        throw new BadMethodCallException('Batch HPC to Stonyhurst coordinates transformation is not implemented in the Coordinator API (yet!)');
+    }
 }

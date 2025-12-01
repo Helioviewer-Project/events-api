@@ -572,22 +572,14 @@ HTML;
                     // Remove leading newline if present
                     probabilityText = probabilityText.trim();
 
-                    // Get the model name from path
-                    let modelName = 'Unknown';
-                    if (event.path) {
-                        // Extract last part after >>
-                        const pathParts = event.path.split('>>');
-                        modelName = pathParts[pathParts.length - 1] || event.path;
-                    }
-
                     html += `
                         <div class="result-item">
                             <div class="result-header">\${probabilityText}</div>
-                            <div><strong>Model:</strong> \${modelName}</div>
+                            <div><strong>Path:</strong> \${event.path || 'Unknown'}</div>
                             <div><strong>Region:</strong> \${result.organization} \${regionInfo.external_id || 'Unknown'}</div>
                             <div><strong>Prediction Period:</strong> \${startDate} - \${endDate}</div>
                             <div><strong>Stonyhurst Coordinates:</strong> (\${event.hv_hpc_x || 'N/A'}, \${event.hv_hpc_y || 'N/A'})</div>
-                            <div class="result-meta">Event ID: \${eventId}</div>
+                            <div class="result-meta">Event ID: \${event.url ? `<a href="\${event.url}" target="_blank">\${eventId}</a>` : eventId}</div>
                         </div>
                     `;
                 });

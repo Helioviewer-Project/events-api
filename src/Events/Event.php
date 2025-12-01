@@ -254,6 +254,27 @@ class Event extends Model
     }
 
     /**
+     * Get the API URL for this event.
+     *
+     * @return string The full API URL for this event
+     */
+    public function getUrl(): string
+    {
+        return self::getUrlById($this->id);
+    }
+
+    /**
+     * Get the API URL for an event by UUID.
+     *
+     * @param string $uuid The event UUID
+     * @return string The full API URL for the event
+     */
+    public static function getUrlById(string $uuid): string
+    {
+        return rtrim($_ENV['APIURL'] ?? 'https://events.helioviewer.org/', '/') . "/api/v2/events/{$uuid}";
+    }
+
+    /**
      * Many-to-many relationship with regions.
      *
      * @return \Illuminate\Database\Eloquent\Relations\BelongsToMany

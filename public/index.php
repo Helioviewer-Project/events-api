@@ -1,8 +1,11 @@
 <?php
 
-$container = require __DIR__ . '/../src/container.php';
+require __DIR__ . '/../src/bootstrap.php';
 
 use Slim\Factory\AppFactory;
+use Helioviewer\EventsApi\Utils\Container;
+
+$container = Container::getInstance();
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Helioviewer\EventsApi\Api\Controllers\EventController;

@@ -19,18 +19,21 @@ use Exception;
 class CommandLineCoordinator implements CoordinatorInterface
 {
     private ?CacheInterface $cache;
-    private string $binaryPath;
-    
+    private array $binaryPaths;
+
     /**
      * Constructor
-     * 
+     *
      * @param CacheInterface|null $cache Optional cache interface for caching transformations
-     * @param string $binaryPath Path to the hgs_to_hpc binary
+     * @param array $binaryPaths Optional array of binary paths, keyed by transformation name
      */
-    public function __construct(?CacheInterface $cache = null, string $binaryPath = '/usr/local/bin/hgs_to_hpc')
+    public function __construct(?CacheInterface $cache = null, array $binaryPaths = [])
     {
         $this->cache = $cache;
-        $this->binaryPath = $binaryPath;
+        $this->binaryPaths = array_merge([
+            'hgs_to_hpc' => '/usr/local/bin/hgs_to_hpc',
+            'hpc_earth_to_stonyhurst' => '/usr/local/bin/hpc_earth_to_stonyhurst',
+        ], $binaryPaths);
     }
     
     /**
@@ -77,82 +80,59 @@ class CommandLineCoordinator implements CoordinatorInterface
         if (empty($coordinateArray)) {
             return [];
         }
-        
+
         // Convert target timestamp to ISO format
         $parsedTimestamp = is_numeric($targetTimestamp) ? (int)$targetTimestamp : strtotime($targetTimestamp);
         $targetTime = date('Y-m-d\TH:i:s\Z', $parsedTimestamp);
-        
+
         // Create batch cache key based on signature of entire coordinate array
         if ($this->cache !== null) {
-            // Create a one-liner signature using serialize and md5
             $cacheKey = 'cmdline_batch:' . md5(serialize($coordinateArray) . $parsedTimestamp);
-            
-            // Check if entire batch is cached
+
             $cachedBatch = $this->cache->get($cacheKey);
             if ($cachedBatch !== null) {
                 return $cachedBatch;
             }
         }
-        
-        // Process all coordinates at once
-        $rotatedCoordinates = $this->executeCommand($coordinateArray, $targetTime);
-        
-        // Cache the entire batch result (only successful transformations get here)
-        if ($this->cache !== null && isset($cacheKey)) {
-            $this->cache->set($cacheKey, $rotatedCoordinates, 86400); // 24 hours TTL
-        }
-        
-        return $rotatedCoordinates;
-    }
-    
-    /**
-     * Execute the coordinate transformation command
-     * 
-     * @param array $coordinateArray Array of coordinates to transform
-     * @param string $targetTime Target time in ISO 8601 format
-     * @return array Array of transformed coordinates
-     * @throws CoordinatorException If transformation fails
-     */
-    private function executeCommand(array $coordinateArray, string $targetTime): array
-    {
+
         // Prepare input for the binary: multiple lines of "lat lon coord_time target_time"
         $input = '';
         foreach ($coordinateArray as $coord) {
             $coordTime = date('Y-m-d\TH:i:s\Z', $coord['coordinate_time']);
-            $input .= sprintf("%f %f %s %s\n", 
-                $coord['lat'], 
-                $coord['lon'], 
-                $coordTime, 
+            $input .= sprintf("%f %f %s %s\n",
+                $coord['lat'],
+                $coord['lon'],
+                $coordTime,
                 $targetTime
             );
         }
-        
+
         // Set environment variables for SunPy to use /tmp
         $env = [
             'SUNPY_CONFIGDIR' => '/tmp/sunpy_config',
             'XDG_CONFIG_HOME' => '/tmp',
             'HOME' => '/tmp'
         ];
-        
-        $process = proc_open($this->binaryPath, [
+
+        $process = proc_open($this->binaryPaths['hgs_to_hpc'], [
             0 => ["pipe", "r"],
             1 => ["pipe", "w"],
             2 => ["pipe", "w"]
         ], $pipes, null, $env);
-        
+
         if (!$process) {
             throw new CoordinatorException("Failed to start coordinate transformation process");
         }
-        
+
         fwrite($pipes[0], $input);
         fclose($pipes[0]);
-        
+
         $output = stream_get_contents($pipes[1]);
         $errors = stream_get_contents($pipes[2]);
         fclose($pipes[1]);
         fclose($pipes[2]);
         $exitCode = proc_close($process);
-        
+
         if ($exitCode !== 0) {
             $errorMsg = "Coordinate transformation failed";
             if ($errors) {
@@ -160,22 +140,21 @@ class CommandLineCoordinator implements CoordinatorInterface
             }
             throw new CoordinatorException($errorMsg);
         }
-        
-        // Check for empty output
+
         if (empty(trim($output))) {
             throw new CoordinatorException("No output received from coordinate transformation");
         }
-        
+
         // Parse output: expecting multiple lines of "hpc_x hpc_y"
-        $results = [];
+        $rotatedCoordinates = [];
         $lines = explode("\n", trim($output));
 
         foreach ($lines as $i => $line) {
             if (empty($line)) continue;
-            
+
             $coords = preg_split('/\s+/', trim($line));
             if (count($coords) >= 2) {
-                $results[] = [
+                $rotatedCoordinates[] = [
                     'hpc_x' => (float)$coords[0],
                     'hpc_y' => (float)$coords[1]
                 ];
@@ -183,17 +162,131 @@ class CommandLineCoordinator implements CoordinatorInterface
                 throw new CoordinatorException("Invalid output format for coordinate {$i}: " . $line);
             }
         }
-        
-        // If we got fewer results than inputs, throw exception
+
+        if (count($rotatedCoordinates) < count($coordinateArray)) {
+            throw new CoordinatorException(
+                sprintf("Output mismatch: expected %d results, got %d",
+                    count($coordinateArray),
+                    count($rotatedCoordinates)
+                )
+            );
+        }
+
+        // Cache the entire batch result
+        if ($this->cache !== null && isset($cacheKey)) {
+            $this->cache->set($cacheKey, $rotatedCoordinates, 86400); // 24 hours TTL
+        }
+
+        return $rotatedCoordinates;
+    }
+
+    /**
+     * Transform HPC coordinates (Earth observer) to Heliographic Stonyhurst
+     *
+     * Assumes point is on the solar surface (1 solar radius from Sun center).
+     *
+     * @param float $hpcX Helioprojective X in arcseconds
+     * @param float $hpcY Helioprojective Y in arcseconds
+     * @param string $obsTime Observation time in ISO 8601 format
+     * @return array Array with 'hgs_lon' and 'hgs_lat' keys in degrees
+     * @throws CoordinatorException If transformation fails
+     */
+    public function hpcEarthToStonyhurst(float $hpcX, float $hpcY, string $obsTime): array
+    {
+        $result = $this->hpcEarthToStonyhurstAll([
+            ['hpc_x' => $hpcX, 'hpc_y' => $hpcY, 'obstime' => $obsTime]
+        ]);
+
+        return $result[0];
+    }
+
+    /**
+     * Batch transform HPC coordinates (Earth observer) to Heliographic Stonyhurst
+     *
+     * @param array $coordinateArray Array with 'hpc_x', 'hpc_y', 'obstime' keys
+     * @return array Array of ['hgs_lon', 'hgs_lat'] in same order as input
+     * @throws CoordinatorException If transformation fails
+     */
+    public function hpcEarthToStonyhurstAll(array $coordinateArray): array
+    {
+        if (empty($coordinateArray)) {
+            return [];
+        }
+
+        // Prepare input: multiple lines of "hpc_x hpc_y obstime"
+        $input = '';
+        foreach ($coordinateArray as $coord) {
+            $obsTime = is_numeric($coord['obstime'])
+                ? date('Y-m-d\TH:i:s\Z', (int)$coord['obstime'])
+                : $coord['obstime'];
+            $input .= sprintf("%f %f %s\n", $coord['hpc_x'], $coord['hpc_y'], $obsTime);
+        }
+
+        // Set environment variables for SunPy
+        $env = [
+            'SUNPY_CONFIGDIR' => '/tmp/sunpy_config',
+            'XDG_CONFIG_HOME' => '/tmp',
+            'HOME' => '/tmp'
+        ];
+
+        $process = proc_open($this->binaryPaths['hpc_earth_to_stonyhurst'], [
+            0 => ["pipe", "r"],
+            1 => ["pipe", "w"],
+            2 => ["pipe", "w"]
+        ], $pipes, null, $env);
+
+        if (!$process) {
+            throw new CoordinatorException("Failed to start batch HPC to Stonyhurst transformation process");
+        }
+
+        fwrite($pipes[0], $input);
+        fclose($pipes[0]);
+
+        $output = stream_get_contents($pipes[1]);
+        $errors = stream_get_contents($pipes[2]);
+        fclose($pipes[1]);
+        fclose($pipes[2]);
+        $exitCode = proc_close($process);
+
+        if ($exitCode !== 0) {
+            $errorMsg = "Batch HPC to Stonyhurst transformation failed";
+            if ($errors) {
+                $errorMsg .= ": " . trim($errors);
+            }
+            throw new CoordinatorException($errorMsg);
+        }
+
+        if (empty(trim($output))) {
+            throw new CoordinatorException("No output received from batch HPC to Stonyhurst transformation");
+        }
+
+        // Parse output: multiple lines of "hgs_lon hgs_lat"
+        $results = [];
+        $lines = explode("\n", trim($output));
+
+        foreach ($lines as $i => $line) {
+            if (empty($line)) continue;
+
+            $coords = preg_split('/\s+/', trim($line));
+            if (count($coords) >= 2) {
+                $results[] = [
+                    'hgs_lon' => (float)$coords[0],
+                    'hgs_lat' => (float)$coords[1]
+                ];
+            } else {
+                throw new CoordinatorException("Invalid output format for coordinate {$i}: " . $line);
+            }
+        }
+
         if (count($results) < count($coordinateArray)) {
             throw new CoordinatorException(
-                sprintf("Output mismatch: expected %d results, got %d", 
-                    count($coordinateArray), 
+                sprintf("Output mismatch: expected %d results, got %d",
+                    count($coordinateArray),
                     count($results)
                 )
             );
         }
-        
+
         return $results;
     }
 }

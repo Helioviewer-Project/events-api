@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Helioviewer\EventsApi\Api;
 
+use Helioviewer\EventsApi\Events\Event;
 use Helioviewer\EventsApi\Storage\Json\LocalFile;
 use Helioviewer\EventsApi\Storage\Json\JsonStorageInterface;
 
@@ -55,7 +56,7 @@ class Legacy
             
             // Split path by >> delimiter
             $parts = explode('>>', $path);
-            
+
             if (count($parts) <= 2) {
                 // 1 or 2 level path - these are main branches
                 if (!isset($processedResult[$path])) {
@@ -81,6 +82,7 @@ class Legacy
                 
                 // Ensure parent exists
                 if (!isset($processedResult[$parentPath])) {
+
                     // Use dictionary values for parent if available
                     if (isset($this->dictionary[$parentPath])) {
                         $processedResult[$parentPath] = [
@@ -150,16 +152,15 @@ class Legacy
                     
                     // Load links JSON data using sharded storage
                     $linksData = $this->storage->loadById($uuid, 'links');
-                    
+
                     // If no link exists, create a default link to the event URL
                     if (empty($linksData)) {
-                        $apiUrl = rtrim($_ENV['APIURL'] ?? 'https://events.helioviewer.org/', '/');
                         $linksData = [
-                            'url' => "{$apiUrl}/api/v2/events/{$uuid}",
+                            'url' => Event::getUrlById($uuid),
                             'text' => 'Helioviewer Event URL'
                         ];
                     }
-                    
+
                     $eventArray['link'] = $linksData;
                 }
 
@@ -171,6 +172,8 @@ class Legacy
                         $eventArray['legacy_id'] = $eventArray['source']['flrID'];
                     } elseif(str_starts_with($eventArray['path'], 'CCMC>>Solar Flare Predictions>>') && count(explode('>>', $eventArray['path'])) === 3) {
                         $eventArray['legacy_id'] = hash('sha256', json_encode($eventArray['source']));
+                    } elseif(str_starts_with($eventArray['path'], 'RHESSI>>Solar Flares>>Flare') && count(explode('>>', $eventArray['path'])) === 3) {
+                        $eventArray['legacy_id'] = $eventArray['source']['id'];
                     } else {
                         $eventArray['legacy_id'] = $eventArray['id'];
                     }

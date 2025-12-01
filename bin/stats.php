@@ -3,11 +3,14 @@
 
 declare(strict_types=1);
 
-// === CONTAINER SETUP ===
-$container = require __DIR__ . '/../src/container.php';
+// === BOOTSTRAP ===
+require __DIR__ . '/../src/bootstrap.php';
 
 // === IMPORTS ===
+use Helioviewer\EventsApi\Utils\Container;
 use Helioviewer\EventsApi\Events\Sources\JsonSource;
+
+$container = Container::getInstance();
 
 echo "=== Events Database Statistics ===\n\n";
 
