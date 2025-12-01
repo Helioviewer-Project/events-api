@@ -343,13 +343,13 @@ class Collector
                             $this->json_storage->storeById($uuid, 'views', $tempViews);
                         }
                         
-                        // Save link data using sharded storage 
+                        // Save link data using sharded storage
                         if (!empty($tempLink)) {
                             $this->json_storage->storeById($uuid, 'links', $tempLink);
                         } else {
                             // Create default link structure when tempLink is empty
                             $defaultLink = [
-                                'url' => rtrim($_ENV['APIURL'], '/') . "/api/v2/events/{$uuid}",
+                                'url' => $savedEvent->getUrl(),
                                 'text' => 'Helioviewer Events API JSON'
                             ];
                             $this->json_storage->storeById($uuid, 'links', $defaultLink);
@@ -396,12 +396,9 @@ class Collector
                         $events[] = $savedEvent;
 
                         $processedCount++;
-                        
-                        // Get API URL for event view links
-                        $eventViewUrl = rtrim($_ENV['APIURL'], '/') . "/api/v2/events/{$savedEvent->id}";
-                        
+
                         // Log processing progress with event details and view link
-                        $this->logger->info("{$action} event: {$savedEvent->remote_id} | {$eventViewUrl}");
+                        $this->logger->info("{$action} event: {$savedEvent->remote_id} | {$savedEvent->getUrl()}");
 
                         
                     } catch (InvalidEventException | CoordinateResolutionException $e) {

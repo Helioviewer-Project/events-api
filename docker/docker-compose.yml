@@ -16,8 +16,6 @@ services:
   nginx:
     image: nginx:alpine
     container_name: eventsapi-nginx
-    ports:
-      - "8082:80"
     volumes:
       - ../:/u/apps/site:ro
       - ${APP_STORAGE:-../storage}:/u/apps/data:ro
@@ -26,6 +24,12 @@ services:
       - phpfpm
     networks:
       - eventsapi
+      - nginx-proxy
+    environment:
+      VIRTUAL_HOST: ${VIRTUAL_HOST}
+      VIRTUAL_PORT: 80
+      LETSENCRYPT_HOST: ${LETSENCRYPT_HOST}
+      LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL}
 
   phpfpm:
     <<: *phpfpm-common
@@ -74,3 +78,5 @@ volumes:
 networks:
   eventsapi:
     driver: bridge
+  nginx-proxy:
+    external: true

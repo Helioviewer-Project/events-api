@@ -19,6 +19,7 @@ RUN pip install --no-cache-dir "sunpy>=7.0"
 RUN pip install pyinstaller
 RUN pyinstaller --onefile --name heeq_to_stonyhurst /app/sunpy/heeq_to_stonyhurst.py
 RUN pyinstaller --onefile --name hgs_to_hpc /app/sunpy/hgs_to_hpc.py
+RUN pyinstaller --onefile --name hpc_earth_to_stonyhurst /app/sunpy/hpc_earth_to_stonyhurst.py
 
 # ---------- Stage 2: PHP-FPM with Python binaries ----------
 FROM php:8.4-fpm
@@ -48,7 +49,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy the binaries built in stage 1
 COPY --from=coord_builder /app/dist/heeq_to_stonyhurst /usr/local/bin/heeq_to_stonyhurst
 COPY --from=coord_builder /app/dist/hgs_to_hpc /usr/local/bin/hgs_to_hpc
+COPY --from=coord_builder /app/dist/hpc_earth_to_stonyhurst /usr/local/bin/hpc_earth_to_stonyhurst
 RUN chmod +x /usr/local/bin/heeq_to_stonyhurst
 RUN chmod +x /usr/local/bin/hgs_to_hpc
+RUN chmod +x /usr/local/bin/hpc_earth_to_stonyhurst
 
 WORKDIR /u/apps/site

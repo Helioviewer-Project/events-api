@@ -7,6 +7,17 @@
 
 return [
 
+    // RHESSI
+    "RHESSI>>Solar Flares" => [
+        "name" => "Solar Flares",
+        "pin" => "F2",
+    ],
+    "RHESSI>>Solar Flares>>Flare" => [
+        "name" => "Flare",
+        "contact" => " ",
+        "url" => "https://umbra.nascom.nasa.gov/rhessi/rhessi_extras/flare_images_v2/hsi_flare_image_archive.html"
+    ],
+
     // CCMC DONKI
     "CCMC>>DONKI" => [
         "name" => "DONKI",
