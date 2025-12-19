@@ -35,6 +35,7 @@ use Illuminate\Database\Eloquent\Builder;
  * @property int $coordinate_time Time when coordinates were observed as Unix timestamp
  * @property float|null $hv_hpc_x Helioviewer HPC X coordinate
  * @property float|null $hv_hpc_y Helioviewer HPC Y coordinate
+ * @property string|null $coordinate_system Coordinate system (stonyhurst, helioprojective)
  * @property string|null $label Human-readable event label
  * @property string $short_label Shorter event label
  * @property string|null $legacy_version Legacy version identifier
@@ -97,6 +98,7 @@ class Event extends Model
         'coordinate_time',
         'hv_hpc_x',
         'hv_hpc_y',
+        'coordinate_system',
         'label',
         'short_label',
         'legacy_version',

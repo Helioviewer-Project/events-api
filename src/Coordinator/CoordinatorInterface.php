@@ -15,8 +15,8 @@ namespace Helioviewer\EventsApi\Coordinator;
 interface CoordinatorInterface
 {
     /**
-     * Rotate Stonyhurst (HGS) coordinates to Helioprojective Cartesian (HPC) at target time
-     * 
+     * Transform Stonyhurst (HGS) coordinates to Helioprojective Cartesian (HPC) at target time
+     *
      * @param float $latitude HGS latitude
      * @param float $longitude HGS longitude
      * @param string $coordinateTime Coordinate time in ISO 8601 format
@@ -24,15 +24,15 @@ interface CoordinatorInterface
      * @return array Array with 'hpc_x' and 'hpc_y' keys containing Helioprojective Cartesian coordinates
      * @throws CoordinatorException If coordinate transformation fails
      */
-    public function rotate(
+    public function stonyhurstToHelioprojective(
         float $latitude,
         float $longitude,
         string $coordinateTime,
         string $targetTime
     ): array;
-    
+
     /**
-     * Batch rotate multiple Stonyhurst coordinates to Helioprojective Cartesian
+     * Batch transform multiple Stonyhurst coordinates to Helioprojective Cartesian
      *
      * @param array $coordinateArray Array of coordinate data with 'lat', 'lon', 'coordinate_time' keys
      * Example: [
@@ -46,7 +46,7 @@ interface CoordinatorInterface
      *     ['hpc_x' => -234.56, 'hpc_y' => 78.90]
      * ]
      */
-    public function rotateAll(array $coordinateArray, $targetTimestamp): array;
+    public function stonyhurstToHelioprojectiveBatch(array $coordinateArray, $targetTimestamp): array;
 
     /**
      * Transform Helioprojective Cartesian (HPC) coordinates to Heliographic Stonyhurst (HGS)
@@ -59,7 +59,7 @@ interface CoordinatorInterface
      * @return array Array with 'hgs_lon' and 'hgs_lat' keys in degrees
      * @throws CoordinatorException If coordinate transformation fails
      */
-    public function hpcEarthToStonyhurst(float $hpcX, float $hpcY, string $obsTime): array;
+    public function helioprojectiveFromEarthToStonyhurst(float $hpcX, float $hpcY, string $obsTime): array;
 
     /**
      * Batch transform HPC coordinates to Heliographic Stonyhurst
@@ -78,5 +78,5 @@ interface CoordinatorInterface
      * ]
      * @throws CoordinatorException If coordinate transformation fails
      */
-    public function hpcEarthToStonyhurstAll(array $coordinateArray): array;
+    public function helioprojectiveFromEarthToStonyhurstBatch(array $coordinateArray): array;
 }

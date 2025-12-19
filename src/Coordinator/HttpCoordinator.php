@@ -56,7 +56,7 @@ class HttpCoordinator implements CoordinatorInterface
      * @return array Array with 'hpc_x' and 'hpc_y' keys containing Helioprojective Cartesian coordinates
      * @throws Exception If coordinate transformation fails
      */
-    public function rotate(
+    public function stonyhurstToHelioprojective(
         float $latitude,
         float $longitude,
         string $coordinateTime,
@@ -157,7 +157,7 @@ class HttpCoordinator implements CoordinatorInterface
      * @param int|string $targetTimestamp Target time for coordinate rotation
      * @return array Array of rotated coordinates in same order as input
      */
-    public function rotateAll(array $coordinateArray, $targetTimestamp): array
+    public function stonyhurstToHelioprojectiveBatch(array $coordinateArray, $targetTimestamp): array
     {
         // Convert target timestamp to ISO format
         $parsedTimestamp = is_numeric($targetTimestamp) ? (int)$targetTimestamp : strtotime($targetTimestamp);
@@ -327,7 +327,7 @@ class HttpCoordinator implements CoordinatorInterface
      * @return array
      * @throws BadMethodCallException Always thrown - not implemented
      */
-    public function hpcEarthToStonyhurst(float $hpcX, float $hpcY, string $obsTime): array
+    public function helioprojectiveFromEarthToStonyhurst(float $hpcX, float $hpcY, string $obsTime): array
     {
         throw new BadMethodCallException('HPC to Stonyhurst coordinates transformation is not implemented in the Coordinator API (yet!)');
     }
@@ -339,7 +339,7 @@ class HttpCoordinator implements CoordinatorInterface
      * @return array
      * @throws BadMethodCallException Always thrown - not implemented
      */
-    public function hpcEarthToStonyhurstAll(array $coordinateArray): array
+    public function helioprojectiveFromEarthToStonyhurstBatch(array $coordinateArray): array
     {
         throw new BadMethodCallException('Batch HPC to Stonyhurst coordinates transformation is not implemented in the Coordinator API (yet!)');
     }

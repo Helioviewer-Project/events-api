@@ -301,6 +301,7 @@ class DonkiCmeProcessor implements ProcessorInterface
             'coordinate_time' => $coordinates['coordinate_time'],
             'hv_hpc_x' => $coordinates['longitude'], // Map longitude to HPC X coordinate
             'hv_hpc_y' => $coordinates['latitude'],  // Map latitude to HPC Y coordinate
+            'coordinate_system' => 'stonyhurst',
             'label' => $translatedEvent['label'],
             'short_label' => $translatedEvent['short_label'] ?? $translatedEvent['label'],
             'legacy_version' => $translatedEvent['version'] ?? null,

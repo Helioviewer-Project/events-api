@@ -287,6 +287,7 @@ class Processor implements ProcessorInterface
             'coordinate_time' => strtotime($coordinateTime),
             'hv_hpc_x' => $coordinates['longitude'],  // longitude maps to X
             'hv_hpc_y' => $coordinates['latitude'],   // latitude maps to Y
+            'coordinate_system' => 'stonyhurst',
         ];
 
         // Collect all region information

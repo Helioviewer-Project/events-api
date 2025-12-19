@@ -125,7 +125,7 @@ class EventController extends Controller
         // Batch rotate coordinates using plucked array
         try {
             $startTime = microtime(true);
-            $rotatedCoordinates = $this->coordinator->rotateAll($pluckedArray, $parsedTimestamp);
+            $rotatedCoordinates = $this->coordinator->stonyhurstToHelioprojectiveBatch($pluckedArray, $parsedTimestamp);
             $duration = round((microtime(true) - $startTime) * 1000, 2); // Convert to milliseconds
             $this->logger->debug("API v1: HttpCoordinator succeeded for " . count($pluckedArray) . " coordinates in {$duration}ms");
 
@@ -135,7 +135,7 @@ class EventController extends Controller
             // Fallback to backup coordinator (CommandLineCoordinator)
             try {
                 $startTime = microtime(true);
-                $rotatedCoordinates = $this->backupCoordinator->rotateAll($pluckedArray, $parsedTimestamp);
+                $rotatedCoordinates = $this->backupCoordinator->stonyhurstToHelioprojectiveBatch($pluckedArray, $parsedTimestamp);
                 $duration = round((microtime(true) - $startTime) * 1000, 2); // Convert to milliseconds
                 $this->logger->debug("API v1: CommandLineCoordinator fallback succeeded in {$duration}ms");
             } catch (\Helioviewer\EventsApi\Coordinator\CoordinatorException $backupError) {
