@@ -197,76 +197,58 @@ class EventController extends Controller
      */
     public function getByObservation(Request $request, Response $response, array $args): Response
     {
+        $source = strtoupper($args['source']);
+
+        // Validate source
+        if (!in_array($source, ['CCMC', 'HEK', 'WSA', 'RHESSI'])) {
+            return $this->error($response, 'Invalid source. Must be one of: CCMC, HEK, WSA, RHESSI', 400);
+        }
+
+        $timestamp = $args['timestamp'];
+        
+        // Parse timestamp using TimestampParser
         try {
-            $source = $args['source'];
-            $timestamp = TimestampParser::parseTimestamp($args['timestamp']);
+            $parsedTimestamp = TimestampParser::parseTimestamp($timestamp);
+        } catch (\InvalidArgumentException $e) {
+            return $this->error($response, 'Invalid timestamp or date format: ' . $e->getMessage(), 400);
+        }
 
-            // Map source to source_id
-            $sourceMaps = [
-                'ccmc.donki' => JsonSource::CCMC,
-                'ccmc.gong' => JsonSource::CCMC,
-                'ccmc' => JsonSource::CCMC,
-                'rhessi' => JsonSource::RHESSI,
-                'hek' => JsonSource::HEK,
-            ];
+        // Get events that were happening at the specified timestamp using repository
+        $eventsArray = $this->eventRepository->findActiveAtTime($source, $parsedTimestamp);
 
-            if (!isset($sourceMaps[$source])) {
-                return $this->error($response, "Unknown source: {$source}", 400);
+        $this->logger->debug("API v2: Found " . count($eventsArray) . " events for {$source} at " . date('Y-m-d H:i:s', $parsedTimestamp));
+
+        // Rotate all events to target observation time
+        $eventsWithRotatedCoords = $this->rotateAllEvents($eventsArray, $parsedTimestamp);
+
+        // Format events
+        $formattedEvents = array_map(function ($e) {
+            $uuid = $e['id'];
+
+            // Format timestamps
+            foreach (['start', 'end', 'peak', 'coordinate_time'] as $field) {
+                if (!empty($e[$field])) {
+                    $e[$field] = $this->formatTimestamp($e[$field]);
+                }
             }
 
-            $sourceId = $sourceMaps[$source];
+            // Load source JSON data
+            $sourceData = $this->jsonStorage->load("/u/apps/data/sources/{$uuid}.json");
+            $e['source'] = $sourceData ?: null;
 
-            // Query events within 6 hours before and after timestamp
-            $startTime = $timestamp - (6 * 3600);
-            $endTime = $timestamp + (6 * 3600);
+            // Load views JSON data
+            $viewsData = $this->jsonStorage->load("/u/apps/data/views/{$uuid}.json");
+            $e['views'] = $viewsData ?: [];
 
-            $events = $this->eventRepository->findActiveAtTime($source, $timestamp);
+            // Load links JSON data
+            $linksData = $this->jsonStorage->load("/u/apps/data/links/{$uuid}.json");
+            $e['link'] = $linksData;
 
-            // Coordinators are used for coordinate transformation, not needed here
-            $coordinates = null;
+            return $e;
+        }, $eventsWithRotatedCoords);
 
-            // Format events
-            $formattedEvents = array_map(function ($event) {
-                $eventArray = $event->toArray();
-                $uuid = $eventArray['id'];
+        return $this->json($response, $formattedEvents);
 
-                // Format timestamps
-                foreach (['start', 'end', 'peak', 'coordinate_time'] as $field) {
-                    if (!empty($eventArray[$field])) {
-                        $eventArray[$field] = $this->formatTimestamp($eventArray[$field]);
-                    }
-                }
-
-                // Load source JSON data
-                $sourceData = $this->jsonStorage->load("/u/apps/data/sources/{$uuid}.json");
-                $eventArray['source'] = $sourceData ?: null;
-
-                // Load views JSON data
-                $viewsData = $this->jsonStorage->load("/u/apps/data/views/{$uuid}.json");
-                $eventArray['views'] = $viewsData ?: [];
-
-                // Load links JSON data
-                $linksData = $this->jsonStorage->load("/u/apps/data/links/{$uuid}.json");
-                $eventArray['link'] = $linksData;
-
-                return $eventArray;
-            }, $events);
-
-            $result = [
-                'observation' => [
-                    'timestamp' => $timestamp,
-                    'coordinates' => $coordinates,
-                ],
-                'events' => $formattedEvents,
-                'count' => count($formattedEvents),
-            ];
-
-            return $this->json($response, $result);
-
-        } catch (\Exception $e) {
-            $this->logger->error("Failed to get events by observation V2: " . $e->getMessage());
-            return $this->error($response, 'Failed to retrieve events');
-        }
     }
 
     /**
