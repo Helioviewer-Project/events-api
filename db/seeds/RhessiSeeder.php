@@ -252,12 +252,12 @@ class RhessiSeeder extends AbstractSeed
 
             // Try primary coordinator, fall back to backup
             try {
-                $results = $this->coordinator->hpcEarthToStonyhurstAll($coordinateArray);
+                $results = $this->coordinator->helioprojectiveFromEarthToStonyhurstBatch($coordinateArray);
             } catch (\Exception $e) {
                 if ($chunkIndex === 0) {
                     echo "Primary coordinator failed: " . $e->getMessage() . " - using backup coordinator.\n";
                 }
-                $results = $this->backup_coordinator->hpcEarthToStonyhurstAll($coordinateArray);
+                $results = $this->backup_coordinator->helioprojectiveFromEarthToStonyhurstBatch($coordinateArray);
             }
 
             // Add to map

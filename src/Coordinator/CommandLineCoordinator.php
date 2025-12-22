@@ -6,6 +6,7 @@ namespace Helioviewer\EventsApi\Coordinator;
 
 use Psr\SimpleCache\CacheInterface;
 use Exception;
+use BadMethodCallException;
 
 /**
  * Command Line Coordinator Implementation
@@ -46,14 +47,14 @@ class CommandLineCoordinator implements CoordinatorInterface
      * @return array Array with 'hpc_x' and 'hpc_y' keys containing Helioprojective Cartesian coordinates
      * @throws Exception If coordinate transformation fails
      */
-    public function rotate(
+    public function stonyhurstToHelioprojective(
         float $latitude,
         float $longitude,
         string $coordinateTime,
         string $targetTime
     ): array {
         // No caching for individual coordinates, use batch method
-        $result = $this->rotateAll([
+        $result = $this->stonyhurstToHelioprojectiveBatch([
             ['lat' => $latitude, 'lon' => $longitude, 'coordinate_time' => strtotime($coordinateTime)]
         ], strtotime($targetTime));
         
@@ -75,7 +76,7 @@ class CommandLineCoordinator implements CoordinatorInterface
      *     ['hpc_x' => -234.56, 'hpc_y' => 78.90]
      * ]
      */
-    public function rotateAll(array $coordinateArray, $targetTimestamp): array
+    public function stonyhurstToHelioprojectiveBatch(array $coordinateArray, $targetTimestamp): array
     {
         if (empty($coordinateArray)) {
             return [];
@@ -94,6 +95,9 @@ class CommandLineCoordinator implements CoordinatorInterface
                 return $cachedBatch;
             }
         }
+
+        // Track original keys for result mapping
+        $originalKeys = array_keys($coordinateArray);
 
         // Prepare input for the binary: multiple lines of "lat lon coord_time target_time"
         $input = '';
@@ -154,7 +158,8 @@ class CommandLineCoordinator implements CoordinatorInterface
 
             $coords = preg_split('/\s+/', trim($line));
             if (count($coords) >= 2) {
-                $rotatedCoordinates[] = [
+                $originalKey = $originalKeys[$i];
+                $rotatedCoordinates[$originalKey] = [
                     'hpc_x' => (float)$coords[0],
                     'hpc_y' => (float)$coords[1]
                 ];
@@ -191,9 +196,9 @@ class CommandLineCoordinator implements CoordinatorInterface
      * @return array Array with 'hgs_lon' and 'hgs_lat' keys in degrees
      * @throws CoordinatorException If transformation fails
      */
-    public function hpcEarthToStonyhurst(float $hpcX, float $hpcY, string $obsTime): array
+    public function helioprojectiveFromEarthToStonyhurst(float $hpcX, float $hpcY, string $obsTime): array
     {
-        $result = $this->hpcEarthToStonyhurstAll([
+        $result = $this->helioprojectiveFromEarthToStonyhurstBatch([
             ['hpc_x' => $hpcX, 'hpc_y' => $hpcY, 'obstime' => $obsTime]
         ]);
 
@@ -207,7 +212,7 @@ class CommandLineCoordinator implements CoordinatorInterface
      * @return array Array of ['hgs_lon', 'hgs_lat'] in same order as input
      * @throws CoordinatorException If transformation fails
      */
-    public function hpcEarthToStonyhurstAll(array $coordinateArray): array
+    public function helioprojectiveFromEarthToStonyhurstBatch(array $coordinateArray): array
     {
         if (empty($coordinateArray)) {
             return [];
@@ -288,5 +293,18 @@ class CommandLineCoordinator implements CoordinatorInterface
         }
 
         return $results;
+    }
+
+    /**
+     * Batch transform HPC coordinates to HPC at a different observation time
+     *
+     * @param array $coordinateArray Array of coordinates with 'x', 'y', 'coordinate_time' keys
+     * @param int|string $targetTimestamp Target observation time
+     * @return array Array of transformed coordinates with same keys as input
+     * @throws BadMethodCallException Always thrown - not implemented
+     */
+    public function helioprojectiveToHelioprojectiveBatch(array $coordinateArray, $targetTimestamp): array
+    {
+        throw new BadMethodCallException('HPC to HPC batch transformation is not implemented in CommandLineCoordinator');
     }
 }

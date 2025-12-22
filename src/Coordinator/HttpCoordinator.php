@@ -56,7 +56,7 @@ class HttpCoordinator implements CoordinatorInterface
      * @return array Array with 'hpc_x' and 'hpc_y' keys containing Helioprojective Cartesian coordinates
      * @throws Exception If coordinate transformation fails
      */
-    public function rotate(
+    public function stonyhurstToHelioprojective(
         float $latitude,
         float $longitude,
         string $coordinateTime,
@@ -157,14 +157,15 @@ class HttpCoordinator implements CoordinatorInterface
      * @param int|string $targetTimestamp Target time for coordinate rotation
      * @return array Array of rotated coordinates in same order as input
      */
-    public function rotateAll(array $coordinateArray, $targetTimestamp): array
+    public function stonyhurstToHelioprojectiveBatch(array $coordinateArray, $targetTimestamp): array
     {
         // Convert target timestamp to ISO format
         $parsedTimestamp = is_numeric($targetTimestamp) ? (int)$targetTimestamp : strtotime($targetTimestamp);
         $targetTime = date('Y-m-d\TH:i:s\Z', $parsedTimestamp);
 
-        // Prepare coordinates for batch request
+        // Prepare coordinates for batch request, track original keys
         $coordinates = [];
+        $originalKeys = array_keys($coordinateArray);
         foreach ($coordinateArray as $coord) {
             $coordinates[] = [
                 'lat' => $coord['lat'],
@@ -265,15 +266,13 @@ class HttpCoordinator implements CoordinatorInterface
                 $this->logger->debug("HttpCoordinator | Received {$resultCount} transformed coordinates from service");
             }
 
-            // Format the results
+            // Format the results, restoring original keys
             $rotatedCoordinates = [];
             foreach ($responseData['coordinates'] as $index => $result) {
-                $rotatedCoordinates[$index] = [
+                $originalKey = $originalKeys[$index];
+                $rotatedCoordinates[$originalKey] = [
                     'hpc_x' => $result['x'],
                     'hpc_y' => $result['y'],
-                    'original_hgs_lat' => $coordinateArray[$index]['lat'],
-                    'original_hgs_lon' => $coordinateArray[$index]['lon'],
-                    'target_time' => $targetTime
                 ];
             }
 
@@ -327,7 +326,7 @@ class HttpCoordinator implements CoordinatorInterface
      * @return array
      * @throws BadMethodCallException Always thrown - not implemented
      */
-    public function hpcEarthToStonyhurst(float $hpcX, float $hpcY, string $obsTime): array
+    public function helioprojectiveFromEarthToStonyhurst(float $hpcX, float $hpcY, string $obsTime): array
     {
         throw new BadMethodCallException('HPC to Stonyhurst coordinates transformation is not implemented in the Coordinator API (yet!)');
     }
@@ -339,8 +338,110 @@ class HttpCoordinator implements CoordinatorInterface
      * @return array
      * @throws BadMethodCallException Always thrown - not implemented
      */
-    public function hpcEarthToStonyhurstAll(array $coordinateArray): array
+    public function helioprojectiveFromEarthToStonyhurstBatch(array $coordinateArray): array
     {
         throw new BadMethodCallException('Batch HPC to Stonyhurst coordinates transformation is not implemented in the Coordinator API (yet!)');
+    }
+
+    /**
+     * Batch transform HPC coordinates to HPC at a different observation time
+     *
+     * @param array $coordinateArray Array of coordinates with 'x', 'y', 'coordinate_time' keys
+     * @param int|string $targetTimestamp Target observation time
+     * @return array Array of transformed coordinates with same keys as input
+     * @throws CoordinatorException If transformation fails
+     */
+    public function helioprojectiveToHelioprojectiveBatch(array $coordinateArray, $targetTimestamp): array
+    {
+        if (empty($coordinateArray)) {
+            return [];
+        }
+
+        // Convert target timestamp to ISO format
+        $parsedTimestamp = is_numeric($targetTimestamp) ? (int)$targetTimestamp : strtotime($targetTimestamp);
+        $targetTime = date('Y-m-d\TH:i:s\Z', $parsedTimestamp);
+
+        // Prepare coordinates for batch request, track original keys
+        $coordinates = [];
+        $originalKeys = array_keys($coordinateArray);
+        foreach ($coordinateArray as $coord) {
+            $coordinates[] = [
+                'x' => $coord['x'],
+                'y' => $coord['y'],
+                'coord_time' => date('Y-m-d\TH:i:s\Z', $coord['coordinate_time'])
+            ];
+        }
+
+        if ($this->logger) {
+            $coordCount = count($coordinates);
+            $this->logger->debug("HttpCoordinator | Prepared {$coordCount} HPC coordinates for batch transformation");
+        }
+
+        // Generate unique cache key
+        $cacheKey = 'hpc_batch:' . md5(serialize($coordinates) . $targetTime);
+
+        // Check cache first
+        if ($this->cache !== null) {
+            $cachedResult = $this->cache->get($cacheKey);
+            if ($cachedResult !== null) {
+                if ($this->logger) {
+                    $this->logger->debug("HttpCoordinator | Cache HIT for HPC batch transformation");
+                }
+                return $cachedResult;
+            }
+        }
+
+        // Make POST request to coordinator service
+        try {
+            if ($this->logger) {
+                $url = HV_COORDINATOR_URL . '/hpc';
+                $this->logger->debug("HttpCoordinator | Making POST request to {$url}");
+            }
+
+            $response = $this->client->postJson(
+                HV_COORDINATOR_URL . '/hpc',
+                [
+                    'coordinates' => $coordinates,
+                    'target' => $targetTime
+                ]
+            );
+
+            if ($response->getStatusCode() !== 200) {
+                throw new CoordinatorException("Coordinator service returned status: " . $response->getStatusCode());
+            }
+
+            $responseData = json_decode($response->getBody()->getContents(), true);
+
+            if (!isset($responseData['coordinates']) || !is_array($responseData['coordinates'])) {
+                throw new CoordinatorException("Invalid response format from coordinator service");
+            }
+
+            // Format the results, restoring original keys
+            $transformedCoordinates = [];
+            foreach ($responseData['coordinates'] as $index => $result) {
+                $originalKey = $originalKeys[$index];
+                $transformedCoordinates[$originalKey] = [
+                    'hpc_x' => $result['x'],
+                    'hpc_y' => $result['y'],
+                ];
+            }
+
+            // Cache the result
+            if ($this->cache !== null) {
+                $this->cache->set($cacheKey, $transformedCoordinates, 86400);
+            }
+
+            if ($this->logger) {
+                $this->logger->debug("HttpCoordinator | HPC batch transformation completed: " . count($transformedCoordinates) . " coordinates");
+            }
+
+            return $transformedCoordinates;
+
+        } catch (Exception $e) {
+            if ($this->logger) {
+                $this->logger->error("HttpCoordinator | HPC batch transformation failed: " . $e->getMessage());
+            }
+            throw new CoordinatorException("Failed to transform HPC coordinates: " . $e->getMessage());
+        }
     }
 }
