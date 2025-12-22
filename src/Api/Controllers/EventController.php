@@ -7,6 +7,7 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 use Helioviewer\EventsApi\Utils\TimestampParser;
 use Helioviewer\EventsApi\Api\Legacy as LegacyEventResponse;
 use Helioviewer\EventsApi\Events\Sources\JsonSource;
+use Helioviewer\EventsApi\Events\Event;
 
 class EventController extends Controller
 {
@@ -71,6 +72,90 @@ class EventController extends Controller
         }
     }
 
+
+    public function rotateAllEvents(array $eventsArray, int $targetTimestamp): array
+    {
+        // Filter stonyhurst events with valid coordinates
+        $stonyhurstCoords = array_reduce(
+            array_filter($eventsArray, fn($e) => ($e['coordinate_system'] ?? null) === 'stonyhurst'),
+            function ($carry, $event) {
+                $lat = $event['hv_hpc_y'];
+                if ($lat >= -90 && $lat <= 90) {
+                    $carry[$event['id']] = [
+                        'lat' => $event['hv_hpc_y'],
+                        'lon' => $event['hv_hpc_x'],
+                        'coordinate_time' => $event['coordinate_time'],
+                    ];
+                }
+                return $carry;
+            },
+            []
+        );
+
+
+        // Transform stonyhurst coordinates
+        $stonyhurstRotatedCoordinates = [];
+        if (!empty($stonyhurstCoords)) {
+            try {
+                $stonyhurstRotatedCoordinates = $this->coordinator->stonyhurstToHelioprojectiveBatch($stonyhurstCoords, $targetTimestamp);
+            } catch (\Helioviewer\EventsApi\Coordinator\CoordinatorException $e) {
+                $this->logger->warning("API v1: HttpCoordinator failed process stonyhurstCoords : " . $e->getMessage());
+                try {
+                    $stonyhurstRotatedCoordinates = $this->backupCoordinator->stonyhurstToHelioprojectiveBatch($stonyhurstCoords, $targetTimestamp);
+                } catch (\Helioviewer\EventsApi\Coordinator\CoordinatorException $backupError) {
+                    $this->logger->error("API v1: Both coordinators failed process stonyhurstCoords  " . $backupError->getMessage());
+                }
+            }
+        }
+
+
+        // Filter helioprojective events (prepared for future use)
+        $helioprojectiveCoords = array_reduce(
+            array_filter($eventsArray, fn($e) => ($e['coordinate_system'] ?? null) === 'helioprojective'),
+            function ($carry, $event) {
+                $carry[$event['id']] = [
+                    'x' => $event['hv_hpc_x'],
+                    'y' => $event['hv_hpc_y'],
+                    'coordinate_time' => $event['coordinate_time'],
+                ];
+                return $carry;
+            },
+            []
+        );
+
+
+        $helioprojectiveRotatedCoords = [];
+        if (!empty($helioprojectiveCoords)) {
+            try {
+                $helioprojectiveRotatedCoords = $this->coordinator->helioprojectiveToHelioprojectiveBatch($helioprojectiveCoords, $targetTimestamp);
+            } catch (\Helioviewer\EventsApi\Coordinator\CoordinatorException $e) {
+                $this->logger->warning("API v1: HttpCoordinator failed process helioprojectiveCoords : " . $e->getMessage());
+                try {
+                    $helioprojectiveRotatedCoords = $this->backupCoordinator->helioprojectiveToHelioprojectiveBatch($helioprojectiveCoords, $targetTimestamp);
+                } catch (\Helioviewer\EventsApi\Coordinator\CoordinatorException $backupError) {
+                    $this->logger->error("API v1: Both coordinators failed process helioprojectiveCoords  " . $backupError->getMessage());
+                }
+            }
+        }
+
+        // Merge both coordinate arrays (preserves event IDs as keys)
+        $rotatedCoordinates = $stonyhurstRotatedCoordinates + $helioprojectiveRotatedCoords;
+
+        // Apply rotated coordinates to events
+        $result = [];
+        foreach ($eventsArray as $event) {
+            $eventId = $event['id'];
+            if (isset($rotatedCoordinates[$eventId])) {
+                $rotated = $rotatedCoordinates[$eventId];
+                $event['hv_hpc_x'] = $rotated['hpc_x'];
+                $event['hv_hpc_y'] = $rotated['hpc_y'];
+            }
+            $result[] = $event;
+        }
+
+        return $result;
+    }
+
     /**
      * Get events by observation (V1 API)
      */
@@ -94,74 +179,11 @@ class EventController extends Controller
 
         // Get events that were happening at the specified timestamp using repository
         $eventsArray = $this->eventRepository->findActiveAtTime($source, $parsedTimestamp);
+
         $this->logger->debug("API v1: Found " . count($eventsArray) . " events for {$source} at " . date('Y-m-d H:i:s', $parsedTimestamp));
 
-        // Filter out events with invalid latitude values and track them
-        $validEvents = [];
-
-        foreach ($eventsArray as $event) {
-            $lat = $event['hv_hpc_y'];
-
-            // Check if latitude is outside valid range (-90 to 90)
-            if ($lat < -90 || $lat > 90) {
-                $this->logger->warning("Event has invalid latitude {$lat}: /api/v2/events/{$event['id']}/source");
-            } else {
-                $validEvents[] = $event; // Keep original index for coordinate mapping
-            }
-        }
-
-        // Create plucked array with lat, lon, and coordinate_time for batch processing
-        $pluckedArray = [];
-        foreach ($validEvents as $index => $event) {
-            $pluckedArray[$index] = [
-                'lon' => $event['hv_hpc_x'],
-                'lat' => $event['hv_hpc_y'],
-                'coordinate_time' => $event['coordinate_time'],
-            ];
-        }
-
-        $rotatedCoordinates = null;
-
-        // Batch rotate coordinates using plucked array
-        try {
-            $startTime = microtime(true);
-            $rotatedCoordinates = $this->coordinator->stonyhurstToHelioprojectiveBatch($pluckedArray, $parsedTimestamp);
-            $duration = round((microtime(true) - $startTime) * 1000, 2); // Convert to milliseconds
-            $this->logger->debug("API v1: HttpCoordinator succeeded for " . count($pluckedArray) . " coordinates in {$duration}ms");
-
-        } catch (\Helioviewer\EventsApi\Coordinator\CoordinatorException $e) {
-
-            $this->logger->warning("API v1: HttpCoordinator failed: " . $e->getMessage());
-            // Fallback to backup coordinator (CommandLineCoordinator)
-            try {
-                $startTime = microtime(true);
-                $rotatedCoordinates = $this->backupCoordinator->stonyhurstToHelioprojectiveBatch($pluckedArray, $parsedTimestamp);
-                $duration = round((microtime(true) - $startTime) * 1000, 2); // Convert to milliseconds
-                $this->logger->debug("API v1: CommandLineCoordinator fallback succeeded in {$duration}ms");
-            } catch (\Helioviewer\EventsApi\Coordinator\CoordinatorException $backupError) {
-                // Both coordinators failed
-                $this->logger->error("API v1: Both coordinators failed: " . $backupError->getMessage());
-            }
-        }
-
-        // If both coordinators failed, return error
-        if ($rotatedCoordinates === null) {
-            return $this->error($response, 'Coordinate transformation service unavailable', 500);
-        }
-
-        // Apply rotated coordinates to valid events ensuring same ordering
-        $eventsWithRotatedCoords = [];
-        foreach ($validEvents as $index => $event) {
-            // Add rotated coordinates using the same index to ensure ordering
-            if (isset($rotatedCoordinates[$index])) {
-                // Map hpc_x/hpc_y to hv_hpc_x/hv_hpc_y for backwards compatibility
-                $rotated = $rotatedCoordinates[$index];
-                $event['hv_hpc_x'] = $rotated['hpc_x'] ?? null;
-                $event['hv_hpc_y'] = $rotated['hpc_y'] ?? null;
-            }
-
-            $eventsWithRotatedCoords[] = $event;
-        }
+        // Rotate all events to target observation time
+        $eventsWithRotatedCoords = $this->rotateAllEvents($eventsArray, $parsedTimestamp);
 
         // Use Legacy formatter to format events
         $legacyResponse = new LegacyEventResponse($this->jsonStorage);

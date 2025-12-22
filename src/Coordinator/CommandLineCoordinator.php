@@ -6,6 +6,7 @@ namespace Helioviewer\EventsApi\Coordinator;
 
 use Psr\SimpleCache\CacheInterface;
 use Exception;
+use BadMethodCallException;
 
 /**
  * Command Line Coordinator Implementation
@@ -95,6 +96,9 @@ class CommandLineCoordinator implements CoordinatorInterface
             }
         }
 
+        // Track original keys for result mapping
+        $originalKeys = array_keys($coordinateArray);
+
         // Prepare input for the binary: multiple lines of "lat lon coord_time target_time"
         $input = '';
         foreach ($coordinateArray as $coord) {
@@ -154,7 +158,8 @@ class CommandLineCoordinator implements CoordinatorInterface
 
             $coords = preg_split('/\s+/', trim($line));
             if (count($coords) >= 2) {
-                $rotatedCoordinates[] = [
+                $originalKey = $originalKeys[$i];
+                $rotatedCoordinates[$originalKey] = [
                     'hpc_x' => (float)$coords[0],
                     'hpc_y' => (float)$coords[1]
                 ];
@@ -288,5 +293,18 @@ class CommandLineCoordinator implements CoordinatorInterface
         }
 
         return $results;
+    }
+
+    /**
+     * Batch transform HPC coordinates to HPC at a different observation time
+     *
+     * @param array $coordinateArray Array of coordinates with 'x', 'y', 'coordinate_time' keys
+     * @param int|string $targetTimestamp Target observation time
+     * @return array Array of transformed coordinates with same keys as input
+     * @throws BadMethodCallException Always thrown - not implemented
+     */
+    public function helioprojectiveToHelioprojectiveBatch(array $coordinateArray, $targetTimestamp): array
+    {
+        throw new BadMethodCallException('HPC to HPC batch transformation is not implemented in CommandLineCoordinator');
     }
 }
