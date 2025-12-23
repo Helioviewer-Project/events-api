@@ -207,15 +207,17 @@ class HttpCoordinator implements CoordinatorInterface
 
                     // Show first few results and summary for large batches
                     $maxShow = 5;
-                    $showCount = min($coordCount, $maxShow);
+                    $keys = array_keys($cachedResult);
+                    $showCount = min(count($keys), $maxShow);
 
                     for ($i = 0; $i < $showCount; $i++) {
-                        $result = $cachedResult[$i];
-                        $this->logger->debug("  [{$i}] HGS: ({$result['original_hgs_lat']}, {$result['original_hgs_lon']}) → HPC: ({$result['hpc_x']}, {$result['hpc_y']})");
+                        $key = $keys[$i];
+                        $result = $cachedResult[$key];
+                        $this->logger->debug("  [{$key}] HPC: ({$result['hpc_x']}, {$result['hpc_y']})");
                     }
 
-                    if ($coordCount > $maxShow) {
-                        $remaining = $coordCount - $maxShow;
+                    if (count($keys) > $maxShow) {
+                        $remaining = count($keys) - $maxShow;
                         $this->logger->debug("  ... and {$remaining} more coordinate transformations");
                     }
                 }
@@ -281,16 +283,17 @@ class HttpCoordinator implements CoordinatorInterface
 
                 // Show first few results and summary for large batches
                 $maxShow = 5;
-                $resultCount = count($rotatedCoordinates);
-                $showCount = min($resultCount, $maxShow);
+                $keys = array_keys($rotatedCoordinates);
+                $showCount = min(count($keys), $maxShow);
 
                 for ($i = 0; $i < $showCount; $i++) {
-                    $result = $rotatedCoordinates[$i];
-                    $this->logger->debug("  [{$i}] HGS: ({$result['original_hgs_lat']}, {$result['original_hgs_lon']}) → HPC: ({$result['hpc_x']}, {$result['hpc_y']})");
+                    $key = $keys[$i];
+                    $result = $rotatedCoordinates[$key];
+                    $this->logger->debug("  [{$key}] HPC: ({$result['hpc_x']}, {$result['hpc_y']})");
                 }
 
-                if ($resultCount > $maxShow) {
-                    $remaining = $resultCount - $maxShow;
+                if (count($keys) > $maxShow) {
+                    $remaining = count($keys) - $maxShow;
                     $this->logger->debug("  ... and {$remaining} more coordinate transformations");
                 }
             }

@@ -218,6 +218,9 @@ class CommandLineCoordinator implements CoordinatorInterface
             return [];
         }
 
+        // Track original keys for result mapping
+        $originalKeys = array_keys($coordinateArray);
+
         // Prepare input: multiple lines of "hpc_x hpc_y obstime"
         $input = '';
         foreach ($coordinateArray as $coord) {
@@ -274,7 +277,8 @@ class CommandLineCoordinator implements CoordinatorInterface
 
             $coords = preg_split('/\s+/', trim($line));
             if (count($coords) >= 2) {
-                $results[] = [
+                $originalKey = $originalKeys[$i];
+                $results[$originalKey] = [
                     'hgs_lon' => (float)$coords[0],
                     'hgs_lat' => (float)$coords[1]
                 ];
