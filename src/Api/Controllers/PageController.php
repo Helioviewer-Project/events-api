@@ -149,7 +149,7 @@ class PageController extends Controller
             <div class="nav-buttons">
                 <a href="/" class="nav-button active">Home</a>
                 <a href="/stats" class="nav-button">Statistics Dashboard</a>
-                <a href="/predictions" class="nav-button">Region Predictions</a>
+                <a href="/active-regions" class="nav-button">Active Regions</a>
             </div>
         </header>
 
@@ -169,7 +169,7 @@ class PageController extends Controller
             <li><div class="endpoint">GET /api/v1/events/{source}/observation/{timestamp}</div> Legacy V1 format</li>
         </ul>
 
-        <h3>Region Data</h3>
+        <h3>Active Region Data</h3>
         <ul>
             <li><div class="endpoint">GET /api/v2/regions</div> Get all regions</li>
             <li><div class="endpoint">GET /api/v2/regions/{organization}/{external_id}</div> Get events for specific region</li>
@@ -183,7 +183,7 @@ class PageController extends Controller
 
         <h3>Interactive Tools</h3>
         <ul>
-            <li><div class="endpoint">GET /predictions</div> Search region predictions (HTML)</li>
+            <li><div class="endpoint">GET /active-regions</div> Search active regions (HTML)</li>
         </ul>
 
             <h2>Documentation</h2>
@@ -207,7 +207,7 @@ HTML;
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Region Predictions Search - Helioviewer Events API</title>
+    <title>Active Regions Search - Helioviewer Events API</title>
     <style>
         * {
             margin: 0;
@@ -288,7 +288,6 @@ HTML;
         }
         .search-form {
             background: #f8f9fa;
-            padding: 20px;
             border-radius: 8px;
             margin-bottom: 30px;
         }
@@ -392,16 +391,16 @@ HTML;
                 <img src="https://helioviewer-project.github.io/event-tree/helioviewer-logo.png" alt="Helioviewer Logo" class="logo">
                 <h1>Helioviewer Events API</h1>
             </div>
-            <div class="subtitle">Region Predictions Search</div>
+            <div class="subtitle">Active Regions Search</div>
             <div class="nav-buttons">
                 <a href="/" class="nav-button">Home</a>
                 <a href="/stats" class="nav-button">Statistics Dashboard</a>
-                <a href="/predictions" class="nav-button active">Region Predictions</a>
+                <a href="/active-regions" class="nav-button active">Active Regions</a>
             </div>
         </header>
 
         <div class="container">
-            <h2 class="page-title">Search Solar Region Predictions</h2>
+            <h2 class="page-title">Search Solar Active Regions</h2>
 
         <div class="search-form">
             <form id="searchForm">
@@ -432,7 +431,7 @@ HTML;
                     <input type="text" id="region_id" name="region_id" placeholder="Enter region number (e.g., 14188)">
                 </div>
 
-                <button type="submit">Search Predictions</button>
+                <button type="submit">Search Solar Events</button>
             </form>
         </div>
 
@@ -577,7 +576,7 @@ HTML;
                             <div class="result-header">\${probabilityText}</div>
                             <div><strong>Path:</strong> \${event.path || 'Unknown'}</div>
                             <div><strong>Region:</strong> \${result.organization} \${regionInfo.external_id || 'Unknown'}</div>
-                            <div><strong>Prediction Period:</strong> \${startDate} - \${endDate}</div>
+                            <div><strong>Event Period:</strong> \${startDate} - \${endDate}</div>
                             <div><strong>Stonyhurst Coordinates:</strong> (\${event.hv_hpc_x || 'N/A'}, \${event.hv_hpc_y || 'N/A'})</div>
                             <div class="result-meta">Event ID: \${event.url ? `<a href="\${event.url}" target="_blank">\${eventId}</a>` : eventId}</div>
                         </div>

@@ -11,7 +11,6 @@ use Helioviewer\EventsApi\Events\Repositories\RepositoryInterface;
 use Helioviewer\EventsApi\Regions\Repositories\RepositoryInterface as RegionRepositoryInterface;
 use Helioviewer\EventsApi\Regions\Region;
 use Helioviewer\EventsApi\Storage\Json\JsonStorageInterface;
-use Helioviewer\EventsApi\Coordinator\CoordinatorInterface;
 use Helioviewer\EventsApi\Utils\Container;
 
 class RhessiSeeder extends AbstractSeed
@@ -19,8 +18,6 @@ class RhessiSeeder extends AbstractSeed
     private RepositoryInterface $event_repository;
     private RegionRepositoryInterface $region_repository;
     private JsonStorageInterface $json_storage;
-    private CoordinatorInterface $coordinator;
-    private CoordinatorInterface $backup_coordinator;
     private static bool $interrupted = false;
 
     public function __construct()
@@ -32,8 +29,6 @@ class RhessiSeeder extends AbstractSeed
         $this->event_repository = $container->get('eventRepository');
         $this->region_repository = $container->get('regionRepository');
         $this->json_storage = $container->get('jsonStorage');
-        $this->coordinator = $container->get('coordinator');
-        $this->backup_coordinator = $container->get('backup_coordinator');
     }
 
     /**
@@ -63,17 +58,10 @@ class RhessiSeeder extends AbstractSeed
 
         echo "Parsed " . count($rawEvents) . " RHESSI events.\n";
 
-        // Load Stonyhurst coordinates for all events in one batch call
-        $startTime = microtime(true);
-        $stonyhurstCoordinatesMap = $this->loadStonyhurstCoordinateMap($rawEvents);
-        $elapsed = microtime(true) - $startTime;
-        echo "Loaded " . count($stonyhurstCoordinatesMap) . " Stonyhurst coordinate mappings in " . number_format($elapsed, 4) . " sec.\n";
-
         $processedCount = 0;
         $updatedCount = 0;
         $createdCount = 0;
         $regionsCreatedCount = 0;
-        $associationsCreatedCount = 0;
 
         // Iterate through all events
         foreach ($rawEvents as $rawEvent) {
@@ -92,7 +80,7 @@ class RhessiSeeder extends AbstractSeed
             // Add region_id to raw event
             $rawEvent['region_id'] = $regionId;
 
-            $transformedEvent = $this->transformRawEventToModel($rawEvent, $stonyhurstCoordinatesMap);
+            $transformedEvent = $this->transformRawEventToModel($rawEvent);
 
             // Check if event already exists
             $remoteId = $transformedEvent->remote_id;
@@ -127,7 +115,7 @@ class RhessiSeeder extends AbstractSeed
                 'content' => $rawEvent,
             ]]);
 
-            // Handle region association if region_id is not 0
+            // Handle region association
             if ($regionId !== 0) {
                 // Find or create the region with organization NOAA
                 $region = $this->region_repository->findByOrganizationAndExternalId('NOAA', (string)$regionId);
@@ -139,19 +127,13 @@ class RhessiSeeder extends AbstractSeed
                     $region = $this->region_repository->save($region);
                     $regionsCreatedCount++;
                     echo "Created new region: {$region->name} (ID: {$region->id})\n";
-                } else {
-                    echo "Found existing region: {$region->name} (ID: {$region->id})\n";
                 }
 
-                // Check if event is already associated with this region
-                $regionIds = $rhessiEvent->regions->pluck('id')->toArray();
-                if (!in_array($region->id, $regionIds)) {
-                    $rhessiEvent->regions()->attach($region->id);
-                    $associationsCreatedCount++;
-                    echo "Associated event {$rhessiEvent->id} with region {$region->name}\n";
-                } else {
-                    echo "Event {$rhessiEvent->id} already associated with region {$region->name}\n";
-                }
+                // Sync replaces all existing associations with just this one
+                $rhessiEvent->regions()->sync([$region->id]);
+            } else {
+                // Region is 0 - remove all region associations
+                $rhessiEvent->regions()->sync([]);
             }
 
             $processedCount++;
@@ -166,7 +148,6 @@ class RhessiSeeder extends AbstractSeed
         echo "Created: {$createdCount}\n";
         echo "Updated: {$updatedCount}\n";
         echo "Regions created: {$regionsCreatedCount}\n";
-        echo "Associations created: {$associationsCreatedCount}\n";
         if (self::$interrupted) {
             echo "Remaining: " . (count($rawEvents) - $processedCount) . " events not processed\n";
         }
@@ -176,25 +157,16 @@ class RhessiSeeder extends AbstractSeed
      * Transform raw RHESSI event data to Event model
      *
      * @param array $rawEvent Raw event data from file
-     * @param array $stonyhurstCoordinatesMap Map of flareId => ['hgs_lon' => ..., 'hgs_lat' => ...]
      * @return Event Eloquent Event model instance (not saved)
-     * @throws RuntimeException If flare ID not found in coordinate map
      */
-    private function transformRawEventToModel(array $rawEvent, array $stonyhurstCoordinatesMap): Event
+    private function transformRawEventToModel(array $rawEvent): Event
     {
         // Convert timestamps
         $startTime = strtotime($rawEvent['start']);
         $peakTime = strtotime($rawEvent['peak']);
         $endTime = strtotime($rawEvent['end']);
 
-        // Lookup Stonyhurst coordinates from precomputed map
-        $flareId = $rawEvent['id'];
-        if (!isset($stonyhurstCoordinatesMap[$flareId])) {
-            throw new RuntimeException("ERROR: Flare ID {$flareId} not found in Stonyhurst coordinate map.");
-        }
-        $hgsCoords = $stonyhurstCoordinatesMap[$flareId];
-
-        // Build event data array
+        // Build event data array - use HPC coordinates directly from source
         $eventData = [
             'remote_id' => 'RHESSI:' . $rawEvent['id'],
             'source_id' => JsonSource::RHESSI,
@@ -203,8 +175,9 @@ class RhessiSeeder extends AbstractSeed
             'peak' => $peakTime,
             'end' => $endTime,
             'coordinate_time' => $peakTime, // Use peak time as coordinate time for RHESSI
-            'hv_hpc_x' => $hgsCoords['hgs_lon'], // Stonyhurst longitude in degrees
-            'hv_hpc_y' => $hgsCoords['hgs_lat'], // Stonyhurst latitude in degrees
+            'hv_hpc_x' => (float) $rawEvent['xloc'], // HPC X in arcseconds
+            'hv_hpc_y' => (float) $rawEvent['yloc'], // HPC Y in arcseconds
+            'coordinate_system' => 'helioprojective',
             'label' => 'RHESSI ' . $rawEvent['id'],
             'short_label' => $rawEvent['id'] . ': ' . date('Y-m-d H:i:s', $startTime),
             'legacy_version' => '',
@@ -217,59 +190,6 @@ class RhessiSeeder extends AbstractSeed
         $event->fill($eventData);
 
         return $event;
-    }
-
-    /**
-     * Load Stonyhurst coordinates for all events via batch coordinator call
-     *
-     * @param array $rawEvents Array of raw event data
-     * @param int $chunkSize Number of events to process per batch
-     * @return array Map of flareId => ['hgs_lon' => ..., 'hgs_lat' => ...]
-     */
-    private function loadStonyhurstCoordinateMap(array $rawEvents, int $chunkSize = 10000): array
-    {
-        $map = [];
-        $chunks = array_chunk($rawEvents, $chunkSize);
-        $totalChunks = count($chunks);
-
-        foreach ($chunks as $chunkIndex => $chunk) {
-            $chunkNum = $chunkIndex + 1;
-            echo "Processing coordinate chunk {$chunkNum}/{$totalChunks}...\n";
-
-            // Build coordinate array for this chunk
-            $coordinateArray = [];
-            $flareIds = [];
-
-            foreach ($chunk as $rawEvent) {
-                $peakTime = strtotime($rawEvent['peak']);
-                $coordinateArray[] = [
-                    'hpc_x' => (float) $rawEvent['xloc'],
-                    'hpc_y' => (float) $rawEvent['yloc'],
-                    'obstime' => $peakTime,
-                ];
-                $flareIds[] = $rawEvent['id'];
-            }
-
-            // Try primary coordinator, fall back to backup
-            try {
-                $results = $this->coordinator->helioprojectiveFromEarthToStonyhurstBatch($coordinateArray);
-            } catch (\Exception $e) {
-                if ($chunkIndex === 0) {
-                    echo "Primary coordinator failed: " . $e->getMessage() . " - using backup coordinator.\n";
-                }
-                $results = $this->backup_coordinator->helioprojectiveFromEarthToStonyhurstBatch($coordinateArray);
-            }
-
-            // Add to map
-            foreach ($results as $i => $coords) {
-                $map[$flareIds[$i]] = $coords;
-            }
-
-            // Free memory
-            unset($coordinateArray, $flareIds, $results);
-        }
-
-        return $map;
     }
 
     /**
