@@ -310,11 +310,17 @@ class DonkiCmeProcessor implements ProcessorInterface
         ];
         
         // Extract region information for later processing
+        // NOAA region numbers cycle: after July 2002, 4-digit IDs need +10000
         $regionInfo = null;
         if (isset($rawRecord['activeRegionNum']) && !empty($rawRecord['activeRegionNum'])) {
+            $regionId = (int) $rawRecord['activeRegionNum'];
+            // Convert 4-digit post-July-2002 IDs to 5-digit format
+            if ($regionId > 0 && $regionId < 9000) {
+                $regionId += 10000;
+            }
             $regionInfo = [
                 'organization' => 'NOAA',
-                'external_id' => (string) $rawRecord['activeRegionNum']
+                'external_id' => (string) $regionId
             ];
         }
 
