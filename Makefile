@@ -1,4 +1,4 @@
-.PHONY: composer-install composer-require composer-dump up down build shell shell-root nginx-reload migrate-status migrate-create migrate-run migrate-rollback seed-run collect recents reset stats logs db-shell help
+.PHONY: composer-install composer-require composer-dump up down build shell shell-root nginx-reload migrate-status migrate-create migrate-run migrate-rollback seed-run collect recents reset stats logs db-shell cache-flush help
 .DEFAULT_GOAL := help
 
 # Set compose file based on ENV
@@ -69,6 +69,11 @@ stats:
 logs:
 	tail -f storage/logs/*.log
 
+cache-flush:
+	@echo "Flushing Redis cache..."
+	@$(DOCKER_COMPOSE) exec redis redis-cli FLUSHALL
+	@echo "Redis cache flushed!"
+
 reset:
 	@echo "Resetting database (rollback all + migrate + seed)..."
 	$(DOCKER_COMPOSE) run --rm --user $(shell id -u):$(shell id -g) phpfpm vendor/bin/phinx rollback -t 0
@@ -122,3 +127,6 @@ help:
 	@echo "  recents               - Show the most recent events from the database (use: make recents 10)"
 	@echo "  stats                 - Show database statistics grouped by source and path"
 	@echo "  logs                  - Follow application logs (tail -f)"
+	@echo ""
+	@echo "Cache Management:"
+	@echo "  cache-flush           - Flush Redis cache"
