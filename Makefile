@@ -1,4 +1,4 @@
-.PHONY: composer-install composer-require composer-dump up down build shell shell-root nginx-reload migrate-status migrate-create migrate-run migrate-rollback seed-run collect recents reset stats logs db-shell cache-flush help
+.PHONY: composer-install composer-require composer-dump up down build shell shell-root nginx-reload migrate-status migrate-create migrate-run migrate-rollback seed-run collect recents reset stats logs db-shell db-backup cache-flush fix-regions help
 .DEFAULT_GOAL := help
 
 # Set compose file based on ENV
@@ -35,6 +35,12 @@ shell-root:
 db-shell:
 	$(DOCKER_COMPOSE) exec postgres psql -U $${DB_USER:-eventsapi} -d $${DB_NAME:-eventsapi}
 
+db-backup:
+	@echo "Creating database backup..."
+	@$(DOCKER_COMPOSE) exec phpfpm mkdir -p /u/apps/data/backups
+	@$(DOCKER_COMPOSE) exec postgres pg_dump -U $${DB_USER:-eventsapi} -d $${DB_NAME:-eventsapi} | $(DOCKER_COMPOSE) exec -T phpfpm sh -c 'cat > /u/apps/data/backups/backup_$$(date +%Y%m%d_%H%M%S).sql'
+	@echo "Backup saved to storage/backups/"
+
 # Nginx commands
 nginx-reload:
 	@echo "Reloading nginx configuration..."
@@ -66,8 +72,11 @@ recents:
 stats:
 	$(DOCKER_COMPOSE) run --rm --user $(shell id -u):$(shell id -g) phpfpm php bin/stats.php
 
+fix-regions:
+	$(DOCKER_COMPOSE) run --rm --user $(shell id -u):$(shell id -g) phpfpm php bin/fix-regions.php $(filter-out $@,$(MAKECMDGOALS))
+
 logs:
-	tail -f storage/logs/*.log
+	$(DOCKER_COMPOSE) exec phpfpm sh -c 'tail -f /u/apps/data/logs/*.log'
 
 cache-flush:
 	@echo "Flushing Redis cache..."
@@ -98,10 +107,10 @@ help:
 	@echo "  up                    - Start the Docker containers"
 	@echo "  down                  - Stop the Docker containers"
 	@echo "  build                 - Build the Docker images"
-	@echo "  shell                 - Open a bash shell in the PHP container (user 1000:1000)"
+	@echo "  shell                 - Open a bash shell in the PHP container"
 	@echo "  shell-root            - Open a bash shell in the PHP container as root"
-	@echo "  db-shell              - Connect to PostgreSQL database"
 	@echo "  nginx-reload          - Reload nginx configuration"
+	@echo "  logs                  - Follow application logs (tail -f)"
 	@echo ""
 	@echo "Composer Management:"
 	@echo "  composer-install      - Install PHP dependencies via Composer"
@@ -109,24 +118,28 @@ help:
 	@echo "  composer-dump         - Regenerate Composer autoloader"
 	@echo ""
 	@echo "Database Management:"
+	@echo "  db-shell              - Connect to PostgreSQL database"
+	@echo "  db-backup             - Create a database backup (saves to storage/backups/)"
 	@echo "  migrate-status        - Check migration status"
 	@echo "  migrate-create        - Create a new migration (use: make migrate-create NAME=MigrationName)"
 	@echo "  migrate-run           - Run pending migrations"
 	@echo "  migrate-rollback      - Rollback the last migration"
 	@echo "  seed-run              - Run database seeders"
-	@echo "  reset                 - Reset database (rollback all migrations, migrate, and seed)"
+	@echo "  reset                 - Reset database (rollback all + migrate + seed)"
 	@echo ""
 	@echo "Event Collection:"
 	@echo "  collect               - Collect events from all sources"
-	@echo "                          Examples: make collect                         (today, daily chunks)"
+	@echo "                          Examples: make collect                         (today)"
 	@echo "                                   make collect 2024-01-01              (single day)"
-	@echo "                                   make collect 2024-01-01 2024-01-31   (date range, daily chunks)"
-	@echo "                                   make collect 2024-01-01 2024-01-31 5 (date range, 5-day chunks)"
+	@echo "                                   make collect 2024-01-01 2024-01-31   (date range)"
+	@echo "                                   make collect 2024-01-01 2024-01-31 5 (5-day chunks)"
 	@echo ""
-	@echo "Data Analysis:"
-	@echo "  recents               - Show the most recent events from the database (use: make recents 10)"
-	@echo "  stats                 - Show database statistics grouped by source and path"
-	@echo "  logs                  - Follow application logs (tail -f)"
+	@echo "Data Analysis & Maintenance:"
+	@echo "  recents               - Show recent events (use: make recents 10)"
+	@echo "  stats                 - Show database statistics"
+	@echo "  fix-regions           - Fix NOAA region IDs (add +10000 to IDs < 9000)"
+	@echo "                          Dry run: make fix-regions"
+	@echo "                          Apply:   make fix-regions apply"
 	@echo ""
 	@echo "Cache Management:"
 	@echo "  cache-flush           - Flush Redis cache"
