@@ -178,28 +178,38 @@ class Processor implements ProcessorInterface
     {
         $possibleFields = ['NOAA', 'Catania', 'Model'];
         $regions = [];
-        
+
         // Collect region IDs from all possible field prefixes
         foreach ($possibleFields as $field) {
             $regionKey = $field . 'RegionId';
-            
+
             // Use isset to properly handle 0 values
             if (isset($rawRecord[$regionKey]) && $rawRecord[$regionKey] !== '') {
                 // For FlareScoreboard, use appropriate organization
                 $organization = match($field) {
                     'NOAA' => 'NOAA',
-                    'Catania' => 'CATANIA', 
+                    'Catania' => 'CATANIA',
                     'Model' => 'MODEL',
                     default => 'UNKNOWN'
                 };
-                
+
+                $externalId = $rawRecord[$regionKey];
+
+                // NOAA region numbers cycle: after July 2002, 4-digit IDs need +10000
+                if ($organization === 'NOAA' && is_numeric($externalId)) {
+                    $regionId = (int) $externalId;
+                    if ($regionId > 0 && $regionId < 9000) {
+                        $externalId = (string) ($regionId + 10000);
+                    }
+                }
+
                 $regions[] = [
                     'organization' => $organization,
-                    'external_id' => (string) $rawRecord[$regionKey]
+                    'external_id' => (string) $externalId
                 ];
             }
         }
-        
+
         return $regions;
     }
 

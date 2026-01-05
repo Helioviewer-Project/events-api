@@ -119,16 +119,26 @@ class DaffProcessor extends Processor
     protected function collectRegions(array $rawRecord): array
     {
         $regions = [];
-        
+
         // Check for NOAA region
         if (isset($rawRecord['NOAARegionId']) && $rawRecord['NOAARegionId'] !== '') {
+            $externalId = $rawRecord['NOAARegionId'];
+
+            // NOAA region numbers cycle: after July 2002, 4-digit IDs need +10000
+            if (is_numeric($externalId)) {
+                $regionId = (int) $externalId;
+                if ($regionId > 0 && $regionId < 9000) {
+                    $externalId = (string) ($regionId + 10000);
+                }
+            }
+
             $regions[] = [
                 'organization' => 'NOAA',
-                'external_id' => (string) $rawRecord['NOAARegionId']
+                'external_id' => (string) $externalId
             ];
-            $this->logger->debug("DAFF: Added NOAA region: {$rawRecord['NOAARegionId']}");
+            $this->logger->debug("DAFF: Added NOAA region: {$externalId}");
         }
-        
+
         // Check for HARP region
         if (isset($rawRecord['HARPRegionId']) && $rawRecord['HARPRegionId'] !== '') {
             $regions[] = [
@@ -137,7 +147,7 @@ class DaffProcessor extends Processor
             ];
             $this->logger->debug("DAFF: Added HARP region: {$rawRecord['HARPRegionId']}");
         }
-        
+
         return $regions;
     }
 }
