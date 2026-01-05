@@ -33,12 +33,12 @@ shell-root:
 	$(DOCKER_COMPOSE) exec phpfpm bash
 
 db-shell:
-	$(DOCKER_COMPOSE) exec postgres psql -U $${DB_USER:-eventsapi} -d $${DB_NAME:-eventsapi}
+	$(DOCKER_COMPOSE) exec postgres sh -c 'psql -U $$POSTGRES_USER -d $$POSTGRES_DB'
 
 db-backup:
 	@echo "Creating database backup..."
 	@$(DOCKER_COMPOSE) exec phpfpm mkdir -p /u/apps/data/backups
-	@$(DOCKER_COMPOSE) exec postgres pg_dump -U $${DB_USER:-eventsapi} -d $${DB_NAME:-eventsapi} | $(DOCKER_COMPOSE) exec -T phpfpm sh -c 'cat > /u/apps/data/backups/backup_$$(date +%Y%m%d_%H%M%S).sql'
+	@$(DOCKER_COMPOSE) exec postgres sh -c 'pg_dump -U $$POSTGRES_USER -d $$POSTGRES_DB' | $(DOCKER_COMPOSE) exec -T phpfpm sh -c 'cat > /u/apps/data/backups/backup_$$(date +%Y%m%d_%H%M%S).sql'
 	@echo "Backup saved to storage/backups/"
 
 # Nginx commands
