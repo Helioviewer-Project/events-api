@@ -42,17 +42,18 @@ $stats = [
 ];
 
 try {
-    // Get all NOAA regions
+    // Get all NOAA regions with numeric external_id only
     $regions = Region::where('organization', 'NOAA')
+        ->whereRaw("external_id ~ '^[0-9]+$'")
         ->orderByRaw('CAST(external_id AS INTEGER)')
         ->get();
 
     if ($regions->isEmpty()) {
-        echo "No NOAA regions found in the database.\n";
+        echo "No NOAA regions with numeric IDs found in the database.\n";
         exit(0);
     }
 
-    echo "Total NOAA Regions: " . $regions->count() . "\n\n";
+    echo "Total NOAA Regions (numeric IDs): " . $regions->count() . "\n\n";
 
     foreach ($regions as $region) {
         $externalId = (int) $region->external_id;
