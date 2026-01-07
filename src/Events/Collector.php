@@ -443,28 +443,4 @@ class Collector
         
         return $events;
     }
-
-    /**
-     * Get comprehensive statistics about the event collection system.
-     *
-     * Provides information about registered sources, processors, and
-     * database statistics for monitoring and debugging purposes.
-     *
-     * @return array<string, mixed> Statistics array containing:
-     *   - total_sources: Number of registered sources
-     *   - total_processors: Number of registered processors
-     *   - sources: Array of source names
-     *   - ccmc_events: Count of CCMC events in database
-     *   - recent_events: Count of recent events (last 10)
-     */
-    public function getStats(): array
-    {
-        return [
-            'total_sources' => count($this->sources),
-            'total_processors' => count($this->processors),
-            'sources' => array_keys($this->sources),
-            'ccmc_events' => $this->repository->countBySource('CCMC'),
-            'recent_events' => count($this->repository->getRecent(10))
-        ];
-    }
 }
