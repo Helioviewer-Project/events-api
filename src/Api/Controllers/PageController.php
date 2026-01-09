@@ -494,7 +494,7 @@ HTML;
                     }
 
                     if (results.length === 0) {
-                        resultsDiv.innerHTML = '<div class="error">No predictions found for this region ID in any organization</div>';
+                        resultsDiv.innerHTML = '<div class="error">No entries found for this region ID in any organization</div>';
                         return;
                     }
 
@@ -506,7 +506,7 @@ HTML;
 
                 if (!response.ok) {
                     if (response.status === 404) {
-                        resultsDiv.innerHTML = `<div class="error">No predictions found for \${organization} region \${regionId}</div>`;
+                        resultsDiv.innerHTML = `<div class="error">No entries found for \${organization} region \${regionId}</div>`;
                         return;
                     }
                     throw new Error(`HTTP \${response.status}: \${response.statusText}`);
@@ -528,10 +528,10 @@ HTML;
                 const events = result.data.events || [];
                 const regionInfo = result.data.region || {};
 
-                html += `<h3>\${result.organization} - \${events.length} prediction(s) found</h3>`;
+                html += `<h3>\${result.organization} - \${events.length} entries found</h3>`;
 
                 if (events.length === 0) {
-                    html += '<div class="result-item">No predictions found for this region</div>';
+                    html += '<div class="result-item">No entries found for this region</div>';
                     return;
                 }
 
