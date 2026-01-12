@@ -34,7 +34,8 @@ class FlareProcessor extends EventTypeProcessor
     protected function getTimeLine(array $rawRecord): array
     {
         $start = strtotime($rawRecord['event_starttime']);
-        $peak = strtotime($rawRecord['event_peaktime'] ?? $rawRecord['event_starttime']);
+        $peakTime = !empty($rawRecord['event_peaktime']) ? strtotime($rawRecord['event_peaktime']) : false;
+        $peak = ($peakTime !== false && $peakTime > 0) ? $peakTime : $start;
         $end = strtotime($rawRecord['event_endtime']);
 
         return [
