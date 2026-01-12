@@ -28,32 +28,6 @@ class Source extends JsonSource
     private const BASE_URL = 'https://www.lmsal.com/hek/her';
     private const RESULT_LIMIT = 1000;
 
-    /** Supported HEK event types */
-    private const SUPPORTED_EVENT_TYPES = [
-        // Specialized processors
-        'AR',  // Active Region
-        'CE',  // CME
-        'CH',  // Coronal Hole
-        'EF',  // Emerging Flux
-        'FI',  // Filament
-        'FL',  // Flare
-        'SG',  // Sigmoid
-        // Generic processors
-        'CC',  // Coronal Cavity
-        'CD',  // Coronal Dimming
-        'CJ',  // Coronal Jet
-        'CR',  // Coronal Rain
-        'CW',  // Coronal Wave
-        'ER',  // Eruption
-        'FA',  // Filament Activation
-        'FE',  // Filament Eruption
-        'LP',  // Loop
-        'OS',  // Oscillation
-        'PG',  // Plage
-        'SP',  // Spray Surge
-        'SS',  // Sunspot
-    ];
-
     /**
      * Get the unique identifier for this HEK data source.
      *
@@ -119,14 +93,6 @@ class Source extends JsonSource
         // Check event_type exists
         if (empty($rawRecord['event_type'])) {
             throw new InvalidEventException('HEK event missing event_type: ' . $rawRecord['kb_archivid']);
-        }
-
-        // Check event_type is supported
-        if (!in_array($rawRecord['event_type'], self::SUPPORTED_EVENT_TYPES, true)) {
-            throw new InvalidEventException(
-                'Unsupported HEK event_type: ' . $rawRecord['event_type'] .
-                ' (kb_archivid: ' . $rawRecord['kb_archivid'] . ')'
-            );
         }
 
         return (string) $rawRecord['kb_archivid'];

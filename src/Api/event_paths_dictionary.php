@@ -86,6 +86,51 @@ $hek = [
         "name" => "Sunspot",
         "pin" => "SS",
     ],
+    // Weird ones
+    'HEK>>Other' => [
+        "name" => "Other",
+        "pin" => "OT",
+    ],
+    'HEK>>Nothing Reported' => [
+        "name" => "Nothing Reported",
+        "pin" => "NR",
+    ],
+    'HEK>>Topological Object' => [
+        "name" => "Topological Object",
+        "pin" => "TO",
+    ],
+    'HEK>>Hypothesis' => [
+        "name" => "Hypothesis",
+        "pin" => "HY",
+    ],
+    'HEK>>UV Burst' => [
+        "name" => "UV Burst",
+        "pin" => "BU",
+    ],
+    'HEK>>Explosive Event' => [
+        "name" => "Explosive Event",
+        "pin" => "EE",
+    ],
+    'HEK>>Prominence Bubble' => [
+        "name" => "Prominence Bubble",
+        "pin" => "PB",
+    ],
+    'HEK>>Peacock Tail' => [
+        "name" => "Peacock Tail",
+        "pin" => "PT",
+    ],
+    'HEK>>SEPs' => [
+        "name" => "SEPs",
+        "pin" => "EP",
+    ],
+    'HEK>>ICMEs' => [
+        "name" => "ICMEs",
+        "pin" => "IC",
+    ],
+    'HEK>>SIRs' => [
+        "name" => "SIRs",
+        "pin" => "SR",
+    ],
 ];
 
 $rhessi = [

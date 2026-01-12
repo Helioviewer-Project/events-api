@@ -149,6 +149,18 @@ class Collector
             'PG',  // Plage
             'SP',  // Spray Surge
             'SS',  // Sunspot
+            // Less used ones
+            'OT', // Other
+            'NR', // Nothing Reported
+            'TO', // Topological Object
+            'HY', // Hypothesis
+            'BU', // UVBurst
+            'EE', // ExplosiveEvent
+            'PB', // ProminenceBubble
+            'PT', // PeacockTail
+            'EP', // SEPs
+            'IC', // ICMEs
+            'SR', // SIRs
         ];
 
         foreach ($hekEventTypes as $eventType) {
@@ -331,9 +343,14 @@ class Collector
 
         $processedCount = 0;
         foreach ($rawData as $index => $rawRecord) {
- 
+
+            $processorFound = false;
+
             foreach ($this->processors as $processor) {
                 if ($processor->canProcess($source, $rawRecord)) {
+
+                    $processorFound = true;
+
                     $processorClass = get_class($processor);
                     
                     try {
@@ -477,6 +494,11 @@ class Collector
                     // First matching processor wins - stop processing other processors
                     break;
                 }
+            }
+
+            if (!$processorFound) {
+                $remoteId = $source->extractRawRecordId($rawRecord);
+                $this->logger->warning("No processor found for event | source: {$path} | remote_id: {$remoteId}");
             }
         }
         

@@ -207,6 +207,19 @@ abstract class JsonSource implements SourceInterface
 
         // Decode JSON response
         $rawResponse = $response->getBody()->getContents();
+
+        // Sanitize invalid UTF-8 characters if needed
+        if (!mb_check_encoding($rawResponse, 'UTF-8')) {
+            // Try to detect encoding and convert, fallback to stripping invalid bytes
+            $detected = mb_detect_encoding($rawResponse, ['UTF-8', 'ISO-8859-1', 'Windows-1252'], true);
+            if ($detected && $detected !== 'UTF-8') {
+                $rawResponse = mb_convert_encoding($rawResponse, 'UTF-8', $detected);
+            } else {
+                // Strip invalid UTF-8 sequences
+                $rawResponse = iconv('UTF-8', 'UTF-8//IGNORE', $rawResponse);
+            }
+        }
+
         $jsonData = json_decode($rawResponse, true);
 
         // Validate JSON was parsed successfully - throw SourceException for parse errors
