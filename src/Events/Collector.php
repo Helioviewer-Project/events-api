@@ -19,10 +19,19 @@ use Helioviewer\EventsApi\Exception\InvalidEventException;
 use Psr\Log\LoggerInterface;
 use Monolog\Processor\TagProcessor;
 // Sources for createStandard factory method
+use Helioviewer\EventsApi\Events\Sources\HEK\Source as HEKSource;
 use Helioviewer\EventsApi\Events\Sources\CCMC\DonkiFlareSource;
 use Helioviewer\EventsApi\Events\Sources\CCMC\DonkiCmeSource;
 use Helioviewer\EventsApi\Events\Sources\CCMC\FlareScoreboardSource;
 // Processors for createStandard factory method
+use Helioviewer\EventsApi\Events\Processors\HEK\EventTypeProcessor as HEKEventTypeProcessor;
+use Helioviewer\EventsApi\Events\Processors\HEK\ARProcessor as HEKARProcessor;
+use Helioviewer\EventsApi\Events\Processors\HEK\CEProcessor as HEKCEProcessor;
+use Helioviewer\EventsApi\Events\Processors\HEK\CHProcessor as HEKCHProcessor;
+use Helioviewer\EventsApi\Events\Processors\HEK\EFProcessor as HEKEFProcessor;
+use Helioviewer\EventsApi\Events\Processors\HEK\FIProcessor as HEKFIProcessor;
+use Helioviewer\EventsApi\Events\Processors\HEK\FlareProcessor as HEKFlareProcessor;
+use Helioviewer\EventsApi\Events\Processors\HEK\SGProcessor as HEKSGProcessor;
 use Helioviewer\EventsApi\Events\Processors\CCMC\DonkiFlareProcessor;
 use Helioviewer\EventsApi\Events\Processors\CCMC\DonkiCmeProcessor;
 use Helioviewer\EventsApi\Events\Processors\CCMC\FlareScoreboard\Processor as FlareScoreboardProcessor;
@@ -113,9 +122,42 @@ class Collector
         $collector = new self($repository, $regionRepository, $json_storage, $failure_storage, $logger);
         
         // === SOURCES ===
+        $collector->addSource('HEK', new HEKSource($httpClient));
+
+        // === PROCESSORS ===
+        // Specialized HEK processors
+        $collector->addProcessor(new HEKARProcessor($logger));  // AR - Active Region
+        $collector->addProcessor(new HEKCEProcessor($logger));  // CE - CME
+        $collector->addProcessor(new HEKCHProcessor($logger));  // CH - Coronal Hole
+        $collector->addProcessor(new HEKEFProcessor($logger));  // EF - Emerging Flux
+        $collector->addProcessor(new HEKFIProcessor($logger));  // FI - Filament
+        $collector->addProcessor(new HEKFlareProcessor($logger));  // FL - Flare (uses peak for coordinate_time)
+        $collector->addProcessor(new HEKSGProcessor($logger));  // SG - Sigmoid
+
+        // Generic HEK event type processors for remaining event types
+        $hekEventTypes = [
+            'CC',  // Coronal Cavity
+            'CD',  // Coronal Dimming
+            'CJ',  // Coronal Jet
+            'CR',  // Coronal Rain
+            'CW',  // Coronal Wave
+            'ER',  // Eruption
+            'FA',  // Filament Activation
+            'FE',  // Filament Eruption
+            'LP',  // Loop
+            'OS',  // Oscillation
+            'PG',  // Plage
+            'SP',  // Spray Surge
+            'SS',  // Sunspot
+        ];
+
+        foreach ($hekEventTypes as $eventType) {
+            $collector->addProcessor(new HEKEventTypeProcessor($eventType, $logger));
+        }
+
         $collector->addSource('CCMC>>DONKI>>CME', new DonkiCmeSource($httpClient));
         $collector->addSource('CCMC>>DONKI>>Solar Flares', new DonkiFlareSource($httpClient));
-        
+
         // Prediction models
         $predictionModels = [
             'SIDC_Operator_REGIONS' => 'SIDC Operator',
@@ -131,25 +173,25 @@ class Collector
             'MAG4_SHARP_HMI_REGIONS' => 'MAG4 Sharp HMI',
             'AEffort_REGIONS' => 'AEffort',
         ];
-        
+
         foreach ($predictionModels as $modelId => $modelName) {
             $collector->addSource("CCMC>>Solar Flare Predictions>>$modelName", 
                 new FlareScoreboardSource($modelId, $modelName, $httpClient));
         }
-        
+
         // === PROCESSORS ===
         // DONKI processors don't need coordinate resolution (coordinates in raw data)
         $collector->addProcessor(new DonkiFlareProcessor($logger));
         $collector->addProcessor(new DonkiCmeProcessor($logger));
-        
+
         // DAFF processor uses direct service integration (no resolvers)
         $daffProcessor = new DaffProcessor($harpService, $noaaService, $logger);
         $collector->addProcessor($daffProcessor);
-        
+
         // ASSA processor with custom coordinate extraction
         $assaProcessor = new AssaProcessor($logger);
         $collector->addProcessor($assaProcessor);
-        
+
         // FlareScoreboard processor reads coordinates directly from fields (no resolvers needed)
         $flareScoreboardProcessor = new FlareScoreboardProcessor($logger);
         $collector->addProcessor($flareScoreboardProcessor);
@@ -290,7 +332,6 @@ class Collector
         $processedCount = 0;
         foreach ($rawData as $index => $rawRecord) {
  
-            
             foreach ($this->processors as $processor) {
                 if ($processor->canProcess($source, $rawRecord)) {
                     $processorClass = get_class($processor);
@@ -300,7 +341,6 @@ class Collector
                         // Process the raw record into an unpersisted Event model
                         $event = $processor->process($rawRecord, $source);
 
-
                         // Extract remote ID for deduplication and set it
                         $event->remote_id = $source->getName() . ":" . $source->extractRawRecordId($rawRecord);
 
@@ -309,7 +349,6 @@ class Collector
                         } else {
                             $event->path = $path . '>>' .$event->path;
                         }
-                        
                         
                         // Store views, link, and region info temporarily before DB save
                         $tempViews = $event->legacy_views;

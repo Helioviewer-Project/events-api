@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Helioviewer\EventsApi\Api;
 
 use Helioviewer\EventsApi\Events\Event;
+use Helioviewer\EventsApi\Events\Sources\JsonSource;
 use Helioviewer\EventsApi\Storage\Json\LocalFile;
 use Helioviewer\EventsApi\Storage\Json\JsonStorageInterface;
 
@@ -99,26 +100,6 @@ class Legacy
                     }
                 }
                 
-                // Add this 3-level path to parent's groups
-                if (!isset($processedResult[$parentPath]['groups'][$path])) {
-                    // Use dictionary values if available
-                    if (isset($this->dictionary[$path])) {
-                        $processedResult[$parentPath]['groups'][$path] = [
-                            'name' => $this->dictionary[$path]['name'] ?: $parts[2],
-                            'contact' => $this->dictionary[$path]['contact'] ?: $path,
-                            'url' => $this->dictionary[$path]['url'] ?: $path,
-                            'data' => []
-                        ];
-                    } else {
-                        $processedResult[$parentPath]['groups'][$path] = [
-                            'name' => $parts[2], // Just the last part
-                            'contact' => $path,
-                            'url' => $path,
-                            'data' => []
-                        ];
-                    }
-                }
-                
                 // Prepare event data
                 $eventArray = is_array($row) ? $row : (array) $row;
                 
@@ -162,6 +143,11 @@ class Legacy
                     }
 
                     $eventArray['link'] = $linksData;
+
+                    // Add concept for HEK events
+                    if (($eventArray['source_id'] ?? null) === JsonSource::HEK) {
+                        $eventArray['concept'] = $eventArray['source']['concept'];
+                    }
                 }
 
                 // Add legacy id to safe guard all event system , before transition to v2 endpoints
@@ -174,8 +160,41 @@ class Legacy
                         $eventArray['legacy_id'] = hash('sha256', json_encode($eventArray['source']));
                     } elseif(str_starts_with($eventArray['path'], 'RHESSI>>Solar Flares>>Flare') && count(explode('>>', $eventArray['path'])) === 3) {
                         $eventArray['legacy_id'] = $eventArray['source']['id'];
+                    } elseif(str_starts_with($eventArray['path'], 'HEK>>')) {
+                        // HEK events use kb_archivid as legacy_id
+                        $eventArray['legacy_id'] = $eventArray['source']['kb_archivid'];
                     } else {
                         $eventArray['legacy_id'] = $eventArray['id'];
+                    }
+                }
+                
+                // Add this 3-level path to parent's groups
+                if (!isset($processedResult[$parentPath]['groups'][$path])) {
+                    // Use dictionary values if available
+                    if (isset($this->dictionary[$path])) {
+                        $processedResult[$parentPath]['groups'][$path] = [
+                            'name' => $this->dictionary[$path]['name'] ?: $parts[2],
+                            'contact' => $this->dictionary[$path]['contact'] ?: $path,
+                            'url' => $this->dictionary[$path]['url'] ?: $path,
+                            'data' => []
+                        ];
+                    } else {
+                        // For HEK events, use frm_contact and frm_url from source
+                        if (str_starts_with($path, 'HEK>>')) {
+                            $processedResult[$parentPath]['groups'][$path] = [
+                                'name' => $parts[2],
+                                'contact' => $eventArray['source']['frm_contact'],
+                                'url' => $eventArray['source']['frm_url'],
+                                'data' => []
+                            ];
+                        } else {
+                            $processedResult[$parentPath]['groups'][$path] = [
+                                'name' => $parts[2],
+                                'contact' => $path,
+                                'url' => $path,
+                                'data' => []
+                            ];
+                        }
                     }
                 }
                 
