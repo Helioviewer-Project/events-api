@@ -53,6 +53,11 @@ if (!file_exists(__DIR__ . '/../.env')) {
 $dotenv = Dotenv\Dotenv::createImmutable(__DIR__ . '/../');
 $dotenv->load();
 
+// === OPCACHE - Disable in non-production environments ===
+if (($_ENV['APP_ENV'] ?? 'development') !== 'production' && function_exists('opcache_reset')) {
+    ini_set('opcache.enable', '0');
+}
+
 // === IMPORTS ===
 use Illuminate\Database\Capsule\Manager as Capsule;
 
