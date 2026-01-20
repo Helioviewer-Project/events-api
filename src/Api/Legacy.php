@@ -100,9 +100,9 @@ class Legacy
                     }
                 }
                 
-                // Prepare event data
-                $eventArray = is_array($row) ? $row : (array) $row;
-                
+                // Prepare event data (use toArray() for Eloquent models to apply casts)
+                $eventArray = is_array($row) ? $row : $row->toArray();
+
                 // Add legacy field transformations
                 $eventArray['type'] = $eventArray['legacy_type'] ?? null;
                 $eventArray['version'] = $eventArray['legacy_version'] ?? null;

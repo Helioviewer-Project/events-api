@@ -187,7 +187,7 @@ class Collector
         ];
 
         foreach ($predictionModels as $modelId => $modelName) {
-            $collector->addSource("CCMC>>Solar Flare Predictions>>$modelName", 
+            $collector->addSource("CCMC>>Solar Flare Predictions>>$modelName",
                 new FlareScoreboardSource($modelId, $modelName, $httpClient));
         }
 
@@ -379,7 +379,8 @@ class Collector
                         
                         if ($existingEvent) {
                             // Update existing event with new data
-                            $existingEvent->fill($event->getAttributes());
+                            // Use toArray() to get casted values (getAttributes() returns raw uncasted values)
+                            $existingEvent->fill($event->toArray());
                             $savedEvent = $this->repository->save($existingEvent);
                             $action = "Updated";
                         } else {

@@ -219,6 +219,41 @@ class EventTypeProcessor implements ProcessorInterface
     }
 
     /**
+     * Parse HEK hpc_boundcc polygon string into array of points.
+     *
+     * HEK format: "POLYGON((x1 y1,x2 y2,x3 y3,...))"
+     *
+     * @param string $boundcc The hpc_boundcc string from HEK
+     * @return array Array of {x, y} points: [{x,y}, {x,y}, ...]
+     */
+    protected function parseFootprint(string $boundcc): array
+    {
+        if (empty($boundcc)) {
+            return [];
+        }
+
+        // Extract coordinates from POLYGON((x1 y1,x2 y2,...))
+        if (preg_match('/POLYGON\s*\(\((.+)\)\)/i', $boundcc, $matches)) {
+            $coordString = $matches[1];
+            $points = [];
+
+            // Split by comma to get individual "x y" pairs
+            $pairs = explode(',', $coordString);
+            foreach ($pairs as $pair) {
+                $pair = trim($pair);
+                $coords = preg_split('/\s+/', $pair);
+                if (count($coords) >= 2) {
+                    $points[] = ['x' => (float) $coords[0], 'y' => (float) $coords[1]];
+                }
+            }
+
+            return $points;
+        }
+
+        return [];
+    }
+
+    /**
      * Process HEK event data.
      *
      * @param array $rawRecord Raw event data from HEK
@@ -230,7 +265,14 @@ class EventTypeProcessor implements ProcessorInterface
     {
         // Get timeline (can be overridden by subclasses)
         $timeline = $this->getTimeLine($rawRecord);
- 
+
+        // Parse footprint from hpc_boundcc
+        $footprint = $this->parseFootprint($rawRecord['hpc_boundcc'] ?? '');
+        if (!empty($footprint)) {
+            $pointCount = count($footprint);
+            $this->logger->info("Footprint created | {$pointCount} points | {$rawRecord['event_type']} | {$rawRecord['kb_archivid']}");
+        }
+
         // === DATABASE FIELDS ===
         $eventData = [
             'source_id'         => JsonSource::HEK,
@@ -242,6 +284,7 @@ class EventTypeProcessor implements ProcessorInterface
             'hv_hpc_x'          => (float) ($rawRecord['hpc_x'] ?? 0),
             'hv_hpc_y'          => (float) ($rawRecord['hpc_y'] ?? 0),
             'coordinate_system' => 'helioprojective',
+            'footprint'         => $footprint,
             'label'             => $this->getLabel($rawRecord),
             'short_label'       => $this->getLabel($rawRecord),
             'legacy_version'    => $rawRecord['frm_specificid'] ?? null,
