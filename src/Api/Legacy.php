@@ -39,12 +39,16 @@ class Legacy
     
     /**
      * Format events into hierarchical structure based on paths
-     * 
+     *
+     * Builds a response containing all event types from the dictionary for the given source,
+     * even if some event types have no events. This ensures a consistent API response structure.
+     *
+     * @param string $source The data source (e.g., 'CCMC', 'HEK', 'RHESSI') used to filter dictionary entries
      * @param array $events Array of event records (from database query)
      * @param bool $includeExtendedData Whether to include source, views, and links data
-     * @return array Formatted hierarchical structure
+     * @return array Formatted hierarchical structure with all event types for the source
      */
-    public function formatEvents(array $events, bool $includeExtendedData = true): array
+    public function formatEvents(string $source, array $events, bool $includeExtendedData = true): array
     {
         $processedResult = [];
         
@@ -205,14 +209,31 @@ class Legacy
         }
 
         ksort($processedResult);
-        
-        // Convert associative arrays to indexed arrays
-        $finalResult = array_values($processedResult);
 
         // Also convert groups from associative to indexed arrays
-        foreach ($finalResult as &$item) {
+        foreach ($processedResult as &$item) {
             if (isset($item['groups']) && is_array($item['groups'])) {
                 $item['groups'] = array_values($item['groups']);
+            }
+        }
+
+        // Build final result using dictionary order, ensuring all event types for the source are included.
+        // This guarantees a consistent API response structure even when some event types have no events.
+        $finalResult = [];
+
+        foreach ($this->dictionary as $dictPath => $dictValue) {
+            if (isset($processedResult[$dictPath])) {
+                // Event type has data - use the processed result
+                $finalResult[] = $processedResult[$dictPath];
+            } else {
+                // Event type has no data - include it with empty groups if it belongs to the requested source
+                $pathParts = explode('>>', $dictPath);
+                $isTopLevelForSource = count($pathParts) === 2 && str_starts_with($dictPath, $source . '>>');
+
+                if ($isTopLevelForSource) {
+                    $dictValue['groups'] = [];
+                    $finalResult[] = $dictValue;
+                }
             }
         }
 

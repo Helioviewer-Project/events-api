@@ -187,7 +187,7 @@ class EventController extends Controller
 
         // Use Legacy formatter to format events
         $legacyResponse = new LegacyEventResponse($this->jsonStorage);
-        $formattedEvents = $legacyResponse->formatEvents($eventsWithRotatedCoords, true);
+        $formattedEvents = $legacyResponse->formatEvents($source, $eventsWithRotatedCoords, true);
 
         return $this->json($response, $formattedEvents);
     }
