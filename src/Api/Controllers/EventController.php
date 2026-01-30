@@ -73,88 +73,6 @@ class EventController extends Controller
     }
 
 
-    public function rotateAllEvents(array $eventsArray, int $targetTimestamp): array
-    {
-        // Filter stonyhurst events with valid coordinates
-        $stonyhurstCoords = array_reduce(
-            array_filter($eventsArray, fn($e) => ($e['coordinate_system'] ?? null) === 'stonyhurst'),
-            function ($carry, $event) {
-                $lat = $event['hv_hpc_y'];
-                if ($lat >= -90 && $lat <= 90) {
-                    $carry[$event['id']] = [
-                        'lat' => $event['hv_hpc_y'],
-                        'lon' => $event['hv_hpc_x'],
-                        'coordinate_time' => $event['coordinate_time'],
-                    ];
-                }
-                return $carry;
-            },
-            []
-        );
-
-
-        // Transform stonyhurst coordinates
-        $stonyhurstRotatedCoordinates = [];
-        if (!empty($stonyhurstCoords)) {
-            try {
-                $stonyhurstRotatedCoordinates = $this->coordinator->stonyhurstToHelioprojectiveBatch($stonyhurstCoords, $targetTimestamp);
-            } catch (\Helioviewer\EventsApi\Coordinator\CoordinatorException $e) {
-                $this->logger->warning("API v1: HttpCoordinator failed process stonyhurstCoords : " . $e->getMessage());
-                try {
-                    $stonyhurstRotatedCoordinates = $this->backupCoordinator->stonyhurstToHelioprojectiveBatch($stonyhurstCoords, $targetTimestamp);
-                } catch (\Helioviewer\EventsApi\Coordinator\CoordinatorException $backupError) {
-                    $this->logger->error("API v1: Both coordinators failed process stonyhurstCoords  " . $backupError->getMessage());
-                }
-            }
-        }
-
-
-        // Filter helioprojective events (prepared for future use)
-        $helioprojectiveCoords = array_reduce(
-            array_filter($eventsArray, fn($e) => ($e['coordinate_system'] ?? null) === 'helioprojective'),
-            function ($carry, $event) {
-                $carry[$event['id']] = [
-                    'x' => $event['hv_hpc_x'],
-                    'y' => $event['hv_hpc_y'],
-                    'coordinate_time' => $event['coordinate_time'],
-                ];
-                return $carry;
-            },
-            []
-        );
-
-
-        $helioprojectiveRotatedCoords = [];
-        if (!empty($helioprojectiveCoords)) {
-            try {
-                $helioprojectiveRotatedCoords = $this->coordinator->helioprojectiveToHelioprojectiveBatch($helioprojectiveCoords, $targetTimestamp);
-            } catch (\Helioviewer\EventsApi\Coordinator\CoordinatorException $e) {
-                $this->logger->warning("API v1: HttpCoordinator failed process helioprojectiveCoords : " . $e->getMessage());
-                try {
-                    $helioprojectiveRotatedCoords = $this->backupCoordinator->helioprojectiveToHelioprojectiveBatch($helioprojectiveCoords, $targetTimestamp);
-                } catch (\Helioviewer\EventsApi\Coordinator\CoordinatorException $backupError) {
-                    $this->logger->error("API v1: Both coordinators failed process helioprojectiveCoords  " . $backupError->getMessage());
-                }
-            }
-        }
-
-        // Merge both coordinate arrays (preserves event IDs as keys)
-        $rotatedCoordinates = $stonyhurstRotatedCoordinates + $helioprojectiveRotatedCoords;
-
-        // Apply rotated coordinates to events
-        $result = [];
-        foreach ($eventsArray as $event) {
-            $eventId = $event['id'];
-            if (isset($rotatedCoordinates[$eventId])) {
-                $rotated = $rotatedCoordinates[$eventId];
-                $event['hv_hpc_x'] = $rotated['hpc_x'];
-                $event['hv_hpc_y'] = $rotated['hpc_y'];
-            }
-            $result[] = $event;
-        }
-
-        return $result;
-    }
 
     /**
      * Get events by observation (V1 API)
@@ -178,16 +96,16 @@ class EventController extends Controller
         }
 
         // Get events that were happening at the specified timestamp using repository
-        $eventsArray = $this->eventRepository->findActiveAtTime($source, $parsedTimestamp);
+        $events = $this->eventRepository->findActiveAtTime($source, $parsedTimestamp);
 
-        $this->logger->debug("API v1: Found " . count($eventsArray) . " events for {$source} at " . date('Y-m-d H:i:s', $parsedTimestamp));
+        $this->logger->debug("API v1: Found " . $events->count() . " events for {$source} at " . date('Y-m-d H:i:s', $parsedTimestamp));
 
         // Rotate all events to target observation time
-        $eventsWithRotatedCoords = $this->rotateAllEvents($eventsArray, $parsedTimestamp);
+        $rotatedEvents = $this->coordinateRotator->rotate($events, $parsedTimestamp);
 
         // Use Legacy formatter to format events
         $legacyResponse = new LegacyEventResponse($this->jsonStorage);
-        $formattedEvents = $legacyResponse->formatEvents($source, $eventsWithRotatedCoords, true);
+        $formattedEvents = $legacyResponse->formatEvents($source, $rotatedEvents->toArray(), true);
 
         return $this->json($response, $formattedEvents);
     }
@@ -214,38 +132,15 @@ class EventController extends Controller
         }
 
         // Get events that were happening at the specified timestamp using repository
-        $eventsArray = $this->eventRepository->findActiveAtTime($source, $parsedTimestamp);
+        $events = $this->eventRepository->findActiveAtTime($source, $parsedTimestamp);
 
-        $this->logger->debug("API v2: Found " . count($eventsArray) . " events for {$source} at " . date('Y-m-d H:i:s', $parsedTimestamp));
+        $this->logger->debug("API v2: Found " . $events->count() . " events for {$source} at " . date('Y-m-d H:i:s', $parsedTimestamp));
 
         // Rotate all events to target observation time
-        $eventsWithRotatedCoords = $this->rotateAllEvents($eventsArray, $parsedTimestamp);
+        $rotatedEvents = $this->coordinateRotator->rotate($events, $parsedTimestamp);
 
         // Format events
-        $formattedEvents = array_map(function ($e) {
-            $uuid = $e['id'];
-
-            // Format timestamps
-            foreach (['start', 'end', 'peak', 'coordinate_time'] as $field) {
-                if (!empty($e[$field])) {
-                    $e[$field] = $this->formatTimestamp($e[$field]);
-                }
-            }
-
-            // Load source JSON data
-            $sourceData = $this->jsonStorage->load("/u/apps/data/sources/{$uuid}.json");
-            $e['source'] = $sourceData ?: null;
-
-            // Load views JSON data
-            $viewsData = $this->jsonStorage->load("/u/apps/data/views/{$uuid}.json");
-            $e['views'] = $viewsData ?: [];
-
-            // Load links JSON data
-            $linksData = $this->jsonStorage->load("/u/apps/data/links/{$uuid}.json");
-            $e['link'] = $linksData;
-
-            return $e;
-        }, $eventsWithRotatedCoords);
+        $formattedEvents = $rotatedEvents->map(fn($event) => $this->enhanceEvent($event))->values()->toArray();
 
         return $this->json($response, $formattedEvents);
 
@@ -265,29 +160,7 @@ class EventController extends Controller
                 return $this->error($response, 'Event not found', 404);
             }
 
-            // Convert to array and enhance
-            $eventArray = $event->toArray();
-
-            // Format timestamps
-            foreach (['start', 'end', 'peak', 'coordinate_time'] as $field) {
-                if (!empty($eventArray[$field])) {
-                    $eventArray[$field] = $this->formatTimestamp($eventArray[$field]);
-                }
-            }
-
-            // Load source JSON data
-            $sourceData = $this->jsonStorage->load("/u/apps/data/sources/{$uuid}.json");
-            $eventArray['source'] = $sourceData ?: null;
-
-            // Load views JSON data
-            $viewsData = $this->jsonStorage->load("/u/apps/data/views/{$uuid}.json");
-            $eventArray['views'] = $viewsData ?: [];
-
-            // Load links JSON data
-            $linksData = $this->jsonStorage->load("/u/apps/data/links/{$uuid}.json");
-            $eventArray['link'] = $linksData;
-
-            return $this->json($response, $eventArray);
+            return $this->json($response, $this->enhanceEvent($event));
 
         } catch (\Exception $e) {
             $this->logger->error("Failed to get event by UUID: " . $e->getMessage());

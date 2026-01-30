@@ -11,6 +11,9 @@ use Helioviewer\EventsApi\Jsoc\HarpService;
 use Helioviewer\EventsApi\Jsoc\NoaaService;
 use Psr\Log\LoggerInterface;
 use Psr\SimpleCache\CacheInterface;
+use Psr\Http\Client\ClientInterface;
+use Helioviewer\EventsApi\Coordinator\CoordinateRotator;
+use Helioviewer\EventsApi\Events\Event;
 
 /**
  * Abstract base controller with all dependencies
@@ -28,8 +31,7 @@ abstract class Controller
     protected JsonStorageInterface $failureStorage;
 
     // Coordinator services
-    protected $coordinator;
-    protected $backupCoordinator;
+    protected CoordinateRotator $coordinateRotator;
 
     // External services
     protected HarpService $harpService;
@@ -38,7 +40,7 @@ abstract class Controller
     // Infrastructure
     protected CacheInterface $cache;
     protected LoggerInterface $logger;
-    protected $httpClient;
+    protected ClientInterface $httpClient;
 
     public function __construct(ContainerInterface $container)
     {
@@ -51,8 +53,7 @@ abstract class Controller
         $this->jsonStorage = $container->get('jsonStorage');
         $this->failureStorage = $container->get('failureStorage');
 
-        $this->coordinator = $container->get('coordinator');
-        $this->backupCoordinator = $container->get('backup_coordinator');
+        $this->coordinateRotator = $container->get('coordinateRotator');
 
         $this->harpService = $container->get('harp');
         $this->noaaService = $container->get('noaa');
@@ -92,9 +93,10 @@ abstract class Controller
     /**
      * Helper method to enhance event with additional data
      */
-    protected function enhanceEvent(array $eventArray): array
+    protected function enhanceEvent(Event $event): array
     {
-        $uuid = $eventArray['id'];
+        $eventArray = $event->toArray();
+        $uuid = $event->id;
 
         // Format timestamps
         foreach (['start', 'end', 'peak', 'coordinate_time'] as $field) {
@@ -103,23 +105,10 @@ abstract class Controller
             }
         }
 
-        // Add source data from JSON storage
-        $sourceData = $this->jsonStorage->load("/u/apps/data/sources/{$uuid}.json");
-        if ($sourceData) {
-            $eventArray['source'] = $sourceData;
-        }
-
-        // Add views from JSON storage
-        $viewsData = $this->jsonStorage->load("/u/apps/data/views/{$uuid}.json");
-        if ($viewsData) {
-            $eventArray['views'] = $viewsData;
-        }
-
-        // Add links from JSON storage
-        $linksData = $this->jsonStorage->load("/u/apps/data/links/{$uuid}.json");
-        if ($linksData) {
-            $eventArray['link'] = $linksData;
-        }
+        // Add source, views, and links from JSON storage
+        $eventArray['source'] = $this->jsonStorage->load("/u/apps/data/sources/{$uuid}.json") ?: null;
+        $eventArray['views'] = $this->jsonStorage->load("/u/apps/data/views/{$uuid}.json") ?: [];
+        $eventArray['link'] = $this->jsonStorage->load("/u/apps/data/links/{$uuid}.json");
 
         return $eventArray;
     }

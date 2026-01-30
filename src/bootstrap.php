@@ -73,6 +73,7 @@ use Helioviewer\EventsApi\Storage\RedisCache;
 use Helioviewer\EventsApi\Utils\CachedHttpClient;
 use Helioviewer\EventsApi\Coordinator\HttpCoordinator;
 use Helioviewer\EventsApi\Coordinator\CommandLineCoordinator;
+use Helioviewer\EventsApi\Coordinator\CoordinateRotator;
 use Helioviewer\EventsApi\Storage\Json\LocalFile;
 use Helioviewer\EventsApi\Storage\Json\ShardedLocalFile;
 use Helioviewer\EventsApi\Jsoc\HarpService;
@@ -229,13 +230,13 @@ $coordinator = new HttpCoordinator($httpClient, $redisCache, $logger);
 $backup_coordinator = new CommandLineCoordinator($redisCache);
 $harpService = new HarpService($httpClient, $redisCache, $logger);
 $noaaService = new NoaaService($httpClient, $redisCache, $logger);
+$coordinateRotator = new CoordinateRotator($coordinator, $backup_coordinator, $logger, $redisCache);
 
 // Initialize container with all services
 \Helioviewer\EventsApi\Utils\Container::setServices([
     // Core services
     'cache' => $redisCache,
-    'coordinator' => $coordinator,
-    'backup_coordinator' => $backup_coordinator,
+    'coordinateRotator' => $coordinateRotator,
     'jsonStorage' => $jsonStorage,
     'failureStorage' => $failureStorage,
     'eventRepository' => $eventRepository,

@@ -356,6 +356,7 @@ class HttpCoordinator implements CoordinatorInterface
      */
     public function helioprojectiveToHelioprojectiveBatch(array $coordinateArray, $targetTimestamp): array
     {
+
         if (empty($coordinateArray)) {
             return [];
         }
