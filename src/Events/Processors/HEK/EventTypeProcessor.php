@@ -204,17 +204,6 @@ class EventTypeProcessor implements ProcessorInterface
             }
         }
 
-        // 5. All view: Everything EXCEPT hv_* and refs
-        $allContent = [];
-        foreach ($rawRecord as $key => $value) {
-            if (!str_starts_with($key, 'hv_') && $key !== 'refs') {
-                $allContent[$key] = $value;
-            }
-        }
-        if (!empty($allContent)) {
-            $views[] = ['name' => 'All', 'content' => $allContent];
-        }
-
         return $views;
     }
 
