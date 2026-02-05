@@ -120,15 +120,15 @@ $hek = [
         "pin" => "PT",
     ],
     'HEK>>SEPs' => [
-        "name" => "SEPs",
+        "name" => "Solar Energetic Particles",
         "pin" => "EP",
     ],
     'HEK>>ICMEs' => [
-        "name" => "ICMEs",
+        "name" => "Interplanetary Coronal Mass Ejections",
         "pin" => "IC",
     ],
     'HEK>>SIRs' => [
-        "name" => "SIRs",
+        "name" => "Stream Interaction Regions",
         "pin" => "SR",
     ],
 ];
