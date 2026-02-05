@@ -71,6 +71,14 @@ services:
       timeout: 3s
       retries: 20
 
+  coordinator:
+    image: ghcr.io/helioviewer-project/coordinator
+    container_name: eventsapi-coordinator
+    networks:
+      - eventsapi
+    healthcheck:
+      interval: 60s
+
 volumes:
   postgres_data:
   redis_data:

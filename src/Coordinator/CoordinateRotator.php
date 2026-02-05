@@ -78,25 +78,25 @@ class CoordinateRotator
         return $events->map(function ($event) use ($rotatedCoordinates) {
             if (isset($rotatedCoordinates[$event->id])) {
                 $rotated = $rotatedCoordinates[$event->id];
+                $dx = $rotated['hpc_x'] - $event->hv_hpc_x;
+                $dy = $rotated['hpc_y'] - $event->hv_hpc_y;
+
                 $event->hv_hpc_x = $rotated['hpc_x'];
                 $event->hv_hpc_y = $rotated['hpc_y'];
-            }
 
-            // Reassemble rotated footprint from composite keys
-            if (!empty($event->footprint) && is_array($event->footprint)) {
-                $rotatedFootprint = [];
-                foreach ($event->footprint as $index => $point) {
-                    $fpKey = "{$event->id}:fp:{$index}";
-                    if (isset($rotatedCoordinates[$fpKey])) {
+                // Shift footprint points by the center's rotation offset
+                if (!empty($event->footprint) && is_array($event->footprint)) {
+                    $fpCount = count($event->footprint);
+                    $this->logger->debug("CoordinateRotator | Event {$event->id} | Shifting {$fpCount} footprint points | dx: {$dx} | dy: {$dy}");
+                    $rotatedFootprint = [];
+                    foreach ($event->footprint as $point) {
                         $rotatedFootprint[] = [
-                            'x' => $rotatedCoordinates[$fpKey]['hpc_x'],
-                            'y' => $rotatedCoordinates[$fpKey]['hpc_y'],
+                            'x' => (float) $point['x'] + $dx,
+                            'y' => (float) $point['y'] + $dy,
                         ];
-                    } else {
-                        $rotatedFootprint[] = $point;
                     }
+                    $event->footprint = $rotatedFootprint;
                 }
-                $event->footprint = $rotatedFootprint;
             }
 
             return $event;
@@ -126,25 +126,40 @@ class CoordinateRotator
             return [];
         }
 
-        $this->logger->debug("CoordinateRotator | Rotating " . count($stonyhurstCoords) . " Stonyhurst coordinates");
+        $coordCount = count($stonyhurstCoords);
+        $this->logger->debug("CoordinateRotator | Rotating {$coordCount} Stonyhurst coordinates");
 
-        return $this->transformWithFallback(
+        if ($this->cache !== null) {
+            $cacheKey = 'coordinator:stonyhurst:' . md5(serialize($stonyhurstCoords) . $targetTimestamp);
+            $cached = $this->cache->get($cacheKey);
+            if ($cached !== null) {
+                $this->logger->info("CoordinateRotator | Stonyhurst | Cache HIT | {$coordCount} coordinates");
+                return $cached;
+            }
+        }
+
+        $result = $this->transformWithFallback(
             fn() => $this->coordinator->stonyhurstToHelioprojectiveBatch($stonyhurstCoords, $targetTimestamp),
             fn() => $this->backupCoordinator->stonyhurstToHelioprojectiveBatch($stonyhurstCoords, $targetTimestamp),
             'Stonyhurst'
         );
+
+        if ($this->cache !== null && !empty($result) && isset($cacheKey)) {
+            $this->cache->set($cacheKey, $result, 86400);
+        }
+
+        return $result;
     }
 
     /**
-     * Filter and transform Helioprojective coordinates including footprints
+     * Filter and transform Helioprojective center coordinates
      *
-     * Builds a single batch of all HPC coordinates: event center points
-     * and individual footprint polygon points. Footprint points use composite
-     * keys ({eventId}:fp:{index}) so they can be reassembled after rotation.
+     * Only rotates event center points. Footprint polygon points are shifted
+     * by the center's rotation offset in rotate() to avoid expensive batch requests.
      *
      * @param Collection $events Collection of helioprojective events
      * @param int $targetTimestamp Target observation time
-     * @return array Rotated coordinates keyed by event ID or composite footprint key
+     * @return array Rotated coordinates keyed by event ID
      */
     private function rotateHelioprojectiveCoordinates(Collection $events, int $targetTimestamp): array
     {
@@ -155,33 +170,36 @@ class CoordinateRotator
         $allCoords = [];
 
         foreach ($events as $event) {
-            // Event center point
             $allCoords[$event->id] = [
                 'x' => $event->hv_hpc_x,
                 'y' => $event->hv_hpc_y,
                 'coordinate_time' => $event->coordinate_time,
             ];
+        }
 
-            // Footprint polygon points
-            $footprint = $event->footprint;
-            if (!empty($footprint) && is_array($footprint)) {
-                foreach ($footprint as $index => $point) {
-                    $allCoords["{$event->id}:fp:{$index}"] = [
-                        'x' => (float) $point['x'],
-                        'y' => (float) $point['y'],
-                        'coordinate_time' => $event->coordinate_time,
-                    ];
-                }
+        $coordCount = count($allCoords);
+        $this->logger->debug("CoordinateRotator | Rotating {$coordCount} Helioprojective center coordinates");
+
+        if ($this->cache !== null) {
+            $cacheKey = 'coordinator:hpc:' . md5(serialize($allCoords) . $targetTimestamp);
+            $cached = $this->cache->get($cacheKey);
+            if ($cached !== null) {
+                $this->logger->info("CoordinateRotator | Helioprojective | Cache HIT | {$coordCount} coordinates");
+                return $cached;
             }
         }
 
-        $this->logger->debug("CoordinateRotator | Rotating " . count($allCoords) . " Helioprojective coordinates (centers + footprints)");
-
-        return $this->transformWithFallback(
+        $result = $this->transformWithFallback(
             fn() => $this->coordinator->helioprojectiveToHelioprojectiveBatch($allCoords, $targetTimestamp),
             fn() => $this->backupCoordinator->helioprojectiveToHelioprojectiveBatch($allCoords, $targetTimestamp),
             'Helioprojective'
         );
+
+        if ($this->cache !== null && !empty($result) && isset($cacheKey)) {
+            $this->cache->set($cacheKey, $result, 86400);
+        }
+
+        return $result;
     }
 
     /**
@@ -197,11 +215,11 @@ class CoordinateRotator
         try {
             return $primary();
         } catch (CoordinatorException $e) {
-            $this->logger->warning("CoordinateRotator | Primary coordinator failed for {$system}: " . $e->getMessage());
+            $this->logger->warning("CoordinateRotator | {$system} | Primary (HttpCoordinator) failed: " . $e->getMessage() . " | Falling back to backup LOCAL http coordinator");
             try {
                 return $backup();
             } catch (CoordinatorException $backupError) {
-                $this->logger->error("CoordinateRotator | Both coordinators failed for {$system}: " . $backupError->getMessage());
+                $this->logger->error("CoordinateRotator | {$system} | Backup LOCAL http coordinator also failed: " . $backupError->getMessage() . " | No coordinates rotated");
                 return [];
             }
         }

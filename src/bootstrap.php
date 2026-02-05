@@ -72,7 +72,6 @@ use Monolog\Formatter\LineFormatter;
 use Helioviewer\EventsApi\Storage\RedisCache;
 use Helioviewer\EventsApi\Utils\CachedHttpClient;
 use Helioviewer\EventsApi\Coordinator\HttpCoordinator;
-use Helioviewer\EventsApi\Coordinator\CommandLineCoordinator;
 use Helioviewer\EventsApi\Coordinator\CoordinateRotator;
 use Helioviewer\EventsApi\Storage\Json\LocalFile;
 use Helioviewer\EventsApi\Storage\Json\ShardedLocalFile;
@@ -226,8 +225,8 @@ $logger->pushHandler($consoleHandler);
 
 // HTTP and external services
 $httpClient = new CachedHttpClient(null, $redisCache, 120, 'http_client:', $logger); // 2 minute cache
-$coordinator = new HttpCoordinator($httpClient, $redisCache, $logger);
-$backup_coordinator = new CommandLineCoordinator($redisCache);
+$coordinator = new HttpCoordinator($httpClient, $logger);
+$backup_coordinator = new HttpCoordinator($httpClient, $logger, 'http://coordinator');
 $harpService = new HarpService($httpClient, $redisCache, $logger);
 $noaaService = new NoaaService($httpClient, $redisCache, $logger);
 $coordinateRotator = new CoordinateRotator($coordinator, $backup_coordinator, $logger, $redisCache);

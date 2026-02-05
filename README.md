@@ -110,14 +110,14 @@ The API provides several endpoints for accessing solar event data:
 
 ### Services
 - **Nginx** (`eventsapi-nginx`) - Web server listening on port 8082
-- **PHP-FPM** (`eventsapi-phpfpm`) - PHP 8.4 with coordinate transformation binaries
+- **PHP-FPM** (`eventsapi-phpfpm`) - PHP 8.4 application server
 - **PostgreSQL** (`eventsapi-postgres`) - Event database with Eloquent ORM
 - **Redis** (`eventsapi-redis`) - Caching layer for HTTP and coordinate transformations
 
 ### Coordinate Transformation
-The system includes dual coordinate transformation services:
-- **DanielCoordinator** (Primary) - Fast coordinate rotation service
-- **CommandLineCoordinator** (Backup) - SunPy-based transformation using hgs_to_hpc binary
+The system includes dual HTTP-based coordinate transformation services with automatic failover:
+- **Primary** - Remote coordinator service (`HV_COORDINATOR_URL`)
+- **Backup** - Local Docker coordinator container (`http://coordinator`)
 
 Both coordinators support batch processing and Redis caching for optimal performance.
 
