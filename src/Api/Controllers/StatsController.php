@@ -53,6 +53,36 @@ class StatsController extends Controller
                 ],
             ];
 
+            // Map source IDs to names
+            $sourceNames = [
+                JsonSource::CCMC => 'CCMC',
+                JsonSource::HEK => 'HEK',
+                JsonSource::RHESSI => 'RHESSI',
+            ];
+
+            // Get events by source with date range
+            $bySource = DB::table('events')
+                ->select([
+                    'source_id',
+                    DB::raw('COUNT(*) as count'),
+                    DB::raw('MIN(start) as oldest'),
+                    DB::raw('MAX(start) as newest')
+                ])
+                ->groupBy('source_id')
+                ->orderBy('count', 'desc')
+                ->get();
+
+            $formattedBySource = $bySource->map(function ($item) use ($sourceNames) {
+                return [
+                    'source' => $sourceNames[$item->source_id] ?? 'Unknown',
+                    'count' => (int)$item->count,
+                    'date_range' => [
+                        'oldest' => $item->oldest ? date('Y-m-d', $item->oldest) : null,
+                        'newest' => $item->newest ? date('Y-m-d', $item->newest) : null,
+                    ],
+                ];
+            })->toArray();
+
             // Get events by source and path
             $bySourcePath = DB::table('events')
                 ->select([
@@ -64,13 +94,6 @@ class StatsController extends Controller
                 ->orderBy('count', 'desc')
                 ->limit(20)
                 ->get();
-
-            // Map source IDs to names
-            $sourceNames = [
-                JsonSource::CCMC => 'CCMC',
-                JsonSource::HEK => 'HEK',
-                JsonSource::RHESSI => 'RHESSI',
-            ];
 
             $formattedBySourcePath = $bySourcePath->map(function ($item) use ($sourceNames) {
                 return [
@@ -110,15 +133,16 @@ class StatsController extends Controller
                 return [
                     'id' => $event->id,
                     'label' => $event->label,
-                    'source' => $sourceNames[$event->source_id] ?? 'Unknown',
+                    'path' => $event->path,
                     'start' => $event->start ? date('Y-m-d H:i:s', $event->start) : null,
-                    'updated_at' => $event->updated_at,
+                    'end' => $event->end ? date('Y-m-d H:i:s', $event->end) : null,
                 ];
             })->toArray();
 
             // Build final response
             $stats = [
                 'summary' => $summary,
+                'by_source' => $formattedBySource,
                 'by_source_path' => $formattedBySourcePath,
                 'by_label' => $formattedByLabel,
                 'recent_events' => $formattedRecent,
