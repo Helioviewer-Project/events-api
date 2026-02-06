@@ -259,27 +259,32 @@ class Collector
      * Processes the time range in chunks according to the specified interval (default: 1 day).
      * This allows efficient processing of large date ranges while managing memory usage and API calls.
      *
+     * Memory optimization: Events are counted but not accumulated to prevent OOM on large ranges.
+     *
      * @param TimeRange $range Time range for data collection
      * @param int $chunkInterval Number of days per processing chunk (default: 1)
      *
-     * @return array<Event> Array of processed Event objects
+     * @return int Total number of events collected (not the events themselves to save memory)
      */
-    public function collect(TimeRange $range, int $chunkInterval = 1): array
+    public function collect(TimeRange $range, int $chunkInterval = 1): int
     {
-        $allEvents = [];
-        
+        $totalEventCount = 0;
+
         // Process all registered sources
         $sourcesToProcess = $this->sources;
-        
+
         // Process in chunks based on interval
         $chunks = $range->splitByInterval($chunkInterval);
-        
+
+        $collectionStartTime = microtime(true);
+
         foreach ($chunks as $index => $chunkRange) {
+            $chunkStartTime = microtime(true);
             $chunkDays = round($chunkRange->getDuration() / 86400, 1);
-            $this->logger->info("Processing chunk " . ($index + 1) . "/" . count($chunks) . 
-                              ": " . $chunkRange->getStartDate() . " to " . $chunkRange->getEndDate() . 
+            $this->logger->info("Processing chunk " . ($index + 1) . "/" . count($chunks) .
+                              ": " . $chunkRange->getStartDate() . " to " . $chunkRange->getEndDate() .
                               " ({$chunkDays} days)");
-            
+
             foreach ($sourcesToProcess as $path => $source) {
                 // Add tag processor for this source, date range and chunk number
                 $tagProcessor = new TagProcessor([
@@ -288,13 +293,17 @@ class Collector
                     'chunk' => $index + 1
                 ]);
                 $this->logger->pushProcessor($tagProcessor);
-                
+
                 try {
                     $this->logger->info("Collecting");
-                    $events = $this->collectFromSource($path, $source, $chunkRange);
-                    $allEvents = array_merge($allEvents, $events);
-                    $this->logger->info("Collected " . count($events) . " valid events");
-                    
+                    $sourceStartTime = microtime(true);
+                    $chunkEventCount = $this->collectFromSource($path, $source, $chunkRange);
+                    $sourceEndTime = microtime(true);
+                    $sourceDuration = round($sourceEndTime - $sourceStartTime, 2);
+                    $avgPerEvent = $chunkEventCount > 0 ? round(($sourceDuration / $chunkEventCount) * 1000, 1) : 0;
+                    $totalEventCount += $chunkEventCount;
+                    $this->logger->info("Collected {$chunkEventCount} events in {$sourceDuration}s ({$avgPerEvent}ms/event)");
+
                     // Add delay after fetching each chunk's data (except for the last chunk)
                     // This prevents overwhelming APIs when fetching multiple chunks
                     if ($index < count($chunks) - 1) {
@@ -315,9 +324,32 @@ class Collector
                     $this->logger->popProcessor();
                 }
             }
+
+            // Chunk timing summary
+            $chunkEndTime = microtime(true);
+            $chunkDuration = round($chunkEndTime - $chunkStartTime, 2);
+            $elapsedTotal = round($chunkEndTime - $collectionStartTime, 2);
+            $remainingChunks = count($chunks) - ($index + 1);
+            $estimatedRemaining = $remainingChunks > 0 ? round(($elapsedTotal / ($index + 1)) * $remainingChunks, 0) : 0;
+            $memoryUsage = round(memory_get_usage(true) / 1024 / 1024, 1);
+
+            $this->logger->info("Chunk " . ($index + 1) . "/" . count($chunks) . " completed in {$chunkDuration}s | " .
+                              "Total elapsed: {$elapsedTotal}s | " .
+                              "ETA: {$estimatedRemaining}s | " .
+                              "Memory: {$memoryUsage}MB | " .
+                              "Events so far: {$totalEventCount}");
+
+            // Force garbage collection after each chunk to free memory
+            gc_collect_cycles();
         }
-        
-        return $allEvents;
+
+        // Final summary
+        $totalDuration = round(microtime(true) - $collectionStartTime, 2);
+        $avgPerEvent = $totalEventCount > 0 ? round(($totalDuration / $totalEventCount) * 1000, 1) : 0;
+        $eventsPerSecond = $totalDuration > 0 ? round($totalEventCount / $totalDuration, 1) : 0;
+        $this->logger->info("Collection finished | {$totalEventCount} events | {$totalDuration}s total | {$eventsPerSecond} events/s | {$avgPerEvent}ms/event");
+
+        return $totalEventCount;
     }
 
     /**
@@ -327,17 +359,15 @@ class Collector
      * @param SourceInterface $source The source object to collect from
      * @param TimeRange $range Time range for data collection
      *
-     * @return array<Event> Array of processed Event objects
+     * @return int Number of events successfully processed
      */
-    private function collectFromSource(string $path, SourceInterface $source, TimeRange $range): array
+    private function collectFromSource(string $path, SourceInterface $source, TimeRange $range): int
     {
         $sourceName = $source->getName();
-        
+
         // Let exceptions bubble up - they'll be caught in the collect() method
         $rawData = $source->fetchRawData($range);
-        
-        $events = [];
-        
+
         $totalRawRecords = count($rawData);
         $this->logger->info("Found {$totalRawRecords} raw event records");
 
@@ -450,8 +480,6 @@ class Collector
                             }
                         }
                         
-                        $events[] = $savedEvent;
-
                         $processedCount++;
 
                         // Log processing progress with event details and view link
@@ -502,7 +530,10 @@ class Collector
                 $this->logger->warning("No processor found for event | source: {$path} | remote_id: {$remoteId}");
             }
         }
-        
-        return $events;
+
+        // Free memory from raw data
+        unset($rawData);
+
+        return $processedCount;
     }
 }
