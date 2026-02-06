@@ -690,7 +690,14 @@ HTML;
                 if (!response.ok) throw new Error('Failed to fetch regions');
 
                 const data = await response.json();
-                const regions = data.regions || [];
+                const allRegions = data.regions || [];
+
+                // Filter out MODEL organization and NOAA UNK
+                const regions = allRegions.filter(r => {
+                    if (r.organization === 'MODEL') return false;
+                    if (r.organization === 'NOAA' && r.external_id === 'UNK') return false;
+                    return true;
+                });
 
                 // Sort by created_at descending for latest regions
                 const latestRegions = [...regions]
