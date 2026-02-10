@@ -489,18 +489,18 @@ HTML;
 
             <div id="results" class="results"></div>
 
-            <h2 class="section-title">Region Overview</h2>
+            <h2 class="section-title">Latest Regions</h2>
             <div id="tablesLoading" class="loading">
                 <div class="spinner"></div>
                 <p>Loading regions...</p>
             </div>
             <div id="tablesContent" style="display: none;">
-                <h2 class="section-title">Latest Created Regions</h2>
                 <table>
                     <thead>
                         <tr>
                             <th>Organization</th>
                             <th>Region ID</th>
+                            <th>Latest Event</th>
                             <th>Events</th>
                             <th>API</th>
                         </tr>
@@ -514,6 +514,7 @@ HTML;
                         <tr>
                             <th>Organization</th>
                             <th>Region ID</th>
+                            <th>Latest Event</th>
                             <th>Events</th>
                             <th>API</th>
                         </tr>
@@ -699,9 +700,9 @@ HTML;
                     return true;
                 });
 
-                // Sort by created_at descending for latest regions
+                // Sort by last_updated descending for latest regions
                 const latestRegions = [...regions]
-                    .sort((a, b) => new Date(b.first_seen) - new Date(a.first_seen))
+                    .sort((a, b) => new Date(b.last_updated) - new Date(a.last_updated))
                     .slice(0, 10);
 
                 // Sort by event_count descending for top regions
@@ -709,12 +710,20 @@ HTML;
                     .sort((a, b) => b.event_count - a.event_count)
                     .slice(0, 10);
 
-                // Populate latest regions table
+                // Helper function to format date
+                function formatEventDate(dateStr) {
+                    if (!dateStr) return 'N/A';
+                    const date = new Date(dateStr);
+                    return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                }
+
+                // Populate latest regions table (ordered by last_updated)
                 const latestBody = document.getElementById('latestRegionsBody');
                 latestBody.innerHTML = latestRegions.map(r => `
                     <tr>
                         <td>\${r.organization}</td>
                         <td>\${r.external_id}</td>
+                        <td>\${formatEventDate(r.latest_event_start)}</td>
                         <td class="number">\${r.event_count}</td>
                         <td><a href="/api/v2/regions/\${r.organization}/\${r.external_id}" target="_blank" class="api-link">View JSON</a></td>
                     </tr>
@@ -726,6 +735,7 @@ HTML;
                     <tr>
                         <td>\${r.organization}</td>
                         <td>\${r.external_id}</td>
+                        <td>\${formatEventDate(r.latest_event_start)}</td>
                         <td class="number">\${r.event_count}</td>
                         <td><a href="/api/v2/regions/\${r.organization}/\${r.external_id}" target="_blank" class="api-link">View JSON</a></td>
                     </tr>

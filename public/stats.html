@@ -277,9 +277,12 @@
                     <thead>
                         <tr>
                             <th>Source</th>
-                            <th>Event Count</th>
                             <th>Date Range</th>
-                            <th>Percentage</th>
+                            <th>Today</th>
+                            <th>This Week</th>
+                            <th>This Month</th>
+                            <th>Total</th>
+                            <th>%</th>
                         </tr>
                     </thead>
                     <tbody id="sourceTableBody">
@@ -303,8 +306,7 @@
                 <table id="recentTable">
                     <thead>
                         <tr>
-                            <th>Event ID</th>
-                            <th>Type</th>
+                            <th>Event Label</th>
                             <th>Path</th>
                             <th>Start Time</th>
                             <th>End Time</th>
@@ -380,15 +382,17 @@
 
             bySource.forEach(row => {
                 const tr = document.createElement('tr');
-                const percentage = ((row.count / total) * 100).toFixed(1);
                 const dateRange = row.date_range.oldest && row.date_range.newest
                     ? `${row.date_range.oldest} → ${row.date_range.newest}`
                     : 'N/A';
                 tr.innerHTML = `
                     <td>${row.source}</td>
-                    <td class="number">${formatNumber(row.count)}</td>
                     <td>${dateRange}</td>
-                    <td class="number">${percentage}%</td>
+                    <td class="number">${formatNumber(row.today_count || 0)}</td>
+                    <td class="number">${formatNumber(row.week_count || 0)}</td>
+                    <td class="number">${formatNumber(row.month_count || 0)}</td>
+                    <td class="number">${formatNumber(row.count)}</td>
+                    <td class="number">${row.percentage || 0}%</td>
                 `;
                 tbody.appendChild(tr);
             });
@@ -430,11 +434,10 @@
 
             events.forEach(event => {
                 const tr = document.createElement('tr');
-                const shortId = event.id.substring(0, 8) + '...';
                 const eventUrl = `/api/v2/events/${event.id}`;
+                const label = event.label || 'Unknown';
                 tr.innerHTML = `
-                    <td><a href="${eventUrl}" target="_blank">${shortId}</a></td>
-                    <td>${event.label || 'Unknown'}</td>
+                    <td><a href="${eventUrl}" target="_blank">${label}</a></td>
                     <td>${event.path || 'Unknown'}</td>
                     <td>${formatDate(event.start)}</td>
                     <td>${formatDate(event.end)}</td>

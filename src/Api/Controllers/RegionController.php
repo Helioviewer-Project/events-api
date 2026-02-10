@@ -14,7 +14,7 @@ class RegionController extends Controller
     public function getAll(Request $request, Response $response): Response
     {
         try {
-            // Get all regions with event counts
+            // Get all regions with event counts and latest event start time
             $regions = DB::table('regions')
                 ->select([
                     'regions.id',
@@ -22,9 +22,11 @@ class RegionController extends Controller
                     'regions.external_id',
                     'regions.created_at',
                     'regions.updated_at',
-                    DB::raw('COUNT(event_regions.event_id) as event_count')
+                    DB::raw('COUNT(event_regions.event_id) as event_count'),
+                    DB::raw('MAX(events.start) as latest_event_start')
                 ])
                 ->leftJoin('event_regions', 'regions.id', '=', 'event_regions.region_id')
+                ->leftJoin('events', 'event_regions.event_id', '=', 'events.id')
                 ->groupBy('regions.id', 'regions.organization', 'regions.external_id', 'regions.created_at', 'regions.updated_at')
                 ->orderBy('regions.organization')
                 ->orderBy('regions.external_id')
@@ -39,6 +41,7 @@ class RegionController extends Controller
                     'event_count' => (int)$region->event_count,
                     'first_seen' => $region->created_at,
                     'last_updated' => $region->updated_at,
+                    'latest_event_start' => $region->latest_event_start ? date('Y-m-d H:i:s', $region->latest_event_start) : null,
                 ];
             })->toArray();
 

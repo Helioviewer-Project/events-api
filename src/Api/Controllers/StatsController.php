@@ -60,22 +60,37 @@ class StatsController extends Controller
                 JsonSource::RHESSI => 'RHESSI',
             ];
 
-            // Get events by source with date range
+            // Time boundaries for filtering
+            $todayStart = strtotime('today');
+            $todayEnd = strtotime('tomorrow') - 1;
+            $weekStart = strtotime('monday this week');
+            $weekEnd = strtotime('sunday this week 23:59:59');
+            $monthStart = strtotime('first day of this month midnight');
+            $monthEnd = strtotime('last day of this month 23:59:59');
+
+            // Get events by source with date range and time-based counts
             $bySource = DB::table('events')
                 ->select([
                     'source_id',
                     DB::raw('COUNT(*) as count'),
                     DB::raw('MIN(start) as oldest'),
-                    DB::raw('MAX(start) as newest')
+                    DB::raw('MAX(start) as newest'),
+                    DB::raw("SUM(CASE WHEN start >= {$todayStart} AND start <= {$todayEnd} THEN 1 ELSE 0 END) as today_count"),
+                    DB::raw("SUM(CASE WHEN start >= {$weekStart} AND start <= {$weekEnd} THEN 1 ELSE 0 END) as week_count"),
+                    DB::raw("SUM(CASE WHEN start >= {$monthStart} AND start <= {$monthEnd} THEN 1 ELSE 0 END) as month_count")
                 ])
                 ->groupBy('source_id')
                 ->orderBy('count', 'desc')
                 ->get();
 
-            $formattedBySource = $bySource->map(function ($item) use ($sourceNames) {
+            $formattedBySource = $bySource->map(function ($item) use ($sourceNames, $totalEvents) {
                 return [
                     'source' => $sourceNames[$item->source_id] ?? 'Unknown',
                     'count' => (int)$item->count,
+                    'today_count' => (int)$item->today_count,
+                    'week_count' => (int)$item->week_count,
+                    'month_count' => (int)$item->month_count,
+                    'percentage' => $totalEvents > 0 ? round(($item->count / $totalEvents) * 100, 1) : 0,
                     'date_range' => [
                         'oldest' => $item->oldest ? date('Y-m-d', $item->oldest) : null,
                         'newest' => $item->newest ? date('Y-m-d', $item->newest) : null,
