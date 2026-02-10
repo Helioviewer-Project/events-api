@@ -220,6 +220,9 @@ abstract class JsonSource implements SourceInterface
             }
         }
 
+        // Sanitize JavaScript-style values that are invalid JSON (NaN, Infinity, -Infinity)
+        $rawResponse = $this->sanitizeJsonResponse($rawResponse);
+
         $jsonData = json_decode($rawResponse, true);
 
         // Validate JSON was parsed successfully - throw SourceException for parse errors
@@ -244,7 +247,39 @@ abstract class JsonSource implements SourceInterface
         
         return $jsonData;
     }
-    
+
+    /**
+     * Sanitize JavaScript-style values that are invalid in JSON.
+     *
+     * Some APIs (notably HEK) return JavaScript-style values like NaN, Infinity,
+     * and -Infinity which are valid JavaScript but not valid JSON according to
+     * RFC 8259. This method converts these values to null before JSON parsing.
+     *
+     * Handled cases:
+     * - NaN (Not a Number) -> null
+     * - Infinity (positive infinity) -> null
+     * - -Infinity (negative infinity) -> null
+     *
+     * The regex uses lookbehind/lookahead to only match these values when they
+     * appear as JSON values (after : or , or [) and not when they're part of
+     * string content.
+     *
+     * @param string $response The raw JSON response string that may contain invalid values
+     *
+     * @return string The sanitized JSON string with NaN/Infinity replaced by null
+     */
+    protected function sanitizeJsonResponse(string $response): string
+    {
+        // Replace JavaScript NaN/Infinity with JSON null
+        // Match only when they appear as values (after :, or [ with optional whitespace)
+        // and are followed by whitespace and ,  } or ]
+        return preg_replace(
+            '/(?<=[:,\[])(\s*)(-?Infinity|NaN)(?=\s*[,}\]])/',
+            '$1null',
+            $response
+        );
+    }
+
     /**
      * Create default HTTP client optimized for JSON API communication.
      *
