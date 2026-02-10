@@ -63,9 +63,8 @@ $scheduler->call(function() use ($eventCollector, $logger) {
     $startTime = microtime(true);
     
     try {
-        // Collect from all sources
-        $events = $eventCollector->collect($timeRange);
-        $totalEvents = count($events);
+        // Collect from all sources (returns event count)
+        $totalEvents = $eventCollector->collect($timeRange);
         
         $endTime = microtime(true);
         $duration = round($endTime - $startTime, 2);
@@ -101,9 +100,8 @@ $scheduler->call(function() use ($eventCollector, $logger) {
     $startTime = microtime(true);
     
     try {
-        // Collect from all sources (2 days)
-        $events = $eventCollector->collect($timeRange);
-        $totalEvents = count($events);
+        // Collect from all sources (2 days, returns event count)
+        $totalEvents = $eventCollector->collect($timeRange);
         
         $endTime = microtime(true);
         $duration = round($endTime - $startTime, 2);
