@@ -8,6 +8,7 @@ use Helioviewer\EventsApi\Events\Processors\ProcessorInterface;
 use Helioviewer\EventsApi\Events\Event;
 use Helioviewer\EventsApi\Events\Sources\JsonSource;
 use Helioviewer\EventsApi\Events\Sources\SourceInterface;
+use Helioviewer\EventsApi\Exception\InvalidEventException;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -52,6 +53,7 @@ class EventTypeProcessor implements ProcessorInterface
      *
      * @param array $rawRecord Raw event data from HEK
      * @return array ['start' => int, 'peak' => int, 'end' => int, 'coordinate_time' => int]
+     * @throws InvalidEventException If end time is before start time
      */
     protected function getTimeLine(array $rawRecord): array
     {
@@ -59,6 +61,14 @@ class EventTypeProcessor implements ProcessorInterface
         $peakTime = !empty($rawRecord['event_peaktime']) ? strtotime($rawRecord['event_peaktime']) : false;
         $peak = ($peakTime !== false && $peakTime > 0) ? $peakTime : $start;
         $end = strtotime($rawRecord['event_endtime']);
+
+        // Validate time range: end must be >= start
+        if ($end < $start) {
+            $eventId = $rawRecord['kb_archivid'] ?? 'unknown';
+            throw new InvalidEventException(
+                "Invalid time range: end ({$rawRecord['event_endtime']}) must be greater than or equal to start ({$rawRecord['event_starttime']}) for event {$eventId}"
+            );
+        }
 
         return [
             'start'           => $start,
