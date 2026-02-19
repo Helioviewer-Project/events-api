@@ -671,7 +671,7 @@ HTML;
                             <div><strong>Path:</strong> \${event.path || 'Unknown'}</div>
                             <div><strong>Region:</strong> \${result.organization} \${regionInfo.external_id || 'Unknown'}</div>
                             <div><strong>Event Period:</strong> \${startDate} - \${endDate}</div>
-                            <div><strong>\${coordLabel}:</strong> (\${event.hv_hpc_x || 'N/A'}, \${event.hv_hpc_y || 'N/A'})</div>
+                            <div><strong>\${coordLabel}:</strong> (\${event.hv_hpc_x ?? 'N/A'}, \${event.hv_hpc_y ?? 'N/A'})</div>
                             <div class="result-meta">Event ID: \${event.url ? `<a href="\${event.url}" target="_blank">\${eventId}</a>` : eventId}</div>
                         </div>
                     `;
