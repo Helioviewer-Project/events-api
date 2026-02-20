@@ -114,22 +114,20 @@ class Postgres implements RepositoryInterface
      * @param string $source Source identifier (CCMC, HEK, WSA, RHESSI)
      * @param int $timestamp Unix timestamp to check for active events
      *
-     * @return array<int, array<string, mixed>> Array of event records active at the given time
+     * @return Collection<int, Event> Eloquent Collection of Event models active at the given time
      *
      * @throws \InvalidArgumentException If the source identifier is unknown
      */
-    public function findActiveAtTime(string $source, int $timestamp): array
+    public function findActiveAtTime(string $source, int $timestamp): Collection
     {
         $sourceId = $this->getSourceId($source);
 
         // Query events that were active at the specified timestamp
         // This uses an optimized WHERE clause that can leverage indexes
-        $events = Event::where('source_id', $sourceId)
+        return Event::where('source_id', $sourceId)
             ->where('start', '<=', $timestamp)  // Event had started
             ->where('end', '>=', $timestamp)    // Event had not ended
             ->get();
-
-        return $events->toArray();
     }
 
     /**

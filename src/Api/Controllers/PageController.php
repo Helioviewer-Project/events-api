@@ -382,6 +382,58 @@ HTML;
             border-radius: 6px;
             border-left: 4px solid #c33;
         }
+        .section-title {
+            font-size: 1.5rem;
+            margin: 30px 0 20px 0;
+            color: #333;
+            border-bottom: 2px solid #e67e22;
+            padding-bottom: 10px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 30px;
+        }
+        th {
+            background: #e9ecef;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            color: #333;
+            border-bottom: 2px solid #dee2e6;
+        }
+        td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #dee2e6;
+        }
+        tr:hover {
+            background: #fff;
+        }
+        .number {
+            font-weight: 600;
+            color: #e67e22;
+        }
+        .api-link {
+            color: #3498db;
+            text-decoration: none;
+            font-size: 12px;
+        }
+        .api-link:hover {
+            text-decoration: underline;
+        }
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #e67e22;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
@@ -436,6 +488,40 @@ HTML;
         </div>
 
             <div id="results" class="results"></div>
+
+            <h2 class="section-title">Latest Regions</h2>
+            <div id="tablesLoading" class="loading">
+                <div class="spinner"></div>
+                <p>Loading regions...</p>
+            </div>
+            <div id="tablesContent" style="display: none;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Organization</th>
+                            <th>Region ID</th>
+                            <th>Latest Event</th>
+                            <th>Events</th>
+                            <th>API</th>
+                        </tr>
+                    </thead>
+                    <tbody id="latestRegionsBody"></tbody>
+                </table>
+
+                <h2 class="section-title">Regions by Most Events</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Organization</th>
+                            <th>Region ID</th>
+                            <th>Latest Event</th>
+                            <th>Events</th>
+                            <th>API</th>
+                        </tr>
+                    </thead>
+                    <tbody id="topRegionsBody"></tbody>
+                </table>
+            </div>
         </div>
     </div>
 
@@ -571,13 +657,21 @@ HTML;
                     // Remove leading newline if present
                     probabilityText = probabilityText.trim();
 
+                    // Determine coordinate system label
+                    let coordLabel = 'Coordinates';
+                    if (event.coordinate_system === 'stonyhurst') {
+                        coordLabel = 'Stonyhurst Coordinates';
+                    } else if (event.coordinate_system === 'helioprojective') {
+                        coordLabel = 'Helioprojective Coordinates';
+                    }
+
                     html += `
                         <div class="result-item">
                             <div class="result-header">\${probabilityText}</div>
                             <div><strong>Path:</strong> \${event.path || 'Unknown'}</div>
                             <div><strong>Region:</strong> \${result.organization} \${regionInfo.external_id || 'Unknown'}</div>
                             <div><strong>Event Period:</strong> \${startDate} - \${endDate}</div>
-                            <div><strong>Stonyhurst Coordinates:</strong> (\${event.hv_hpc_x || 'N/A'}, \${event.hv_hpc_y || 'N/A'})</div>
+                            <div><strong>\${coordLabel}:</strong> (\${event.hv_hpc_x ?? 'N/A'}, \${event.hv_hpc_y ?? 'N/A'})</div>
                             <div class="result-meta">Event ID: \${event.url ? `<a href="\${event.url}" target="_blank">\${eventId}</a>` : eventId}</div>
                         </div>
                     `;
@@ -586,6 +680,77 @@ HTML;
 
             resultsDiv.innerHTML = html;
         }
+
+        // Load region tables on page load
+        async function loadRegionTables() {
+            const loading = document.getElementById('tablesLoading');
+            const content = document.getElementById('tablesContent');
+
+            try {
+                const response = await fetch('/api/v2/regions');
+                if (!response.ok) throw new Error('Failed to fetch regions');
+
+                const data = await response.json();
+                const allRegions = data.regions || [];
+
+                // Filter out MODEL organization and NOAA UNK
+                const regions = allRegions.filter(r => {
+                    if (r.organization === 'MODEL') return false;
+                    if (r.organization === 'NOAA' && r.external_id === 'UNK') return false;
+                    return true;
+                });
+
+                // Sort by last_updated descending for latest regions
+                const latestRegions = [...regions]
+                    .sort((a, b) => new Date(b.last_updated) - new Date(a.last_updated))
+                    .slice(0, 10);
+
+                // Sort by event_count descending for top regions
+                const topRegions = [...regions]
+                    .sort((a, b) => b.event_count - a.event_count)
+                    .slice(0, 10);
+
+                // Helper function to format date
+                function formatEventDate(dateStr) {
+                    if (!dateStr) return 'N/A';
+                    const date = new Date(dateStr);
+                    return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                }
+
+                // Populate latest regions table (ordered by last_updated)
+                const latestBody = document.getElementById('latestRegionsBody');
+                latestBody.innerHTML = latestRegions.map(r => `
+                    <tr>
+                        <td>\${r.organization}</td>
+                        <td>\${r.external_id}</td>
+                        <td>\${formatEventDate(r.latest_event_start)}</td>
+                        <td class="number">\${r.event_count}</td>
+                        <td><a href="/api/v2/regions/\${r.organization}/\${r.external_id}" target="_blank" class="api-link">View JSON</a></td>
+                    </tr>
+                `).join('');
+
+                // Populate top regions table
+                const topBody = document.getElementById('topRegionsBody');
+                topBody.innerHTML = topRegions.map(r => `
+                    <tr>
+                        <td>\${r.organization}</td>
+                        <td>\${r.external_id}</td>
+                        <td>\${formatEventDate(r.latest_event_start)}</td>
+                        <td class="number">\${r.event_count}</td>
+                        <td><a href="/api/v2/regions/\${r.organization}/\${r.external_id}" target="_blank" class="api-link">View JSON</a></td>
+                    </tr>
+                `).join('');
+
+                loading.style.display = 'none';
+                content.style.display = 'block';
+
+            } catch (error) {
+                loading.innerHTML = '<div class="error">Error loading regions: ' + error.message + '</div>';
+            }
+        }
+
+        // Load tables on page load
+        loadRegionTables();
     </script>
 </body>
 </html>

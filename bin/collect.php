@@ -78,23 +78,21 @@ foreach ($sources as $path => $source) {
     $logger->debug("Source: {$path} => {$source->getName()}");
 }
 
-$totalEvents = 0;
 $startTime = microtime(true);
-
 
 try {
 
     // Collect from all sources with specified chunk interval
-    $events = $collector->collect($timeRange, $intervalDays);
-    $totalEvents = count($events); 
-    
+    // Returns count (not events array) to prevent memory accumulation on large date ranges
+    $totalEvents = $collector->collect($timeRange, $intervalDays);
+
     $endTime = microtime(true);
     $duration = round($endTime - $startTime, 2);
-    
+
     // Show summary
     $avgRate = round($totalEvents / max($duration, 0.1), 2);
     $logger->info("Collection completed with total {$totalEvents} events, average {$avgRate} events/sec");
-    
+
 } catch (\Throwable $e) {
     $logger->critical("Collection failed: " . $e->getMessage());
     $logger->debug("Stack trace: " . $e->getTraceAsString());

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Helioviewer\EventsApi\Api;
 
 use Helioviewer\EventsApi\Events\Event;
+use Helioviewer\EventsApi\Events\Sources\JsonSource;
 use Helioviewer\EventsApi\Storage\Json\LocalFile;
 use Helioviewer\EventsApi\Storage\Json\JsonStorageInterface;
 
@@ -38,12 +39,16 @@ class Legacy
     
     /**
      * Format events into hierarchical structure based on paths
-     * 
+     *
+     * Builds a response containing all event types from the dictionary for the given source,
+     * even if some event types have no events. This ensures a consistent API response structure.
+     *
+     * @param string $source The data source (e.g., 'CCMC', 'HEK', 'RHESSI') used to filter dictionary entries
      * @param array $events Array of event records (from database query)
      * @param bool $includeExtendedData Whether to include source, views, and links data
-     * @return array Formatted hierarchical structure
+     * @return array Formatted hierarchical structure with all event types for the source
      */
-    public function formatEvents(array $events, bool $includeExtendedData = true): array
+    public function formatEvents(string $source, array $events, bool $includeExtendedData = true): array
     {
         $processedResult = [];
         
@@ -99,29 +104,9 @@ class Legacy
                     }
                 }
                 
-                // Add this 3-level path to parent's groups
-                if (!isset($processedResult[$parentPath]['groups'][$path])) {
-                    // Use dictionary values if available
-                    if (isset($this->dictionary[$path])) {
-                        $processedResult[$parentPath]['groups'][$path] = [
-                            'name' => $this->dictionary[$path]['name'] ?: $parts[2],
-                            'contact' => $this->dictionary[$path]['contact'] ?: $path,
-                            'url' => $this->dictionary[$path]['url'] ?: $path,
-                            'data' => []
-                        ];
-                    } else {
-                        $processedResult[$parentPath]['groups'][$path] = [
-                            'name' => $parts[2], // Just the last part
-                            'contact' => $path,
-                            'url' => $path,
-                            'data' => []
-                        ];
-                    }
-                }
-                
-                // Prepare event data
-                $eventArray = is_array($row) ? $row : (array) $row;
-                
+                // Prepare event data (use toArray() for Eloquent models to apply casts)
+                $eventArray = is_array($row) ? $row : $row->toArray();
+
                 // Add legacy field transformations
                 $eventArray['type'] = $eventArray['legacy_type'] ?? null;
                 $eventArray['version'] = $eventArray['legacy_version'] ?? null;
@@ -162,6 +147,11 @@ class Legacy
                     }
 
                     $eventArray['link'] = $linksData;
+
+                    // Add concept for HEK events
+                    if (($eventArray['source_id'] ?? null) === JsonSource::HEK) {
+                        $eventArray['concept'] = $eventArray['source']['concept'];
+                    }
                 }
 
                 // Add legacy id to safe guard all event system , before transition to v2 endpoints
@@ -174,8 +164,41 @@ class Legacy
                         $eventArray['legacy_id'] = hash('sha256', json_encode($eventArray['source']));
                     } elseif(str_starts_with($eventArray['path'], 'RHESSI>>Solar Flares>>Flare') && count(explode('>>', $eventArray['path'])) === 3) {
                         $eventArray['legacy_id'] = $eventArray['source']['id'];
+                    } elseif(str_starts_with($eventArray['path'], 'HEK>>')) {
+                        // HEK events use kb_archivid as legacy_id
+                        $eventArray['legacy_id'] = $eventArray['source']['kb_archivid'];
                     } else {
                         $eventArray['legacy_id'] = $eventArray['id'];
+                    }
+                }
+                
+                // Add this 3-level path to parent's groups
+                if (!isset($processedResult[$parentPath]['groups'][$path])) {
+                    // Use dictionary values if available
+                    if (isset($this->dictionary[$path])) {
+                        $processedResult[$parentPath]['groups'][$path] = [
+                            'name' => $this->dictionary[$path]['name'] ?: $parts[2],
+                            'contact' => $this->dictionary[$path]['contact'] ?: $path,
+                            'url' => $this->dictionary[$path]['url'] ?: $path,
+                            'data' => []
+                        ];
+                    } else {
+                        // For HEK events, use frm_contact and frm_url from source
+                        if (str_starts_with($path, 'HEK>>')) {
+                            $processedResult[$parentPath]['groups'][$path] = [
+                                'name' => $parts[2],
+                                'contact' => $eventArray['source']['frm_contact'],
+                                'url' => $eventArray['source']['frm_url'],
+                                'data' => []
+                            ];
+                        } else {
+                            $processedResult[$parentPath]['groups'][$path] = [
+                                'name' => $parts[2],
+                                'contact' => $path,
+                                'url' => $path,
+                                'data' => []
+                            ];
+                        }
                     }
                 }
                 
@@ -186,14 +209,31 @@ class Legacy
         }
 
         ksort($processedResult);
-        
-        // Convert associative arrays to indexed arrays
-        $finalResult = array_values($processedResult);
 
         // Also convert groups from associative to indexed arrays
-        foreach ($finalResult as &$item) {
+        foreach ($processedResult as &$item) {
             if (isset($item['groups']) && is_array($item['groups'])) {
                 $item['groups'] = array_values($item['groups']);
+            }
+        }
+
+        // Build final result using dictionary order, ensuring all event types for the source are included.
+        // This guarantees a consistent API response structure even when some event types have no events.
+        $finalResult = [];
+
+        foreach ($this->dictionary as $dictPath => $dictValue) {
+            if (isset($processedResult[$dictPath])) {
+                // Event type has data - use the processed result
+                $finalResult[] = $processedResult[$dictPath];
+            } else {
+                // Event type has no data - include it with empty groups if it belongs to the requested source
+                $pathParts = explode('>>', $dictPath);
+                $isTopLevelForSource = count($pathParts) === 2 && str_starts_with($dictPath, $source . '>>');
+
+                if ($isTopLevelForSource) {
+                    $dictValue['groups'] = [];
+                    $finalResult[] = $dictValue;
+                }
             }
         }
 

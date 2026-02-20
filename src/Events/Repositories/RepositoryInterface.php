@@ -6,6 +6,7 @@ namespace Helioviewer\EventsApi\Events\Repositories;
 
 use Helioviewer\EventsApi\Events\Event;
 use Helioviewer\EventsApi\Utils\TimeRange;
+use Illuminate\Database\Eloquent\Collection;
 
 /**
  * Event Repository Interface
@@ -56,9 +57,9 @@ interface RepositoryInterface
      * @param string $source Source identifier to filter by
      * @param int $timestamp Unix timestamp to check for active events
      *
-     * @return array<Event> Array of Event objects active at the given time
+     * @return Collection<int, Event> Eloquent Collection of Event models active at the given time
      */
-    public function findActiveAtTime(string $source, int $timestamp): array;
+    public function findActiveAtTime(string $source, int $timestamp): Collection;
 
     /**
      * Retrieve events within a specified time range.

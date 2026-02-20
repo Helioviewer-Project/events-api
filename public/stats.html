@@ -277,25 +277,28 @@
                     <thead>
                         <tr>
                             <th>Source</th>
-                            <th>Path</th>
-                            <th>Event Count</th>
-                            <th>Percentage</th>
+                            <th>Date Range</th>
+                            <th>Today</th>
+                            <th>This Week</th>
+                            <th>This Month</th>
+                            <th>Total</th>
+                            <th>%</th>
                         </tr>
                     </thead>
                     <tbody id="sourceTableBody">
                     </tbody>
                 </table>
 
-                <h2 class="section-title">Events by Label</h2>
-                <table id="typeTable">
+                <h2 class="section-title">Events by Path</h2>
+                <table id="pathTable">
                     <thead>
                         <tr>
-                            <th>Event Label</th>
-                            <th>Count</th>
+                            <th>Path</th>
+                            <th>Event Count</th>
                             <th>Percentage</th>
                         </tr>
                     </thead>
-                    <tbody id="typeTableBody">
+                    <tbody id="pathTableBody">
                     </tbody>
                 </table>
 
@@ -303,11 +306,10 @@
                 <table id="recentTable">
                     <thead>
                         <tr>
-                            <th>Event ID</th>
-                            <th>Type</th>
-                            <th>Source</th>
+                            <th>Event Label</th>
+                            <th>Path</th>
                             <th>Start Time</th>
-                            <th>Updated</th>
+                            <th>End Time</th>
                         </tr>
                     </thead>
                     <tbody id="recentTableBody">
@@ -351,11 +353,11 @@
                     document.getElementById('dateRange').textContent = 'N/A';
                 }
 
-                // Populate source table
-                populateSourceTable(data.by_source_path, data.summary.total_events);
+                // Populate source table (HEK, CCMC, RHESSI with date ranges)
+                populateSourceTable(data.by_source, data.summary.total_events);
 
-                // Populate label table
-                populateLabelTable(data.by_label, data.summary.total_events);
+                // Populate path table (group by path)
+                populatePathTable(data.by_source_path, data.summary.total_events);
 
                 // Populate recent events
                 populateRecentEvents(data.recent_events);
@@ -374,33 +376,52 @@
             }
         }
 
-        function populateSourceTable(bySourcePath, total) {
+        function populateSourceTable(bySource, total) {
             const tbody = document.getElementById('sourceTableBody');
             tbody.innerHTML = '';
 
-            bySourcePath.forEach(row => {
+            bySource.forEach(row => {
                 const tr = document.createElement('tr');
-                const percentage = ((row.count / total) * 100).toFixed(1);
+                const dateRange = row.date_range.oldest && row.date_range.newest
+                    ? `${row.date_range.oldest} → ${row.date_range.newest}`
+                    : 'N/A';
                 tr.innerHTML = `
                     <td>${row.source}</td>
-                    <td>${row.path}</td>
+                    <td>${dateRange}</td>
+                    <td class="number">${formatNumber(row.today_count || 0)}</td>
+                    <td class="number">${formatNumber(row.week_count || 0)}</td>
+                    <td class="number">${formatNumber(row.month_count || 0)}</td>
                     <td class="number">${formatNumber(row.count)}</td>
-                    <td class="number">${percentage}%</td>
+                    <td class="number">${row.percentage || 0}%</td>
                 `;
                 tbody.appendChild(tr);
             });
         }
 
-        function populateLabelTable(byLabel, total) {
-            const tbody = document.getElementById('typeTableBody');
+        function populatePathTable(bySourcePath, total) {
+            const tbody = document.getElementById('pathTableBody');
             tbody.innerHTML = '';
 
-            byLabel.forEach(item => {
+            // Group by path
+            const byPath = {};
+            bySourcePath.forEach(row => {
+                if (!byPath[row.path]) {
+                    byPath[row.path] = 0;
+                }
+                byPath[row.path] += row.count;
+            });
+
+            // Convert to array and sort by count descending
+            const pathArray = Object.entries(byPath)
+                .map(([path, count]) => ({ path, count }))
+                .sort((a, b) => b.count - a.count);
+
+            pathArray.forEach(row => {
                 const tr = document.createElement('tr');
-                const percentage = ((item.count / total) * 100).toFixed(1);
+                const percentage = ((row.count / total) * 100).toFixed(1);
                 tr.innerHTML = `
-                    <td>${item.label}</td>
-                    <td class="number">${formatNumber(item.count)}</td>
+                    <td>${row.path}</td>
+                    <td class="number">${formatNumber(row.count)}</td>
                     <td class="number">${percentage}%</td>
                 `;
                 tbody.appendChild(tr);
@@ -413,14 +434,13 @@
 
             events.forEach(event => {
                 const tr = document.createElement('tr');
-                const shortId = event.id.substring(0, 8) + '...';
                 const eventUrl = `/api/v2/events/${event.id}`;
+                const label = event.label || 'Unknown';
                 tr.innerHTML = `
-                    <td><a href="${eventUrl}" target="_blank">${shortId}</a></td>
-                    <td>${event.label || 'Unknown'}</td>
-                    <td>${event.source}</td>
+                    <td><a href="${eventUrl}" target="_blank">${label}</a></td>
+                    <td>${event.path || 'Unknown'}</td>
                     <td>${formatDate(event.start)}</td>
-                    <td>${formatDate(event.updated_at)}</td>
+                    <td>${formatDate(event.end)}</td>
                 `;
                 tbody.appendChild(tr);
             });

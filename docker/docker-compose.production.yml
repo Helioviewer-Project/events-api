@@ -66,7 +66,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: eventsapi-redis
-    command: redis-server --appendonly yes
+    command: redis-server --appendonly yes --maxmemory 4gb --maxmemory-policy allkeys-lru
     volumes:
       - redis_data:/data
     networks:
@@ -77,6 +77,15 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+
+  coordinator:
+    image: ghcr.io/helioviewer-project/coordinator
+    container_name: eventsapi-coordinator
+    networks:
+      - eventsapi
+    restart: unless-stopped
+    healthcheck:
+      interval: 60s
 
 volumes:
   postgres_data:

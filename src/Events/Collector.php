@@ -19,10 +19,19 @@ use Helioviewer\EventsApi\Exception\InvalidEventException;
 use Psr\Log\LoggerInterface;
 use Monolog\Processor\TagProcessor;
 // Sources for createStandard factory method
+use Helioviewer\EventsApi\Events\Sources\HEK\Source as HEKSource;
 use Helioviewer\EventsApi\Events\Sources\CCMC\DonkiFlareSource;
 use Helioviewer\EventsApi\Events\Sources\CCMC\DonkiCmeSource;
 use Helioviewer\EventsApi\Events\Sources\CCMC\FlareScoreboardSource;
 // Processors for createStandard factory method
+use Helioviewer\EventsApi\Events\Processors\HEK\EventTypeProcessor as HEKEventTypeProcessor;
+use Helioviewer\EventsApi\Events\Processors\HEK\ARProcessor as HEKARProcessor;
+use Helioviewer\EventsApi\Events\Processors\HEK\CEProcessor as HEKCEProcessor;
+use Helioviewer\EventsApi\Events\Processors\HEK\CHProcessor as HEKCHProcessor;
+use Helioviewer\EventsApi\Events\Processors\HEK\EFProcessor as HEKEFProcessor;
+use Helioviewer\EventsApi\Events\Processors\HEK\FIProcessor as HEKFIProcessor;
+use Helioviewer\EventsApi\Events\Processors\HEK\FlareProcessor as HEKFlareProcessor;
+use Helioviewer\EventsApi\Events\Processors\HEK\SGProcessor as HEKSGProcessor;
 use Helioviewer\EventsApi\Events\Processors\CCMC\DonkiFlareProcessor;
 use Helioviewer\EventsApi\Events\Processors\CCMC\DonkiCmeProcessor;
 use Helioviewer\EventsApi\Events\Processors\CCMC\FlareScoreboard\Processor as FlareScoreboardProcessor;
@@ -113,9 +122,54 @@ class Collector
         $collector = new self($repository, $regionRepository, $json_storage, $failure_storage, $logger);
         
         // === SOURCES ===
+        $collector->addSource('HEK', new HEKSource($httpClient));
+
+        // === PROCESSORS ===
+        // Specialized HEK processors
+        $collector->addProcessor(new HEKARProcessor($logger));  // AR - Active Region
+        $collector->addProcessor(new HEKCEProcessor($logger));  // CE - CME
+        $collector->addProcessor(new HEKCHProcessor($logger));  // CH - Coronal Hole
+        $collector->addProcessor(new HEKEFProcessor($logger));  // EF - Emerging Flux
+        $collector->addProcessor(new HEKFIProcessor($logger));  // FI - Filament
+        $collector->addProcessor(new HEKFlareProcessor($logger));  // FL - Flare (uses peak for coordinate_time)
+        $collector->addProcessor(new HEKSGProcessor($logger));  // SG - Sigmoid
+
+        // Generic HEK event type processors for remaining event types
+        $hekEventTypes = [
+            'CC',  // Coronal Cavity
+            'CD',  // Coronal Dimming
+            'CJ',  // Coronal Jet
+            'CR',  // Coronal Rain
+            'CW',  // Coronal Wave
+            'ER',  // Eruption
+            'FA',  // Filament Activation
+            'FE',  // Filament Eruption
+            'LP',  // Loop
+            'OS',  // Oscillation
+            'PG',  // Plage
+            'SP',  // Spray Surge
+            'SS',  // Sunspot
+            // Less used ones
+            'OT', // Other
+            'NR', // Nothing Reported
+            'TO', // Topological Object
+            'HY', // Hypothesis
+            'BU', // UVBurst
+            'EE', // ExplosiveEvent
+            'PB', // ProminenceBubble
+            'PT', // PeacockTail
+            'EP', // SEPs
+            'IC', // ICMEs
+            'SR', // SIRs
+        ];
+
+        foreach ($hekEventTypes as $eventType) {
+            $collector->addProcessor(new HEKEventTypeProcessor($eventType, $logger));
+        }
+
         $collector->addSource('CCMC>>DONKI>>CME', new DonkiCmeSource($httpClient));
         $collector->addSource('CCMC>>DONKI>>Solar Flares', new DonkiFlareSource($httpClient));
-        
+
         // Prediction models
         $predictionModels = [
             'SIDC_Operator_REGIONS' => 'SIDC Operator',
@@ -131,25 +185,25 @@ class Collector
             'MAG4_SHARP_HMI_REGIONS' => 'MAG4 Sharp HMI',
             'AEffort_REGIONS' => 'AEffort',
         ];
-        
+
         foreach ($predictionModels as $modelId => $modelName) {
-            $collector->addSource("CCMC>>Solar Flare Predictions>>$modelName", 
+            $collector->addSource("CCMC>>Solar Flare Predictions>>$modelName",
                 new FlareScoreboardSource($modelId, $modelName, $httpClient));
         }
-        
+
         // === PROCESSORS ===
         // DONKI processors don't need coordinate resolution (coordinates in raw data)
         $collector->addProcessor(new DonkiFlareProcessor($logger));
         $collector->addProcessor(new DonkiCmeProcessor($logger));
-        
+
         // DAFF processor uses direct service integration (no resolvers)
         $daffProcessor = new DaffProcessor($harpService, $noaaService, $logger);
         $collector->addProcessor($daffProcessor);
-        
+
         // ASSA processor with custom coordinate extraction
         $assaProcessor = new AssaProcessor($logger);
         $collector->addProcessor($assaProcessor);
-        
+
         // FlareScoreboard processor reads coordinates directly from fields (no resolvers needed)
         $flareScoreboardProcessor = new FlareScoreboardProcessor($logger);
         $collector->addProcessor($flareScoreboardProcessor);
@@ -205,27 +259,32 @@ class Collector
      * Processes the time range in chunks according to the specified interval (default: 1 day).
      * This allows efficient processing of large date ranges while managing memory usage and API calls.
      *
+     * Memory optimization: Events are counted but not accumulated to prevent OOM on large ranges.
+     *
      * @param TimeRange $range Time range for data collection
      * @param int $chunkInterval Number of days per processing chunk (default: 1)
      *
-     * @return array<Event> Array of processed Event objects
+     * @return int Total number of events collected (not the events themselves to save memory)
      */
-    public function collect(TimeRange $range, int $chunkInterval = 1): array
+    public function collect(TimeRange $range, int $chunkInterval = 1): int
     {
-        $allEvents = [];
-        
+        $totalEventCount = 0;
+
         // Process all registered sources
         $sourcesToProcess = $this->sources;
-        
+
         // Process in chunks based on interval
         $chunks = $range->splitByInterval($chunkInterval);
-        
+
+        $collectionStartTime = microtime(true);
+
         foreach ($chunks as $index => $chunkRange) {
+            $chunkStartTime = microtime(true);
             $chunkDays = round($chunkRange->getDuration() / 86400, 1);
-            $this->logger->info("Processing chunk " . ($index + 1) . "/" . count($chunks) . 
-                              ": " . $chunkRange->getStartDate() . " to " . $chunkRange->getEndDate() . 
+            $this->logger->info("Processing chunk " . ($index + 1) . "/" . count($chunks) .
+                              ": " . $chunkRange->getStartDate() . " to " . $chunkRange->getEndDate() .
                               " ({$chunkDays} days)");
-            
+
             foreach ($sourcesToProcess as $path => $source) {
                 // Add tag processor for this source, date range and chunk number
                 $tagProcessor = new TagProcessor([
@@ -234,13 +293,17 @@ class Collector
                     'chunk' => $index + 1
                 ]);
                 $this->logger->pushProcessor($tagProcessor);
-                
+
                 try {
                     $this->logger->info("Collecting");
-                    $events = $this->collectFromSource($path, $source, $chunkRange);
-                    $allEvents = array_merge($allEvents, $events);
-                    $this->logger->info("Collected " . count($events) . " valid events");
-                    
+                    $sourceStartTime = microtime(true);
+                    $chunkEventCount = $this->collectFromSource($path, $source, $chunkRange);
+                    $sourceEndTime = microtime(true);
+                    $sourceDuration = round($sourceEndTime - $sourceStartTime, 2);
+                    $avgPerEvent = $chunkEventCount > 0 ? round(($sourceDuration / $chunkEventCount) * 1000, 1) : 0;
+                    $totalEventCount += $chunkEventCount;
+                    $this->logger->info("Collected {$chunkEventCount} events in {$sourceDuration}s ({$avgPerEvent}ms/event)");
+
                     // Add delay after fetching each chunk's data (except for the last chunk)
                     // This prevents overwhelming APIs when fetching multiple chunks
                     if ($index < count($chunks) - 1) {
@@ -261,9 +324,32 @@ class Collector
                     $this->logger->popProcessor();
                 }
             }
+
+            // Chunk timing summary
+            $chunkEndTime = microtime(true);
+            $chunkDuration = round($chunkEndTime - $chunkStartTime, 2);
+            $elapsedTotal = round($chunkEndTime - $collectionStartTime, 2);
+            $remainingChunks = count($chunks) - ($index + 1);
+            $estimatedRemaining = $remainingChunks > 0 ? round(($elapsedTotal / ($index + 1)) * $remainingChunks, 0) : 0;
+            $memoryUsage = round(memory_get_usage(true) / 1024 / 1024, 1);
+
+            $this->logger->info("Chunk " . ($index + 1) . "/" . count($chunks) . " completed in {$chunkDuration}s | " .
+                              "Total elapsed: {$elapsedTotal}s | " .
+                              "ETA: {$estimatedRemaining}s | " .
+                              "Memory: {$memoryUsage}MB | " .
+                              "Events so far: {$totalEventCount}");
+
+            // Force garbage collection after each chunk to free memory
+            gc_collect_cycles();
         }
-        
-        return $allEvents;
+
+        // Final summary
+        $totalDuration = round(microtime(true) - $collectionStartTime, 2);
+        $avgPerEvent = $totalEventCount > 0 ? round(($totalDuration / $totalEventCount) * 1000, 1) : 0;
+        $eventsPerSecond = $totalDuration > 0 ? round($totalEventCount / $totalDuration, 1) : 0;
+        $this->logger->info("Collection finished | {$totalEventCount} events | {$totalDuration}s total | {$eventsPerSecond} events/s | {$avgPerEvent}ms/event");
+
+        return $totalEventCount;
     }
 
     /**
@@ -273,33 +359,34 @@ class Collector
      * @param SourceInterface $source The source object to collect from
      * @param TimeRange $range Time range for data collection
      *
-     * @return array<Event> Array of processed Event objects
+     * @return int Number of events successfully processed
      */
-    private function collectFromSource(string $path, SourceInterface $source, TimeRange $range): array
+    private function collectFromSource(string $path, SourceInterface $source, TimeRange $range): int
     {
         $sourceName = $source->getName();
-        
+
         // Let exceptions bubble up - they'll be caught in the collect() method
         $rawData = $source->fetchRawData($range);
-        
-        $events = [];
-        
+
         $totalRawRecords = count($rawData);
         $this->logger->info("Found {$totalRawRecords} raw event records");
 
         $processedCount = 0;
         foreach ($rawData as $index => $rawRecord) {
- 
-            
+
+            $processorFound = false;
+
             foreach ($this->processors as $processor) {
                 if ($processor->canProcess($source, $rawRecord)) {
+
+                    $processorFound = true;
+
                     $processorClass = get_class($processor);
                     
                     try {
 
                         // Process the raw record into an unpersisted Event model
                         $event = $processor->process($rawRecord, $source);
-
 
                         // Extract remote ID for deduplication and set it
                         $event->remote_id = $source->getName() . ":" . $source->extractRawRecordId($rawRecord);
@@ -309,7 +396,6 @@ class Collector
                         } else {
                             $event->path = $path . '>>' .$event->path;
                         }
-                        
                         
                         // Store views, link, and region info temporarily before DB save
                         $tempViews = $event->legacy_views;
@@ -323,7 +409,8 @@ class Collector
                         
                         if ($existingEvent) {
                             // Update existing event with new data
-                            $existingEvent->fill($event->getAttributes());
+                            // Use toArray() to get casted values (getAttributes() returns raw uncasted values)
+                            $existingEvent->fill($event->toArray());
                             $savedEvent = $this->repository->save($existingEvent);
                             $action = "Updated";
                         } else {
@@ -393,8 +480,6 @@ class Collector
                             }
                         }
                         
-                        $events[] = $savedEvent;
-
                         $processedCount++;
 
                         // Log processing progress with event details and view link
@@ -439,32 +524,16 @@ class Collector
                     break;
                 }
             }
-        }
-        
-        return $events;
-    }
 
-    /**
-     * Get comprehensive statistics about the event collection system.
-     *
-     * Provides information about registered sources, processors, and
-     * database statistics for monitoring and debugging purposes.
-     *
-     * @return array<string, mixed> Statistics array containing:
-     *   - total_sources: Number of registered sources
-     *   - total_processors: Number of registered processors
-     *   - sources: Array of source names
-     *   - ccmc_events: Count of CCMC events in database
-     *   - recent_events: Count of recent events (last 10)
-     */
-    public function getStats(): array
-    {
-        return [
-            'total_sources' => count($this->sources),
-            'total_processors' => count($this->processors),
-            'sources' => array_keys($this->sources),
-            'ccmc_events' => $this->repository->countBySource('CCMC'),
-            'recent_events' => count($this->repository->getRecent(10))
-        ];
+            if (!$processorFound) {
+                $remoteId = $source->extractRawRecordId($rawRecord);
+                $this->logger->warning("No processor found for event | source: {$path} | remote_id: {$remoteId}");
+            }
+        }
+
+        // Free memory from raw data
+        unset($rawData);
+
+        return $processedCount;
     }
 }
