@@ -157,7 +157,7 @@ class FlareScoreboardSource extends JsonSource
         $startTime = date('Y-m-d\TH:i:s.0', $range->start);
         $endTime = date('Y-m-d\TH:i:s.0', $range->end);
 
-        return "https://iswa.gsfc.nasa.gov/IswaSystemWebApp/flarescoreboard/hapi/data?"
+        return "https://iswa.ccmc.gsfc.nasa.gov/flarescoreboard/hapi/data?"
              . "id=" . $this->modelId
              . "&time.min=" . $startTime
              . "&time.max=" . $endTime
