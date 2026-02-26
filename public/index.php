@@ -12,6 +12,7 @@ use Helioviewer\EventsApi\Api\Controllers\EventController;
 use Helioviewer\EventsApi\Api\Controllers\RegionController;
 use Helioviewer\EventsApi\Api\Controllers\StatsController;
 use Helioviewer\EventsApi\Api\Controllers\PageController;
+use Helioviewer\EventsApi\Api\Controllers\HelioviewerController;
 
 // Create Slim app
 $app = AppFactory::create();
@@ -27,33 +28,37 @@ $eventController = new EventController($container);
 $regionController = new RegionController($container);
 $statsController = new StatsController($container);
 $pageController = new PageController($container);
+$helioviewerController = new HelioviewerController($container);
+
+// ===========================
+// Helioviewer Routes (Legacy format for Helioviewer.org)
+// ===========================
+$app->get('/helioviewer/events/{source}/observation/{timestamp}', [$helioviewerController, 'getByObservation']);
 
 // ===========================
 // Event Routes
 // ===========================
-$app->get('/api/v2/events/recents', [$eventController, 'getRecents']);
+$app->get('/api/v1/events/recents', [$eventController, 'getRecents']);
 
-$app->get('/api/v1/events/{source}/observation/{timestamp}', [$eventController, 'getByObservationV1']);
+$app->get('/api/v1/events/{source}/observation/{timestamp}', [$eventController, 'getByObservation']);
 
-$app->get('/api/v2/events/{source}/observation/{timestamp}', [$eventController, 'getByObservation']);
-
-$app->get('/api/v2/events/{uuid:[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}}',
+$app->get('/api/v1/events/{uuid:[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}}',
     [$eventController, 'getByUuid']);
 
-$app->get('/api/v2/events/{uuid:[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}}/source',
+$app->get('/api/v1/events/{uuid:[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}}/source',
     [$eventController, 'getEventSource']);
 
 // ===========================
 // Region Routes
 // ===========================
-$app->get('/api/v2/regions', [$regionController, 'getAll']);
+$app->get('/api/v1/regions', [$regionController, 'getAll']);
 
-$app->get('/api/v2/regions/{organization}/{external_id}', [$regionController, 'getByOrganizationAndId']);
+$app->get('/api/v1/regions/{organization}/{external_id}', [$regionController, 'getByOrganizationAndId']);
 
 // ===========================
 // Statistics Routes
 // ===========================
-$app->get('/api/v2/stats', [$statsController, 'getStats']);
+$app->get('/api/v1/stats', [$statsController, 'getStats']);
 
 // ===========================
 // HTML Page Routes

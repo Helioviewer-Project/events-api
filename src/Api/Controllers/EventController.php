@@ -5,9 +5,6 @@ namespace Helioviewer\EventsApi\Api\Controllers;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Helioviewer\EventsApi\Utils\TimestampParser;
-use Helioviewer\EventsApi\Api\Legacy as LegacyEventResponse;
-use Helioviewer\EventsApi\Events\Sources\JsonSource;
-use Helioviewer\EventsApi\Events\Event;
 
 class EventController extends Controller
 {
@@ -53,9 +50,9 @@ class EventController extends Controller
                 $reorderedArray = [];
                 foreach ($eventArray as $key => $value) {
                     if ($key === 'id') {
-                        $reorderedArray['url'] = "{$apiUrl}/api/v2/events/{$uuid}";
+                        $reorderedArray['url'] = "{$apiUrl}/api/v1/events/{$uuid}";
                     } elseif ($key === 'source') {
-                        $reorderedArray['source_url'] = "{$apiUrl}/api/v2/events/{$uuid}/source";
+                        $reorderedArray['source_url'] = "{$apiUrl}/api/v1/events/{$uuid}/source";
                     } else {
                         $reorderedArray[$key] = $value;
                     }
@@ -73,45 +70,8 @@ class EventController extends Controller
     }
 
 
-
     /**
-     * Get events by observation (V1 API)
-     */
-    public function getByObservationV1(Request $request, Response $response, array $args): Response
-    {
-        $source = strtoupper($args['source']);
-
-        // Validate source
-        if (!in_array($source, ['CCMC', 'HEK', 'WSA', 'RHESSI'])) {
-            return $this->error($response, 'Invalid source. Must be one of: CCMC, HEK, WSA, RHESSI', 400);
-        }
-
-        $timestamp = $args['timestamp'];
-        
-        // Parse timestamp using TimestampParser
-        try {
-            $parsedTimestamp = TimestampParser::parseTimestamp($timestamp);
-        } catch (\InvalidArgumentException $e) {
-            return $this->error($response, 'Invalid timestamp or date format: ' . $e->getMessage(), 400);
-        }
-
-        // Get events that were happening at the specified timestamp using repository
-        $events = $this->eventRepository->findActiveAtTime($source, $parsedTimestamp);
-
-        $this->logger->debug("API v1: Found " . $events->count() . " events for {$source} at " . date('Y-m-d H:i:s', $parsedTimestamp));
-
-        // Rotate all events to target observation time
-        $rotatedEvents = $this->coordinateRotator->rotate($events, $parsedTimestamp);
-
-        // Use Legacy formatter to format events
-        $legacyResponse = new LegacyEventResponse($this->jsonStorage);
-        $formattedEvents = $legacyResponse->formatEvents($source, $rotatedEvents->toArray(), true);
-
-        return $this->json($response, $formattedEvents);
-    }
-
-    /**
-     * Get events by observation (V2 API)
+     * Get events by observation
      */
     public function getByObservation(Request $request, Response $response, array $args): Response
     {
@@ -134,7 +94,7 @@ class EventController extends Controller
         // Get events that were happening at the specified timestamp using repository
         $events = $this->eventRepository->findActiveAtTime($source, $parsedTimestamp);
 
-        $this->logger->debug("API v2: Found " . $events->count() . " events for {$source} at " . date('Y-m-d H:i:s', $parsedTimestamp));
+        $this->logger->debug("API v1: Found " . $events->count() . " events for {$source} at " . date('Y-m-d H:i:s', $parsedTimestamp));
 
         // Rotate all events to target observation time
         $rotatedEvents = $this->coordinateRotator->rotate($events, $parsedTimestamp);

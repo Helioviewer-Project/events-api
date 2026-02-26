@@ -117,9 +117,9 @@ class RegionController extends Controller
                 $reorderedArray = [];
                 foreach ($eventArray as $key => $value) {
                     if ($key === 'id') {
-                        $reorderedArray['url'] = "{$apiUrl}/api/v2/events/{$uuid}";
+                        $reorderedArray['url'] = "{$apiUrl}/api/v1/events/{$uuid}";
                     } elseif ($key === 'source') {
-                        $reorderedArray['source_url'] = "{$apiUrl}/api/v2/events/{$uuid}/source";
+                        $reorderedArray['source_url'] = "{$apiUrl}/api/v1/events/{$uuid}/source";
                     } else {
                         $reorderedArray[$key] = $value;
                     }

@@ -93,14 +93,17 @@ make
 
 The API provides several endpoints for accessing solar event data:
 
-### V1 API (Legacy)
-- `GET /api/v1/events/{source}/observation/{timestamp}` - Get events active at specific timestamp with coordinate rotation
+### Helioviewer.org Integration
+- `GET /helioviewer/events/{source}/observation/{timestamp}` - Legacy format for Helioviewer.org
 
-### V2 API (Enhanced)
-- `GET /api/v2/events/recents` - Get last 100 updated events with enhanced data
-- `GET /api/v2/events/{uuid}` - Get single event by UUID with full details
-- `GET /api/v2/events/{uuid}/source` - Get raw source data for an event
-- `GET /api/v2/events/{source}/observation/{timestamp}` - Enhanced observation endpoint
+### V1 API
+- `GET /api/v1/events/recents` - Get last 100 updated events with enhanced data
+- `GET /api/v1/events/{uuid}` - Get single event by UUID with full details
+- `GET /api/v1/events/{uuid}/source` - Get raw source data for an event
+- `GET /api/v1/events/{source}/observation/{timestamp}` - Get events active at specific timestamp
+- `GET /api/v1/regions` - Get all active regions
+- `GET /api/v1/regions/{organization}/{external_id}` - Get events for a specific region
+- `GET /api/v1/stats` - Get API statistics
 
 **Supported Sources**: CCMC, HEK, WSA, RHESSI
 

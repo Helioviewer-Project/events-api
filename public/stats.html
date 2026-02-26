@@ -333,7 +333,7 @@
 
             try {
                 // Fetch comprehensive statistics
-                const response = await fetch('/api/v2/stats');
+                const response = await fetch('/api/v1/stats');
                 if (!response.ok) throw new Error('Failed to fetch statistics');
 
                 const data = await response.json();
@@ -434,7 +434,7 @@
 
             events.forEach(event => {
                 const tr = document.createElement('tr');
-                const eventUrl = `/api/v2/events/${event.id}`;
+                const eventUrl = `/api/v1/events/${event.id}`;
                 const label = event.label || 'Unknown';
                 tr.innerHTML = `
                     <td><a href="${eventUrl}" target="_blank">${label}</a></td>

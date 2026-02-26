@@ -275,7 +275,7 @@ class Event extends Model
      */
     public static function getUrlById(string $uuid): string
     {
-        return rtrim($_ENV['APIURL'] ?? 'https://events.helioviewer.org/', '/') . "/api/v2/events/{$uuid}";
+        return rtrim($_ENV['APIURL'] ?? 'https://events.helioviewer.org/', '/') . "/api/v1/events/{$uuid}";
     }
 
     /**

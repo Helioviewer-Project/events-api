@@ -160,24 +160,28 @@ class PageController extends Controller
 
         <h2>API Endpoints</h2>
 
+        <h3>Helioviewer.org Integration</h3>
+        <ul>
+            <li><div class="endpoint">GET /helioviewer/events/{source}/observation/{timestamp}</div> Legacy format for Helioviewer.org</li>
+        </ul>
+
         <h3>Event Data</h3>
         <ul>
-            <li><div class="endpoint">GET /api/v2/events/recents</div> Get recent events</li>
-            <li><div class="endpoint">GET /api/v2/events/{uuid}</div> Get event by UUID</li>
-            <li><div class="endpoint">GET /api/v2/events/{uuid}/source</div> Get event source data</li>
-            <li><div class="endpoint">GET /api/v2/events/{source}/observation/{timestamp}</div> Get events by observation time</li>
-            <li><div class="endpoint">GET /api/v1/events/{source}/observation/{timestamp}</div> Legacy V1 format</li>
+            <li><div class="endpoint">GET /api/v1/events/recents</div> Get recent events</li>
+            <li><div class="endpoint">GET /api/v1/events/{uuid}</div> Get event by UUID</li>
+            <li><div class="endpoint">GET /api/v1/events/{uuid}/source</div> Get event source data</li>
+            <li><div class="endpoint">GET /api/v1/events/{source}/observation/{timestamp}</div> Get events by observation time</li>
         </ul>
 
         <h3>Active Region Data</h3>
         <ul>
-            <li><div class="endpoint">GET /api/v2/regions</div> Get all regions</li>
-            <li><div class="endpoint">GET /api/v2/regions/{organization}/{external_id}</div> Get events for specific region</li>
+            <li><div class="endpoint">GET /api/v1/regions</div> Get all regions</li>
+            <li><div class="endpoint">GET /api/v1/regions/{organization}/{external_id}</div> Get events for specific region</li>
         </ul>
 
         <h3>System Information</h3>
         <ul>
-            <li><div class="endpoint">GET /api/v2/stats</div> Get API statistics (JSON)</li>
+            <li><div class="endpoint">GET /api/v1/stats</div> Get API statistics (JSON)</li>
             <li><div class="endpoint">GET /stats</div> View statistics dashboard (HTML)</li>
         </ul>
 
@@ -559,7 +563,7 @@ HTML;
                 // Build API URL
                 let apiUrl;
                 if (organization) {
-                    apiUrl = `/api/v2/regions/\${organization}/\${encodeURIComponent(regionId)}`;
+                    apiUrl = `/api/v1/regions/\${organization}/\${encodeURIComponent(regionId)}`;
                 } else {
                     // Try each organization if none specified
                     const orgs = ['NOAA', 'CATANIA', 'HARP'];
@@ -567,7 +571,7 @@ HTML;
 
                     for (const org of orgs) {
                         try {
-                            const response = await fetch(`/api/v2/regions/\${org}/\${encodeURIComponent(regionId)}`);
+                            const response = await fetch(`/api/v1/regions/\${org}/\${encodeURIComponent(regionId)}`);
                             if (response.ok) {
                                 const data = await response.json();
                                 if (data.events && data.events.length > 0) {
@@ -687,7 +691,7 @@ HTML;
             const content = document.getElementById('tablesContent');
 
             try {
-                const response = await fetch('/api/v2/regions');
+                const response = await fetch('/api/v1/regions');
                 if (!response.ok) throw new Error('Failed to fetch regions');
 
                 const data = await response.json();
@@ -725,7 +729,7 @@ HTML;
                         <td>\${r.external_id}</td>
                         <td>\${formatEventDate(r.latest_event_start)}</td>
                         <td class="number">\${r.event_count}</td>
-                        <td><a href="/api/v2/regions/\${r.organization}/\${r.external_id}" target="_blank" class="api-link">View JSON</a></td>
+                        <td><a href="/api/v1/regions/\${r.organization}/\${r.external_id}" target="_blank" class="api-link">View JSON</a></td>
                     </tr>
                 `).join('');
 
@@ -737,7 +741,7 @@ HTML;
                         <td>\${r.external_id}</td>
                         <td>\${formatEventDate(r.latest_event_start)}</td>
                         <td class="number">\${r.event_count}</td>
-                        <td><a href="/api/v2/regions/\${r.organization}/\${r.external_id}" target="_blank" class="api-link">View JSON</a></td>
+                        <td><a href="/api/v1/regions/\${r.organization}/\${r.external_id}" target="_blank" class="api-link">View JSON</a></td>
                     </tr>
                 `).join('');
 
