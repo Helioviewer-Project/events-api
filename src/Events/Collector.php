@@ -8,6 +8,7 @@ use Helioviewer\EventsApi\Events\Sources\SourceInterface;
 use Helioviewer\EventsApi\Events\Processors\ProcessorInterface;
 use Helioviewer\EventsApi\Events\Repositories\RepositoryInterface;
 use Helioviewer\EventsApi\Regions\Repositories\RepositoryInterface as RegionRepositoryInterface;
+use Helioviewer\EventsApi\Distributions\Repositories\RepositoryInterface as DistributionRepositoryInterface;
 use Helioviewer\EventsApi\Regions\Region;
 use Helioviewer\EventsApi\Storage\Json\JsonStorageInterface;
 use Helioviewer\EventsApi\Utils\TimeRange;
@@ -78,6 +79,7 @@ class Collector
      *
      * @param RepositoryInterface $repository Repository for event persistence
      * @param RegionRepositoryInterface $regionRepository Repository for region persistence
+     * @param DistributionRepositoryInterface $distributionRepository Repository for distribution updates
      * @param JsonStorageInterface $json_storage Storage service for raw JSON data
      * @param JsonStorageInterface $failure_storage Storage service for failure data (non-sharded)
      * @param LoggerInterface|null $logger Logger for recording collection activities
@@ -85,6 +87,7 @@ class Collector
     public function __construct(
         private RepositoryInterface $repository,
         private RegionRepositoryInterface $regionRepository,
+        private DistributionRepositoryInterface $distributionRepository,
         private JsonStorageInterface $json_storage,
         private JsonStorageInterface $failure_storage,
         private ?LoggerInterface $logger = null
@@ -100,6 +103,7 @@ class Collector
      *
      * @param RepositoryInterface $repository Repository for event persistence
      * @param RegionRepositoryInterface $regionRepository Repository for region persistence
+     * @param DistributionRepositoryInterface $distributionRepository Repository for distribution updates
      * @param JsonStorageInterface $json_storage Storage service for raw JSON data
      * @param JsonStorageInterface $failure_storage Storage service for failure data
      * @param \Helioviewer\EventsApi\Utils\CachedHttpClient $httpClient HTTP client for API calls
@@ -111,6 +115,7 @@ class Collector
     public static function createStandard(
         RepositoryInterface $repository,
         RegionRepositoryInterface $regionRepository,
+        DistributionRepositoryInterface $distributionRepository,
         JsonStorageInterface $json_storage,
         JsonStorageInterface $failure_storage,
         \Helioviewer\EventsApi\Utils\CachedHttpClient $httpClient,
@@ -119,7 +124,7 @@ class Collector
         ?LoggerInterface $logger = null
     ): self {
         // Create collector instance
-        $collector = new self($repository, $regionRepository, $json_storage, $failure_storage, $logger);
+        $collector = new self($repository, $regionRepository, $distributionRepository, $json_storage, $failure_storage, $logger);
         
         // === SOURCES ===
         $collector->addSource('HEK', new HEKSource($httpClient));
@@ -406,16 +411,39 @@ class Collector
 
                         // Handle upsert logic: find existing event or create new one
                         $existingEvent = $this->repository->findByRemoteId($event->remote_id);
-                        
+
                         if ($existingEvent) {
+                            // Check if time/path changed for distribution update
+                            $distributionChanged = (
+                                $existingEvent->start !== $event->start ||
+                                $existingEvent->end !== $event->end ||
+                                $existingEvent->path !== $event->path
+                            );
+
+                            // Remove old distribution counts if time/path changed
+                            if ($distributionChanged) {
+                                $this->logger->debug("Distribution update needed: time/path changed");
+                                $this->distributionRepository->removeEvent($existingEvent);
+                            }
+
                             // Update existing event with new data
                             // Use toArray() to get casted values (getAttributes() returns raw uncasted values)
                             $existingEvent->fill($event->toArray());
                             $savedEvent = $this->repository->save($existingEvent);
-                            $action = "Updated";
+
+                            // Add new distribution counts if time/path changed
+                            if ($distributionChanged) {
+                                $this->distributionRepository->addEvent($savedEvent);
+                            }
+
+                            $action = $distributionChanged ? "Updated (dist changed)" : "Updated";
                         } else {
                             // Save new event
                             $savedEvent = $this->repository->save($event);
+
+                            // Add to distributions
+                            $this->distributionRepository->addEvent($savedEvent);
+
                             $action = "Created";
                         }
                         

@@ -52,7 +52,7 @@ $logger->info("Truncating distributions table...");
 $distributionRepository->truncate();
 
 // === PAGINATION SETUP ===
-$pageSize = 1000;
+$pageSize = 10000;
 $totalEvents = $eventRepository->count();
 $totalPages = (int) ceil($totalEvents / $pageSize);
 

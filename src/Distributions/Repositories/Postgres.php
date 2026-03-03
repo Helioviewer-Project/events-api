@@ -63,15 +63,12 @@ class Postgres implements RepositoryInterface
     public function addEvent(Event $event): void
     {
         try {
-            // $this->logger->debug("addEvent: path={$event->path}, start={$event->start}, end={$event->end}");
             $buckets = $this->getOverlappingBuckets($event);
-            // $this->logger->debug("addEvent: found {$buckets->count()} buckets to increment");
-            $buckets->map(function($dist) {
-                // $this->logger->debug("  incrementing: size={$dist->size}, start={$dist->start}, count={$dist->count}");
-                $dist->increment('count');
-                return $dist;
-            });
-            // $this->logger->debug("addEvent: done");
+            $buckets->map(fn($dist) => $dist->increment('count'));
+
+            // Log summary of bucket spans
+            $summary = $this->formatBucketSummary($buckets);
+            $this->logger->debug("Distribution +1: {$event->path} | {$summary}");
         } catch (\Exception $e) {
             $this->logger->error("addEvent failed: " . $e->getMessage());
             throw new \RuntimeException(
@@ -140,13 +137,18 @@ class Postgres implements RepositoryInterface
                 ];
             }
 
-            // Use upsert - on conflict, add to existing count
-            // Note: Eloquent upsert doesn't support increment, so we use raw expression
-            Distribution::upsert(
-                $rows,
-                ['size', 'path', 'start'],  // unique columns
-                ['count' => Capsule::raw('distributions.count + EXCLUDED.count'), 'updated_at']
-            );
+            // Chunk to stay under PostgreSQL's 65535 parameter limit
+            // Each row has 6 columns, so 1000 rows = 6000 parameters (safe margin)
+            $chunks = array_chunk($rows, 1000);
+
+            foreach ($chunks as $chunk) {
+                // Use upsert - on conflict, add to existing count
+                Distribution::upsert(
+                    $chunk,
+                    ['size', 'path', 'start'],  // unique columns
+                    ['count' => Capsule::raw('distributions.count + EXCLUDED.count'), 'updated_at']
+                );
+            }
 
             return count($rows);
         } catch (\Exception $e) {
@@ -165,8 +167,14 @@ class Postgres implements RepositoryInterface
     public function removeEvent(Event $event): void
     {
         try {
-            $this->getOverlappingBuckets($event)->map(fn($dist) => $dist->decrement('count'));
+            $buckets = $this->getOverlappingBuckets($event);
+            $buckets->map(fn($dist) => $dist->decrement('count'));
+
+            // Log summary of bucket spans
+            $summary = $this->formatBucketSummary($buckets);
+            $this->logger->debug("Distribution -1: {$event->path} | {$summary}");
         } catch (\Exception $e) {
+            $this->logger->error("removeEvent failed: " . $e->getMessage());
             throw new \RuntimeException(
                 "Failed to remove event from distribution: " . $e->getMessage(),
                 (int) $e->getCode(),
@@ -366,5 +374,33 @@ class Postgres implements RepositoryInterface
             'Y'   => $dt->addYear()->timestamp,
             default => throw new \InvalidArgumentException("Unknown bucket size: $bucketSize"),
         };
+    }
+
+    /**
+     * Format a summary of bucket counts by size.
+     * Example output: "1Y, 2M, 3W, 5D, 10h, 20 30m"
+     *
+     * @param Collection $buckets Collection of Distribution models
+     * @return string Formatted summary string
+     */
+    private function formatBucketSummary(Collection $buckets): string
+    {
+        $counts = [];
+        foreach (self::BUCKET_SIZES as $size) {
+            $counts[$size] = 0;
+        }
+
+        foreach ($buckets as $bucket) {
+            $counts[$bucket->size]++;
+        }
+
+        $parts = [];
+        foreach ($counts as $size => $count) {
+            if ($count > 0) {
+                $parts[] = "{$count}x{$size}";
+            }
+        }
+
+        return implode(', ', $parts);
     }
 }

@@ -48,6 +48,7 @@ $days = round($duration / 86400, 1);
 $container = Container::getInstance();
 $eventRepository = $container['eventRepository'];
 $regionRepository = $container['regionRepository'];
+$distributionRepository = $container['distributionRepository'];
 $jsonStorage = $container['jsonStorage'];
 $failureStorage = $container['failureStorage'];
 $httpClient = $container['httpClient'];
@@ -64,6 +65,7 @@ $logger->info("Starting event collection for " . date('Y-m-d', $start) . " to " 
 $collector = EventCollector::createStandard(
     $eventRepository,
     $regionRepository,
+    $distributionRepository,
     $jsonStorage,
     $failureStorage,
     $httpClient,
