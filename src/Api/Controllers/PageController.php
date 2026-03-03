@@ -163,7 +163,11 @@ class PageController extends Controller
         <h3>Helioviewer.org Integration</h3>
         <ul>
             <li><div class="endpoint">GET /helioviewer/events/{source}/observation/{timestamp}</div> Legacy format for Helioviewer.org</li>
+            <li><div class="endpoint">GET /helioviewer/distributions/path/{path}/size/{size}/start/{start}/end/{end}</div> Event count distribution by time buckets</li>
         </ul>
+        <p style="margin: 10px 0; font-size: 13px; color: #666;">
+            <strong>Distribution params:</strong> path (e.g., HEK, HEK>>Flare), size (30m, h, D, W, M, Y), start/end (Unix timestamps)
+        </p>
 
         <h3>Event Data</h3>
         <ul>

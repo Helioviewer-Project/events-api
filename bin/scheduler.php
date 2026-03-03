@@ -33,6 +33,7 @@ $logger->info("Starting Helioviewer Events API Scheduler Daemon (User: {$userDis
 $eventCollector = EventCollector::createStandard(
     $container['eventRepository'],
     $container['regionRepository'],
+    $container['distributionRepository'],
     $container['jsonStorage'],
     $container['failureStorage'],
     $container['httpClient'],
