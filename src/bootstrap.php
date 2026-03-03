@@ -81,6 +81,7 @@ use Helioviewer\EventsApi\Jsoc\NoaaService;
 // Repositories
 use Helioviewer\EventsApi\Events\Repositories\Postgres;
 use Helioviewer\EventsApi\Regions\Repositories\Postgres as RegionPostgres;
+use Helioviewer\EventsApi\Distributions\Repositories\Postgres as DistributionPostgres;
 
 // === HELPER FUNCTIONS ===
 function pr($m): void {
@@ -230,6 +231,7 @@ $backup_coordinator = new HttpCoordinator($httpClient, $logger, 'http://coordina
 $harpService = new HarpService($httpClient, $redisCache, $logger);
 $noaaService = new NoaaService($httpClient, $redisCache, $logger);
 $coordinateRotator = new CoordinateRotator($coordinator, $backup_coordinator, $logger, $redisCache);
+$distributionRepository = new DistributionPostgres($redisCache, $logger);
 
 // Initialize container with all services
 \Helioviewer\EventsApi\Utils\Container::setServices([
@@ -240,6 +242,7 @@ $coordinateRotator = new CoordinateRotator($coordinator, $backup_coordinator, $l
     'failureStorage' => $failureStorage,
     'eventRepository' => $eventRepository,
     'regionRepository' => $regionRepository,
+    'distributionRepository' => $distributionRepository,
     'logger' => $logger,
 
     // HTTP and external services

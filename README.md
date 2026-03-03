@@ -7,6 +7,7 @@ A unified API and event database that collects, normalizes, and serves solar eve
 - **Coordinate Transformation**: High-performance batch coordinate transformation from HGS to HPC with caching
 - **RESTful API**: Modern REST API with v1 and v2 endpoints for event querying
 - **Real-time Processing**: Event collection with configurable chunk intervals for efficient data processing
+- **Event Distribution Aggregation**: Pre-aggregated event counts by time buckets (30m, hourly, daily, weekly, monthly, yearly) for fast distribution queries
 - **Redis Caching**: Comprehensive caching layer for HTTP requests and coordinate transformations
 - **PostgreSQL Storage**: Robust data storage with Eloquent ORM and database migrations
 
@@ -88,6 +89,7 @@ make
 - `make stats` - Show database statistics grouped by source and path
 - `make logs` - Follow application logs (tail -f storage/logs/*.log)
 - `make reset` - Reset database (rollback all migrations, migrate, and seed)
+- `make distribution-build` - Build distribution aggregations from all events
 
 ## API Endpoints
 
@@ -95,6 +97,32 @@ The API provides several endpoints for accessing solar event data:
 
 ### Helioviewer.org Integration
 - `GET /helioviewer/events/{source}/observation/{timestamp}` - Legacy format for Helioviewer.org
+- `GET /helioviewer/distributions/path/{path}/size/{size}/start/{start}/end/{end}` - Get event count distribution
+
+**Distribution Endpoint Parameters:**
+- `path` - Event path prefix (e.g., `HEK`, `HEK>>Flare`, `HEK>>Flare>>SWPC`)
+- `size` - Bucket size: `30m`, `h`, `D`, `W`, `M`, `Y`
+- `start` - Start Unix timestamp
+- `end` - End Unix timestamp
+
+**Example:**
+```
+GET /helioviewer/distributions/path/HEK/size/D/start/1704067200/end/1706745600
+```
+
+**Response:**
+```json
+{
+  "path": "HEK",
+  "size": "D",
+  "start": 1704067200,
+  "end": 1706745600,
+  "buckets": [
+    {"start": 1704067200, "count": 42},
+    {"start": 1704153600, "count": 38}
+  ]
+}
+```
 
 ### V1 API
 - `GET /api/v1/events/recents` - Get last 100 updated events with enhanced data

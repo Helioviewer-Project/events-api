@@ -400,6 +400,24 @@ class Postgres implements RepositoryInterface
     }
 
     /**
+     * Get events with pagination, ordered by start time.
+     *
+     * @param int $page     Page number (0-indexed)
+     * @param int $pageSize Number of events per page
+     * @return array<Event> Array of Event objects for the requested page
+     */
+    public function getWithPage(int $page, int $pageSize): array
+    {
+        $offset = $page * $pageSize;
+
+        return Event::orderBy('start')
+            ->offset($offset)
+            ->limit($pageSize)
+            ->get()
+            ->all();
+    }
+
+    /**
      * Convert source name to normalized source ID.
      *
      * Maps human-readable source names to their corresponding integer

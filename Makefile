@@ -1,4 +1,4 @@
-.PHONY: composer-install composer-require composer-dump up down build shell shell-root nginx-reload migrate-status migrate-create migrate-run migrate-rollback seed-run collect recents reset stats logs db-shell db-backup cache-flush fix-regions help
+.PHONY: composer-install composer-require composer-dump up down build shell shell-root nginx-reload migrate-status migrate-create migrate-run migrate-rollback seed-run collect recents reset stats logs db-shell db-backup cache-flush fix-regions distribution-build help
 .DEFAULT_GOAL := help
 
 # Set compose file based on ENV
@@ -75,6 +75,9 @@ stats:
 fix-regions:
 	$(DOCKER_COMPOSE) run --rm --user $(shell id -u):$(shell id -g) phpfpm php bin/fix-regions.php $(filter-out $@,$(MAKECMDGOALS))
 
+distribution-build:
+	$(DOCKER_COMPOSE) run --rm --user $(shell id -u):$(shell id -g) phpfpm php bin/build-distribution.php
+
 logs:
 	$(DOCKER_COMPOSE) exec phpfpm sh -c 'tail -f /u/apps/data/logs/*.log'
 
@@ -140,6 +143,7 @@ help:
 	@echo "  fix-regions           - Fix NOAA region IDs (add +10000 to IDs < 9000)"
 	@echo "                          Dry run: make fix-regions"
 	@echo "                          Apply:   make fix-regions apply"
+	@echo "  distribution-build    - Build distribution aggregations from events"
 	@echo ""
 	@echo "Cache Management:"
 	@echo "  cache-flush           - Flush Redis cache"

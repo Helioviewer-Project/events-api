@@ -44,4 +44,62 @@ class HelioviewerController extends Controller
 
         return $this->json($response, $formattedEvents);
     }
+
+    /**
+     * Get event distribution (aggregated counts by time buckets)
+     *
+     * @param Request  $request  PSR-7 request
+     * @param Response $response PSR-7 response
+     * @param array    $args     Route arguments: path, size, start, end
+     *
+     * @return Response JSON response with distribution buckets
+     */
+    public function getDistribution(Request $request, Response $response, array $args): Response
+    {
+        $path = $args['path'];
+        $size = $args['size'];
+        $start = $args['start'];
+        $end = $args['end'];
+
+        // Validate bucket size
+        $validSizes = ['30m', 'h', 'D', 'W', 'M', 'Y'];
+        if (!in_array($size, $validSizes)) {
+            return $this->error($response, 'Invalid size. Must be one of: ' . implode(', ', $validSizes), 400);
+        }
+
+        // Validate timestamps are numeric
+        if (!is_numeric($start) || !is_numeric($end)) {
+            return $this->error($response, 'Start and end must be Unix timestamps', 400);
+        }
+
+        $start = (int) $start;
+        $end = (int) $end;
+
+        // Validate start < end
+        if ($start >= $end) {
+            return $this->error($response, 'Start must be less than end', 400);
+        }
+
+        // Query distributions
+        try {
+            $distributions = $this->distributionRepository->query($path, $size, $start, $end);
+        } catch (\Exception $e) {
+            $this->logger->error("Distribution query failed: " . $e->getMessage());
+            return $this->error($response, 'Failed to query distributions', 500);
+        }
+
+        // Format response
+        $buckets = $distributions->map(fn($dist) => [
+            'start' => $dist->start,
+            'count' => $dist->count,
+        ])->values()->toArray();
+
+        return $this->json($response, [
+            'path' => $path,
+            'size' => $size,
+            'start' => $start,
+            'end' => $end,
+            'buckets' => $buckets,
+        ]);
+    }
 }
