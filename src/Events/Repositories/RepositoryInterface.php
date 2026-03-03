@@ -154,4 +154,16 @@ interface RepositoryInterface
      */
     public function findById(string $id): ?Event;
 
+    /**
+     * Find events matching any of the given path prefixes that overlap with time range.
+     *
+     * An event overlaps with [start, end] if: event.start < end AND event.end > start
+     *
+     * @param array<string> $pathPrefixes Array of path prefixes to match (e.g., ['HEK>>Flare', 'CCMC>>DONKI>>CME'])
+     * @param int $start Start timestamp (Unix)
+     * @param int $end End timestamp (Unix)
+     * @return array<Event> Array of matching Event objects ordered by start time
+     */
+    public function findByPathPrefixesAndTimeRange(array $pathPrefixes, int $start, int $end): array;
+
 }

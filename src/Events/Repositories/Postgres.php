@@ -418,6 +418,34 @@ class Postgres implements RepositoryInterface
     }
 
     /**
+     * Find events matching any of the given path prefixes that overlap with time range.
+     *
+     * An event overlaps with [start, end] if: event.start < end AND event.end > start
+     *
+     * @param array<string> $pathPrefixes Array of path prefixes to match
+     * @param int $start Start timestamp (Unix)
+     * @param int $end End timestamp (Unix)
+     * @return array<Event> Array of matching Event objects ordered by start time
+     */
+    public function findByPathPrefixesAndTimeRange(array $pathPrefixes, int $start, int $end): array
+    {
+        if (empty($pathPrefixes)) {
+            return [];
+        }
+
+        return Event::where(function (Builder $query) use ($pathPrefixes) {
+                foreach ($pathPrefixes as $prefix) {
+                    $query->orWhere('path', 'LIKE', $prefix . '%');
+                }
+            })
+            ->where('start', '<', $end)
+            ->where('end', '>', $start)
+            ->orderBy('start')
+            ->get()
+            ->all();
+    }
+
+    /**
      * Convert source name to normalized source ID.
      *
      * Maps human-readable source names to their corresponding integer

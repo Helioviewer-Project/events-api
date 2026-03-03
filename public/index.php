@@ -34,6 +34,7 @@ $helioviewerController = new HelioviewerController($container);
 // Helioviewer Routes (Legacy format for Helioviewer.org)
 // ===========================
 $app->get('/helioviewer/events/{source}/observation/{timestamp}', [$helioviewerController, 'getByObservation']);
+$app->get('/helioviewer/events/path/{paths}/from/{from}/to/{to}', [$helioviewerController, 'getEventsByPaths']);
 $app->get('/helioviewer/distributions/path/{path}/size/{size}/start/{start}/end/{end}', [$helioviewerController, 'getDistribution']);
 
 // ===========================

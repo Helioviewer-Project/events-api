@@ -6,9 +6,16 @@ use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Helioviewer\EventsApi\Utils\TimestampParser;
 use Helioviewer\EventsApi\Api\Legacy as LegacyEventResponse;
+use Helioviewer\EventsApi\Events\Event;
+use Helioviewer\EventsApi\Events\Sources\JsonSource;
 
 class HelioviewerController extends Controller
 {
+    // Source ID constants
+    private const SOURCE_CCMC = 1;
+    private const SOURCE_HEK = 2;
+    private const SOURCE_WSA = 3;
+    private const SOURCE_RHESSI = 4;
     /**
      * Get events by observation (Legacy format for Helioviewer.org)
      */
@@ -101,5 +108,181 @@ class HelioviewerController extends Controller
             'end' => $end,
             'buckets' => $buckets,
         ]);
+    }
+
+    /**
+     * Get events by multiple path prefixes and time range.
+     *
+     * Route: GET /helioviewer/events/path/{paths}/from/{from}/to/{to}
+     *
+     * @param Request  $request  PSR-7 request
+     * @param Response $response PSR-7 response
+     * @param array    $args     Route arguments: paths (colon-separated), from, to
+     *
+     * @return Response JSON response with matching events
+     */
+    public function getEventsByPaths(Request $request, Response $response, array $args): Response
+    {
+        $pathsParam = $args['paths'] ?? '';
+        $from = $args['from'] ?? '';
+        $to = $args['to'] ?? '';
+
+        // Validate timestamps
+        if (!is_numeric($from) || !is_numeric($to)) {
+            return $this->error($response, 'from and to must be Unix timestamps', 400);
+        }
+
+        $from = (int) $from;
+        $to = (int) $to;
+
+        if ($from >= $to) {
+            return $this->error($response, 'from must be less than to', 400);
+        }
+
+        // Parse colon-separated paths
+        $pathPrefixes = array_filter(
+            array_map('trim', explode(':', $pathsParam)),
+            fn($p) => $p !== ''
+        );
+
+        if (empty($pathPrefixes)) {
+            return $this->error($response, 'At least one path prefix is required', 400);
+        }
+
+        try {
+            $events = $this->eventRepository->findByPathPrefixesAndTimeRange($pathPrefixes, $from, $to);
+
+            // Format events for Helioviewer (custom format per source)
+            $formattedEvents = array_map(fn($e) => $this->formatEventForHelioviewer($e), $events);
+
+            return $this->json($response, [
+                'paths' => $pathPrefixes,
+                'from' => $from,
+                'to' => $to,
+                'count' => count($formattedEvents),
+                'events' => $formattedEvents,
+            ]);
+        } catch (\Exception $e) {
+            $this->logger->error("getEventsByPaths failed: " . $e->getMessage());
+            return $this->error($response, 'Failed to query events', 500);
+        }
+    }
+
+    /**
+     * Format event for Helioviewer.org frontend.
+     * Formats differently based on source_id (HEK, CCMC, WSA, RHESSI).
+     *
+     * @param Event $event The event to format
+     * @return array Formatted event data
+     */
+    private function formatEventForHelioviewer(Event $event): array
+    {
+        $uuid = $event->id;
+
+        // Load source JSON for additional fields
+        $source = $this->jsonStorage->load("/u/apps/data/sources/{$uuid}.json") ?: [];
+
+        // Base fields common to all sources
+        $formatted = [
+            'x' => $event->start * 1000,           // milliseconds
+            'x2' => $event->end * 1000,            // milliseconds
+            'y' => 1,
+            'event_starttime' => date('Y-m-d H:i:s', $event->start),
+            'event_endtime' => date('Y-m-d H:i:s', $event->end),
+            'event_peaktime' => $event->peak ? date('Y-m-d H:i:s', $event->peak) : null,
+            'hv_hpc_x' => $event->hv_hpc_x,
+            'hv_hpc_y' => $event->hv_hpc_y,
+        ];
+
+        // Format based on source_id
+        switch ($event->source_id) {
+            case self::SOURCE_HEK:
+                $formatted = array_merge($formatted, $this->formatHekEvent($event, $source));
+                break;
+
+            case self::SOURCE_CCMC:
+                $formatted = array_merge($formatted, $this->formatCcmcEvent($event, $source));
+                break;
+
+            case self::SOURCE_RHESSI:
+                $formatted = array_merge($formatted, $this->formatRhessiEvent($event, $source));
+                break;
+
+            case self::SOURCE_WSA:
+                $formatted = array_merge($formatted, $this->formatWsaEvent($event, $source));
+                break;
+
+            default:
+                // Unknown source - include basic fields
+                $formatted['source_id'] = $event->source_id;
+                $formatted['remote_id'] = $event->remote_id;
+                $formatted['path'] = $event->path;
+                $formatted['label'] = $event->label;
+        }
+
+        return $formatted;
+    }
+
+    /**
+     * Format HEK-specific event fields.
+     */
+    private function formatHekEvent(Event $event, array $source): array
+    {
+        return [
+            'kb_archivid' => $event->remote_id,
+            'hv_labels_formatted' => $source['hv_labels_formatted'] ?? [],
+            'event_type' => $source['event_type'] ?? $event->legacy_type,
+            'frm_name' => $source['frm_name'] ?? null,
+            'frm_specificid' => $source['frm_specificid'] ?? '',
+            'concept' => $source['concept'] ?? $event->label,
+            'modifier' => 0,
+            'color' => $source['color'] ?? '#e68188',
+        ];
+    }
+
+    /**
+     * Format CCMC-specific event fields.
+     */
+    private function formatCcmcEvent(Event $event, array $source): array
+    {
+        return [
+            'activity_id' => $event->remote_id,
+            'event_type' => $source['event_type'] ?? $event->legacy_type,
+            'concept' => $source['concept'] ?? $event->label,
+            'instruments' => $source['instruments'] ?? [],
+            'linked_events' => $source['linkedEvents'] ?? [],
+            'modifier' => 0,
+            'color' => $source['color'] ?? '#3498db',
+        ];
+    }
+
+    /**
+     * Format RHESSI-specific event fields.
+     */
+    private function formatRhessiEvent(Event $event, array $source): array
+    {
+        return [
+            'rhessi_id' => $event->remote_id,
+            'event_type' => $source['event_type'] ?? $event->legacy_type,
+            'concept' => $source['concept'] ?? $event->label,
+            'energy_kev' => $source['energy_kev'] ?? [],
+            'peak_count_rate' => $source['peak_count_rate'] ?? null,
+            'modifier' => 0,
+            'color' => $source['color'] ?? '#9b59b6',
+        ];
+    }
+
+    /**
+     * Format WSA-specific event fields.
+     */
+    private function formatWsaEvent(Event $event, array $source): array
+    {
+        return [
+            'wsa_id' => $event->remote_id,
+            'event_type' => $source['event_type'] ?? $event->legacy_type,
+            'concept' => $source['concept'] ?? $event->label,
+            'modifier' => 0,
+            'color' => $source['color'] ?? '#27ae60',
+        ];
     }
 }
