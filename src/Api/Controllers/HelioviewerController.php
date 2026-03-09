@@ -190,7 +190,7 @@ class HelioviewerController extends Controller
             $events = $this->eventRepository->findByPathPrefixesAndTimeRange($pathPrefixes, $from, $to);
 
             // Format events for Helioviewer (custom format per source)
-            $formattedEvents = array_map(fn($e) => $this->formatEventForHelioviewer($e), $events);
+            $formattedEvents = array_map(fn($e) => $this->formatEventForHelioviewerEventTimeline($e), $events);
 
             return $this->json($response, [
                 'paths' => $pathPrefixes,
@@ -206,13 +206,13 @@ class HelioviewerController extends Controller
     }
 
     /**
-     * Format event for Helioviewer.org frontend.
+     * Format event for Helioviewer.org Event Timeline.
      * Formats differently based on source_id (HEK, CCMC, WSA, RHESSI).
      *
      * @param Event $event The event to format
      * @return array Formatted event data
      */
-    private function formatEventForHelioviewer(Event $event): array
+    private function formatEventForHelioviewerEventTimeline(Event $event): array
     {
         $uuid = $event->id;
 
@@ -229,97 +229,192 @@ class HelioviewerController extends Controller
             'event_peaktime' => $event->peak ? date('Y-m-d H:i:s', $event->peak) : null,
             'hv_hpc_x' => $event->hv_hpc_x,
             'hv_hpc_y' => $event->hv_hpc_y,
+            'url' => $event->getUrl(),
+            'source_url' => $event->getUrl() . '/source',
+            'modifier' => 0,
         ];
 
+        // $formatted['source'] = $source;
+
         // Format based on source_id
-        switch ($event->source_id) {
-            case self::SOURCE_HEK:
-                $formatted = array_merge($formatted, $this->formatHekEvent($event, $source));
-                break;
+        if ($event->source_id === self::SOURCE_HEK) {
+            $formatted['kb_archivid'] = str_replace("ivo://helio-informatics.org/", "", $source['kb_archivid'] ?? $event->remote_id);
+            $formatted['hv_labels_formatted'] = $this->buildHekLabelArray($source);
+            $formatted['event_type'] = $source['event_type'] ?? $event->legacy_type;
+            $formatted['frm_name'] = $source['frm_name'] ?? '';
+            $formatted['frm_specificid'] = $source['frm_specificid'] ?? '';
+            $formatted['concept'] = $source['concept'] ?? $event->label;
+        }
 
-            case self::SOURCE_CCMC:
-                $formatted = array_merge($formatted, $this->formatCcmcEvent($event, $source));
-                break;
+        if ($event->source_id === self::SOURCE_CCMC) {
+            $pathParts = explode('>>', $event->path);
 
-            case self::SOURCE_RHESSI:
-                $formatted = array_merge($formatted, $this->formatRhessiEvent($event, $source));
-                break;
+            if ($event->path === 'CCMC>>DONKI>>CME') {
+                $formatted['kb_archivid'] = $source['activityID'] ?? $event->remote_id;
+                $formatted['frm_name'] = 'DONKI';
+                $formatted['frm_specificid'] = $source['activityID'] ?? '';
+                $formatted['concept'] = 'CME';
+            } elseif ($event->path === 'CCMC>>DONKI>>Solar Flares') {
+                $formatted['kb_archivid'] = $source['flrID'] ?? $event->remote_id;
+                $formatted['frm_name'] = 'DONKI';
+                $formatted['frm_specificid'] = $source['flrID'] ?? '';
+                $formatted['concept'] = 'Flare';
+            } elseif (str_starts_with($event->path, 'CCMC>>Solar Flare Predictions>>') && count($pathParts) === 3) {
+                $kbArchivid = hash('sha256', json_encode($source));
+                $formatted['kb_archivid'] = $kbArchivid;
+                $formatted['frm_name'] = $pathParts[2];
+                $formatted['frm_specificid'] = $kbArchivid;
+                $formatted['concept'] = 'Flare Prediction';
+            } else {
+                $formatted['kb_archivid'] = $event->remote_id ?? $uuid;
+                $formatted['frm_name'] = '';
+                $formatted['frm_specificid'] = '';
+                $formatted['concept'] = $source['concept'] ?? $event->label;
+            }
 
-            case self::SOURCE_WSA:
-                $formatted = array_merge($formatted, $this->formatWsaEvent($event, $source));
-                break;
+            $formatted['hv_labels_formatted'] = [];
+            $formatted['event_type'] = $source['event_type'] ?? $event->legacy_type;
+        }
 
-            default:
-                // Unknown source - include basic fields
-                $formatted['source_id'] = $event->source_id;
-                $formatted['remote_id'] = $event->remote_id;
-                $formatted['path'] = $event->path;
-                $formatted['label'] = $event->label;
+        if ($event->source_id === self::SOURCE_RHESSI) {
+            if (str_starts_with($event->path, 'RHESSI>>Solar Flares>>Flare')) {
+                $formatted['kb_archivid'] = $source['id'] ?? $event->remote_id;
+                $formatted['frm_name'] = 'RHESSI';
+                $formatted['frm_specificid'] = $source['id'] ?? '';
+                $formatted['concept'] = 'Flare';
+            } else {
+                $formatted['kb_archivid'] = $event->remote_id ?? $uuid;
+                $formatted['frm_name'] = 'RHESSI';
+                $formatted['frm_specificid'] = '';
+                $formatted['concept'] = $source['concept'] ?? $event->label;
+            }
+
+            $formatted['hv_labels_formatted'] = [];
+            $formatted['event_type'] = $source['event_type'] ?? $event->legacy_type;
         }
 
         return $formatted;
     }
 
     /**
-     * Format HEK-specific event fields.
+     * Build HEK event label array for display.
+     *
+     * @param array $source HEK event source data
+     * @return array Associative array of label key/value pairs
      */
-    private function formatHekEvent(Event $event, array $source): array
+    private function buildHekLabelArray(array $source): array
     {
-        return [
-            'kb_archivid' => $event->remote_id,
-            'hv_labels_formatted' => $source['hv_labels_formatted'] ?? [],
-            'event_type' => $source['event_type'] ?? $event->legacy_type,
-            'frm_name' => $source['frm_name'] ?? null,
-            'frm_specificid' => $source['frm_specificid'] ?? '',
-            'concept' => $source['concept'] ?? $event->label,
-            'modifier' => 0,
-            'color' => $source['color'] ?? '#e68188',
-        ];
-    }
+        $labelArray = [];
+        $eventType = $source['event_type'] ?? '';
+        $frmName = $source['frm_name'] ?? '';
 
-    /**
-     * Format CCMC-specific event fields.
-     */
-    private function formatCcmcEvent(Event $event, array $source): array
-    {
-        return [
-            'activity_id' => $event->remote_id,
-            'event_type' => $source['event_type'] ?? $event->legacy_type,
-            'concept' => $source['concept'] ?? $event->label,
-            'instruments' => $source['instruments'] ?? [],
-            'linked_events' => $source['linkedEvents'] ?? [],
-            'modifier' => 0,
-            'color' => $source['color'] ?? '#3498db',
-        ];
-    }
+        if ($eventType == 'AR') {
+            if ($frmName == 'HMI SHARP') {
+                $labelArray['HMI SHARP Identifier'] = 'HMI SHARP ' . ($source['frm_specificid'] ?? '');
+            } elseif ($frmName == 'NOAA SWPC Observer') {
+                $labelArray['NOAA Number'] = 'NOAA ' . ($source['ar_noaanum'] ?? '');
 
-    /**
-     * Format RHESSI-specific event fields.
-     */
-    private function formatRhessiEvent(Event $event, array $source): array
-    {
-        return [
-            'rhessi_id' => $event->remote_id,
-            'event_type' => $source['event_type'] ?? $event->legacy_type,
-            'concept' => $source['concept'] ?? $event->label,
-            'energy_kev' => $source['energy_kev'] ?? [],
-            'peak_count_rate' => $source['peak_count_rate'] ?? null,
-            'modifier' => 0,
-            'color' => $source['color'] ?? '#9b59b6',
-        ];
-    }
+                $arMtwilsoncls = $source['ar_mtwilsoncls'] ?? '';
+                if (preg_match_all('/(ALPHA|BETA|GAMMA)/', $arMtwilsoncls, $matches) > 0) {
+                    $arMtwilsoncls = implode('', $matches[0]);
+                    $arMtwilsoncls = str_replace(
+                        ['ALPHA', 'BETA', 'GAMMA'],
+                        ['α', 'β', 'γ'],
+                        $arMtwilsoncls
+                    );
+                }
+                $labelArray['Mt. Wilson Class.'] = $arMtwilsoncls;
+            } elseif ($frmName == 'SPoCA') {
+                $tmpArr = explode('_', $source['frm_specificid'] ?? '');
+                $labelArray['SPoCA Identifier'] = 'SPoCA ' . ltrim(array_pop($tmpArr), '0');
+            } elseif ($frmName == 'SolarMonitor Active Region Tracker (SMART)') {
+                $labelArray['SMART Identifier'] = 'SMART ' . ($source['frm_specificid'] ?? '');
+            }
+        } elseif ($eventType == 'CE') {
+            if ($frmName == 'CACTus (Computer Aided CME Tracking)') {
+                $labelArray['Radial Lin. Vel.'] =
+                    ($source['cme_radiallinvel'] ?? '') . ' ± ' .
+                    ($source['cme_radiallinvelstddev'] ?? '') . ' ' .
+                    ($source['cme_radiallinvelunit'] ?? '');
+                $labelArray['Angular Width'] =
+                    ($source['cme_angularwidth'] ?? '') . ' ' .
+                    ($source['cme_angularwidthunit'] ?? '');
+            } elseif ($frmName == 'CDAW_GopalswamyYashiroFreeland') {
+                $labelArray['Radial Lin. Vel.'] =
+                    ($source['cme_radiallinvel'] ?? '') . ' ' .
+                    ($source['cme_radiallinvelunit'] ?? '');
+                $labelArray['Angular Width'] =
+                    ($source['cme_angularwidth'] ?? '') . ' ' .
+                    ($source['cme_angularwidthunit'] ?? '');
+                $labelArray['Mass'] =
+                    ($source['cme_mass'] ?? '') . ' ' .
+                    ($source['cme_massunit'] ?? '');
+            }
+        } elseif ($eventType == 'CH') {
+            if ($frmName == 'LMSAL forecaster + SSW PFSS package' ||
+                $frmName == 'LMSAL forecaster 2 + SSW PFSS package') {
+                $areaAtDiskCenter = $source['area_atdiskcenter'] ?? null;
+                if ($areaAtDiskCenter !== null) {
+                    $labelArray['Area at Disk Center'] =
+                        str_replace('+', '', sprintf('%.1e', (float)$areaAtDiskCenter)) .
+                        ' ' . str_replace('2', '²', $source['area_unit'] ?? '');
+                }
+            } elseif ($frmName == 'SPoCA') {
+                $tmpArr = explode('_', $source['frm_specificid'] ?? '');
+                $labelArray['SPoCA Identifier'] = 'SPoCA ' . ltrim(array_pop($tmpArr), '0');
+            }
+        } elseif ($eventType == 'EF') {
+            if ($frmName == 'Emerging flux region module') {
+                $areaAtDiskCenter = $source['area_atdiskcenter'] ?? null;
+                $areaUncert = $source['area_atdiskcenteruncert'] ?? null;
+                if ($areaAtDiskCenter !== null && $areaUncert !== null) {
+                    $labelArray['Area at Disk Center'] =
+                        str_replace('+', '', sprintf('%.1e', (float)$areaAtDiskCenter)) .
+                        ' ± ' .
+                        str_replace('+', '', sprintf('%.1e', (float)$areaUncert)) .
+                        ' ' . str_replace('2', '²', $source['area_unit'] ?? '');
+                }
+                $posPeakFlux = $source['ef_pospeakfluxonsetrate'] ?? null;
+                $onsetRateUnit = $source['ef_onsetrateunit'] ?? null;
+                if ($posPeakFlux !== null && $onsetRateUnit !== null) {
+                    $labelArray['Peak Pos. Flux Onset'] =
+                        round((float)$posPeakFlux, 1) . ' ' . $onsetRateUnit;
+                }
+                $negPeakFlux = $source['ef_negpeakfluxonsetrate'] ?? null;
+                if ($negPeakFlux !== null && $onsetRateUnit !== null) {
+                    $labelArray['Peak Neg. Flux Onset'] =
+                        round((float)$negPeakFlux, 1) . ' ' . $onsetRateUnit;
+                }
+            }
+        } elseif ($eventType == 'FI') {
+            if ($frmName == 'AAFDCC') {
+                $fiLength = $source['fi_length'] ?? null;
+                if ($fiLength !== null) {
+                    $labelArray['Filament Length'] =
+                        str_replace('+', '', sprintf('%.1e', (float)$fiLength)) .
+                        ' ' . ($source['fi_lengthunit'] ?? '');
+                }
+            }
+        } elseif ($eventType == 'FL') {
+            if ($frmName == 'SEC standard') {
+                $labelArray['GOES Class'] = $source['fl_goescls'] ?? '';
+            } elseif ($frmName == 'Flare Detective - Trigger Module') {
+                $peakFlux = $source['fl_peakflux'] ?? null;
+                if ($peakFlux !== null) {
+                    $labelArray['Peak Flux'] =
+                        round((float)$peakFlux, 1) . ' ' . ($source['fl_peakfluxunit'] ?? '');
+                }
+            } elseif ($frmName == 'SWPC') {
+                $labelArray['GOES Class'] = $source['fl_goescls'] ?? '';
+            }
+        } elseif ($eventType == 'SG') {
+            if ($frmName == 'Sigmoid Sniffer') {
+                $labelArray['Shape'] = $source['sg_shape'] ?? '';
+            }
+        } else {
+            $labelArray['Event Type'] = $source['concept'] ?? '';
+        }
 
-    /**
-     * Format WSA-specific event fields.
-     */
-    private function formatWsaEvent(Event $event, array $source): array
-    {
-        return [
-            'wsa_id' => $event->remote_id,
-            'event_type' => $source['event_type'] ?? $event->legacy_type,
-            'concept' => $source['concept'] ?? $event->label,
-            'modifier' => 0,
-            'color' => $source['color'] ?? '#27ae60',
-        ];
+        return $labelArray;
     }
 }
