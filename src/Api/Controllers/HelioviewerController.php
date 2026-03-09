@@ -76,11 +76,21 @@ class HelioviewerController extends Controller
 
         // Validate timestamps are numeric
         if (!is_numeric($start) || !is_numeric($end)) {
-            return $this->error($response, 'Start and end must be Unix timestamps', 400);
+            return $this->error($response, 'Start and end must be Unix timestamps in seconds', 400);
         }
 
         $start = (int) $start;
         $end = (int) $end;
+
+        // Check for milliseconds (13 digits instead of 10)
+        if ($start > 10000000000 || $end > 10000000000) {
+            return $this->error($response, 'Timestamps appear to be in milliseconds. Please use seconds (10 digits, not 13)', 400);
+        }
+
+        // Check for reasonable range (year 1970 to 2200)
+        if ($start < 0 || $end < 0 || $start > 7258118400 || $end > 7258118400) {
+            return $this->error($response, 'Timestamps must be between 1970 and 2200', 400);
+        }
 
         // Validate start < end
         if ($start >= $end) {
@@ -113,35 +123,62 @@ class HelioviewerController extends Controller
     /**
      * Get events by multiple path prefixes and time range.
      *
-     * Route: GET /helioviewer/events/path/{paths}/from/{from}/to/{to}
+     * Route: POST /helioviewer/events/from/{from}/to/{to}
+     * Body: { "paths": ["HEK>>Flare", "CCMC>>DONKI>>CME"] }
      *
      * @param Request  $request  PSR-7 request
      * @param Response $response PSR-7 response
-     * @param array    $args     Route arguments: paths (colon-separated), from, to
+     * @param array    $args     Route arguments: from, to
      *
      * @return Response JSON response with matching events
      */
     public function getEventsByPaths(Request $request, Response $response, array $args): Response
     {
-        $pathsParam = $args['paths'] ?? '';
         $from = $args['from'] ?? '';
         $to = $args['to'] ?? '';
 
-        // Validate timestamps
+        // Validate timestamps are numeric
         if (!is_numeric($from) || !is_numeric($to)) {
-            return $this->error($response, 'from and to must be Unix timestamps', 400);
+            return $this->error($response, 'from and to must be Unix timestamps in seconds', 400);
         }
 
         $from = (int) $from;
         $to = (int) $to;
 
+        // Check for milliseconds (13 digits instead of 10)
+        // Unix timestamps > 10000000000 are likely milliseconds (year 2286+ in seconds)
+        if ($from > 10000000000 || $to > 10000000000) {
+            return $this->error($response, 'Timestamps appear to be in milliseconds. Please use seconds (10 digits, not 13)', 400);
+        }
+
+        // Check for reasonable range (year 1970 to 2200)
+        $minTimestamp = 0;              // 1970-01-01
+        $maxTimestamp = 7258118400;     // 2200-01-01
+        if ($from < $minTimestamp || $to < $minTimestamp || $from > $maxTimestamp || $to > $maxTimestamp) {
+            return $this->error($response, 'Timestamps must be between 1970 and 2200', 400);
+        }
+
         if ($from >= $to) {
             return $this->error($response, 'from must be less than to', 400);
         }
 
-        // Parse colon-separated paths
+        // Parse JSON body for paths
+        $body = $request->getBody()->getContents();
+        $json = json_decode($body, true);
+
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            return $this->error($response, 'Invalid JSON body', 400);
+        }
+
+        $pathPrefixes = $json['paths'] ?? [];
+
+        if (!is_array($pathPrefixes)) {
+            return $this->error($response, 'paths must be an array', 400);
+        }
+
+        // Filter empty paths
         $pathPrefixes = array_filter(
-            array_map('trim', explode(':', $pathsParam)),
+            array_map('trim', $pathPrefixes),
             fn($p) => $p !== ''
         );
 
