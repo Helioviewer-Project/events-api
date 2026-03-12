@@ -132,6 +132,7 @@ class Postgres implements RepositoryInterface
                     'path' => $bucket['path'],
                     'start' => $bucket['start'],
                     'count' => $bucket['count'],
+                    'legacy_event_type' => Distribution::getLegacyEventType($bucket['path']),
                     'created_at' => $now,
                     'updated_at' => $now,
                 ];
@@ -304,6 +305,7 @@ class Postgres implements RepositoryInterface
                     ],
                     [
                         'count' => 0,
+                        'legacy_event_type' => Distribution::getLegacyEventType($event->path),
                     ]
                 );
                 $created = $distribution->wasRecentlyCreated ? 'NEW' : 'EXISTS';

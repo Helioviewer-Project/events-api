@@ -104,7 +104,7 @@ $hek = [
         "pin" => "HY",
     ],
     'HEK>>UV Burst' => [
-        "name" => "UV Burst",
+        "name" => "UVBurst",
         "pin" => "BU",
     ],
     'HEK>>Explosive Event' => [
