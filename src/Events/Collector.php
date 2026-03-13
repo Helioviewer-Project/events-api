@@ -377,6 +377,9 @@ class Collector
         $this->logger->info("Found {$totalRawRecords} raw event records");
 
         $processedCount = 0;
+        $seenRemoteIds = [];  // Track remote_ids within this batch
+        $duplicateCount = 0;
+
         foreach ($rawData as $index => $rawRecord) {
 
             $processorFound = false;
@@ -387,7 +390,7 @@ class Collector
                     $processorFound = true;
 
                     $processorClass = get_class($processor);
-                    
+
                     try {
 
                         // Process the raw record into an unpersisted Event model
@@ -395,6 +398,15 @@ class Collector
 
                         // Extract remote ID for deduplication and set it
                         $event->remote_id = $source->getName() . ":" . $source->extractRawRecordId($rawRecord);
+
+                        // Check for duplicate remote_id within this batch
+                        if (isset($seenRemoteIds[$event->remote_id])) {
+                            $duplicateCount++;
+                            $firstIndex = $seenRemoteIds[$event->remote_id];
+                            $this->logger->warning("DUPLICATE remote_id in batch: {$event->remote_id} (first at index {$firstIndex}, duplicate at index {$index})");
+                        } else {
+                            $seenRemoteIds[$event->remote_id] = $index;
+                        }
 
                         if(empty($event->path)) {
                             $event->path = $path;
@@ -411,6 +423,7 @@ class Collector
 
                         // Handle upsert logic: find existing event or create new one
                         $existingEvent = $this->repository->findByRemoteId($event->remote_id);
+
 
                         if ($existingEvent) {
                             // Check if time/path changed for distribution update
@@ -561,6 +574,12 @@ class Collector
 
         // Free memory from raw data
         unset($rawData);
+
+        // Log duplicate summary if any duplicates found
+        if ($duplicateCount > 0) {
+            $uniqueCount = count($seenRemoteIds);
+            $this->logger->error("BATCH DUPLICATE SUMMARY: {$duplicateCount} duplicates found out of {$totalRawRecords} records ({$uniqueCount} unique remote_ids)");
+        }
 
         return $processedCount;
     }
