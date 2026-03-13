@@ -170,7 +170,7 @@ class PageController extends Controller
             <strong>Events by paths (POST):</strong> Body: {"paths": ["HEK>>Flare", "CCMC>>CME"]}, from/to (Unix timestamps)
         </p>
         <p style="margin: 10px 0; font-size: 13px; color: #666;">
-            <strong>Distribution (POST):</strong> Body: {"paths": ["HEK>>Flare", "CCMC>>CME"]}, size (30m, h, D, W, M, Y), from/to (Unix timestamps)
+            <strong>Distribution (POST):</strong> Body: {"paths": [...]}, size (30m, h, D, W, M, Y), from/to (Unix timestamps). Returns event_types and buckets with counts per type.
         </p>
 
         <h3>Event Data</h3>

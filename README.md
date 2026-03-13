@@ -112,6 +112,7 @@ The API provides several endpoints for accessing solar event data:
   "size": "D",
   "from": 1704067200,
   "to": 1706745600,
+  "event_types": ["FL", "CE"],
   "buckets": [
     {"start": 1704067200, "counts": {"FL": 42, "CE": 5}},
     {"start": 1704153600, "counts": {"FL": 38, "CE": 8}}

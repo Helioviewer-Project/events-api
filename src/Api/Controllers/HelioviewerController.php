@@ -135,11 +135,15 @@ class HelioviewerController extends Controller
 
         // Format response with per-legacy_event_type counts
         $buckets = [];
+        $eventTypes = [];
         foreach ($distributions as $start => $counts) {
             $buckets[] = [
                 'start' => $start,
                 'counts' => $counts,
             ];
+            foreach (array_keys($counts) as $type) {
+                $eventTypes[$type] = true;
+            }
         }
 
         return $this->json($response, [
@@ -147,6 +151,7 @@ class HelioviewerController extends Controller
             'size' => $size,
             'from' => $from,
             'to' => $to,
+            'event_types' => array_keys($eventTypes),
             'buckets' => $buckets,
         ]);
     }
