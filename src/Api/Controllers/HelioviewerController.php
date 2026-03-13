@@ -53,20 +53,24 @@ class HelioviewerController extends Controller
     }
 
     /**
-     * Get event distribution (aggregated counts by time buckets)
+     * Get event distribution (aggregated counts by time buckets) for multiple paths.
+     *
+     * Route: POST /helioviewer/distributions/size/{size}/from/{from}/to/{to}
+     * Body: { "paths": ["HEK>>Flare", "CCMC>>DONKI>>CME"] }
+     *
+     * Returns counts grouped by legacy_event_type (FL, CE, AR, etc.) per bucket.
      *
      * @param Request  $request  PSR-7 request
      * @param Response $response PSR-7 response
-     * @param array    $args     Route arguments: path, size, start, end
+     * @param array    $args     Route arguments: size, from, to
      *
-     * @return Response JSON response with distribution buckets
+     * @return Response JSON response with distribution buckets per legacy_event_type
      */
     public function getDistribution(Request $request, Response $response, array $args): Response
     {
-        $path = $args['path'];
         $size = $args['size'];
-        $start = $args['start'];
-        $end = $args['end'];
+        $from = $args['from'];
+        $to = $args['to'];
 
         // Validate bucket size
         $validSizes = ['30m', 'h', 'D', 'W', 'M', 'Y'];
@@ -75,47 +79,74 @@ class HelioviewerController extends Controller
         }
 
         // Validate timestamps are numeric
-        if (!is_numeric($start) || !is_numeric($end)) {
-            return $this->error($response, 'Start and end must be Unix timestamps in seconds', 400);
+        if (!is_numeric($from) || !is_numeric($to)) {
+            return $this->error($response, 'from and to must be Unix timestamps in seconds', 400);
         }
 
-        $start = (int) $start;
-        $end = (int) $end;
+        $from = (int) $from;
+        $to = (int) $to;
 
         // Check for milliseconds (13 digits instead of 10)
-        if ($start > 10000000000 || $end > 10000000000) {
+        if ($from > 10000000000 || $to > 10000000000) {
             return $this->error($response, 'Timestamps appear to be in milliseconds. Please use seconds (10 digits, not 13)', 400);
         }
 
         // Check for reasonable range (year 1970 to 2200)
-        if ($start < 0 || $end < 0 || $start > 7258118400 || $end > 7258118400) {
+        if ($from < 0 || $to < 0 || $from > 7258118400 || $to > 7258118400) {
             return $this->error($response, 'Timestamps must be between 1970 and 2200', 400);
         }
 
-        // Validate start < end
-        if ($start >= $end) {
-            return $this->error($response, 'Start must be less than end', 400);
+        // Validate from < to
+        if ($from >= $to) {
+            return $this->error($response, 'from must be less than to', 400);
         }
 
-        // Query distributions
+        // Parse JSON body for paths
+        $body = $request->getBody()->getContents();
+        $json = json_decode($body, true);
+
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            return $this->error($response, 'Invalid JSON body', 400);
+        }
+
+        $paths = $json['paths'] ?? [];
+
+        if (!is_array($paths)) {
+            return $this->error($response, 'paths must be an array', 400);
+        }
+
+        // Filter empty paths
+        $paths = array_values(array_filter(
+            array_map('trim', $paths),
+            fn($p) => $p !== ''
+        ));
+
+        if (empty($paths)) {
+            return $this->error($response, 'At least one path is required', 400);
+        }
+
+        // Query distributions for multiple paths
         try {
-            $distributions = $this->distributionRepository->query($path, $size, $start, $end);
+            $distributions = $this->distributionRepository->queryMultiple($paths, $size, $from, $to);
         } catch (\Exception $e) {
             $this->logger->error("Distribution query failed: " . $e->getMessage());
             return $this->error($response, 'Failed to query distributions', 500);
         }
 
-        // Format response
-        $buckets = $distributions->map(fn($dist) => [
-            'start' => $dist->start,
-            'count' => $dist->count,
-        ])->values()->toArray();
+        // Format response with per-legacy_event_type counts
+        $buckets = [];
+        foreach ($distributions as $start => $counts) {
+            $buckets[] = [
+                'start' => $start,
+                'counts' => $counts,
+            ];
+        }
 
         return $this->json($response, [
-            'path' => $path,
+            'paths' => $paths,
             'size' => $size,
-            'start' => $start,
-            'end' => $end,
+            'from' => $from,
+            'to' => $to,
             'buckets' => $buckets,
         ]);
     }

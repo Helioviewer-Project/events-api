@@ -97,29 +97,24 @@ The API provides several endpoints for accessing solar event data:
 
 ### Helioviewer.org Integration
 - `GET /helioviewer/events/{source}/observation/{timestamp}` - Legacy format for Helioviewer.org
-- `GET /helioviewer/distributions/path/{path}/size/{size}/start/{start}/end/{end}` - Get event count distribution
+- `POST /helioviewer/events/from/{from}/to/{to}` - Get events by multiple path prefixes
+- `POST /helioviewer/distributions/size/{size}/from/{from}/to/{to}` - Get event count distribution
 
-**Distribution Endpoint Parameters:**
-- `path` - Event path prefix (e.g., `HEK`, `HEK>>Flare`, `HEK>>Flare>>SWPC`)
+**Distribution Endpoint:**
 - `size` - Bucket size: `30m`, `h`, `D`, `W`, `M`, `Y`
-- `start` - Start Unix timestamp
-- `end` - End Unix timestamp
-
-**Example:**
-```
-GET /helioviewer/distributions/path/HEK/size/D/start/1704067200/end/1706745600
-```
+- `from` / `to` - Unix timestamps (seconds)
+- Body: `{"paths": ["HEK>>Flare", "CCMC>>DONKI>>CME"]}`
 
 **Response:**
 ```json
 {
-  "path": "HEK",
+  "paths": ["HEK>>Flare", "CCMC>>DONKI>>CME"],
   "size": "D",
-  "start": 1704067200,
-  "end": 1706745600,
+  "from": 1704067200,
+  "to": 1706745600,
   "buckets": [
-    {"start": 1704067200, "count": 42},
-    {"start": 1704153600, "count": 38}
+    {"start": 1704067200, "counts": {"FL": 42, "CE": 5}},
+    {"start": 1704153600, "counts": {"FL": 38, "CE": 8}}
   ]
 }
 ```

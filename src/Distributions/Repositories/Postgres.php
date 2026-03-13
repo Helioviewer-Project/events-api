@@ -198,10 +198,14 @@ class Postgres implements RepositoryInterface
                 return collect($cached)->map(fn($item) => new Distribution($item));
             }
 
+            // Calculate the bucket start for the given $start timestamp
+            // This ensures we include the bucket that contains $start
+            $bucketStart = self::getBucketStart($start, $size);
+
             // Query database
             $distributions = Distribution::where('size', $size)
                 ->where('path', 'LIKE', $pathPrefix . '%')
-                ->whereBetween('start', [$start, $end])
+                ->whereBetween('start', [$bucketStart, $end])
                 ->orderBy('start')
                 ->get();
 
@@ -230,6 +234,74 @@ class Postgres implements RepositoryInterface
     private function getCacheKey(string $pathPrefix, string $size, int $start, int $end): string
     {
         return "distribution:{$size}:{$pathPrefix}:{$start}:{$end}";
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function queryMultiple(array $pathPrefixes, string $size, int $start, int $end): array
+    {
+        try {
+            // Check cache first
+            $cacheKey = $this->getMultipleCacheKey($pathPrefixes, $size, $start, $end);
+            $cached = $this->cache->get($cacheKey);
+
+            if ($cached !== null) {
+                return $cached;
+            }
+
+            // Calculate the bucket start for the given $start timestamp
+            // This ensures we include the bucket that contains $start
+            // e.g., for yearly buckets, querying March 2026 should include the Jan 2026 bucket
+            $bucketStart = self::getBucketStart($start, $size);
+
+            // Build query with OR conditions for each path prefix
+            $query = Distribution::where('size', $size)
+                ->whereBetween('start', [$bucketStart, $end])
+                ->whereNotNull('legacy_event_type')
+                ->where(function ($q) use ($pathPrefixes) {
+                    foreach ($pathPrefixes as $pathPrefix) {
+                        $q->orWhere('path', 'LIKE', $pathPrefix . '%');
+                    }
+                })
+                ->selectRaw('start, legacy_event_type, SUM(count) as total_count')
+                ->groupBy('start', 'legacy_event_type')
+                ->orderBy('start')
+                ->get();
+
+            // Transform to: start => [legacy_event_type => count]
+            $result = [];
+            foreach ($query as $row) {
+                $result[$row->start][$row->legacy_event_type] = (int) $row->total_count;
+            }
+
+            // Cache result
+            $this->cache->set($cacheKey, $result, self::CACHE_TTL);
+
+            return $result;
+        } catch (\Exception $e) {
+            throw new \RuntimeException(
+                "Failed to query multiple distributions: " . $e->getMessage(),
+                (int) $e->getCode(),
+                $e
+            );
+        }
+    }
+
+    /**
+     * Generate cache key for multiple path distribution query.
+     *
+     * @param array  $pathPrefixes Array of path prefixes
+     * @param string $size         Bucket size
+     * @param int    $start        Start timestamp
+     * @param int    $end          End timestamp
+     * @return string Cache key
+     */
+    private function getMultipleCacheKey(array $pathPrefixes, string $size, int $start, int $end): string
+    {
+        sort($pathPrefixes);
+        $pathsHash = md5(implode('|', $pathPrefixes));
+        return "distribution_multi:{$size}:{$pathsHash}:{$start}:{$end}";
     }
 
     /**

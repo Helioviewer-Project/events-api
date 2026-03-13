@@ -64,6 +64,19 @@ interface RepositoryInterface
     public function query(string $pathPrefix, string $size, int $start, int $end): Collection;
 
     /**
+     * Query distribution buckets by multiple path prefixes and time range.
+     * Returns counts grouped by start time and legacy_event_type.
+     *
+     * @param array<string> $pathPrefixes Array of path prefixes to query
+     * @param string        $size         Bucket size: '30m', 'h', 'D', 'W', 'M', or 'Y'
+     * @param int           $start        Start timestamp (Unix timestamp)
+     * @param int           $end          End timestamp (Unix timestamp)
+     * @return array<int, array<string, int>> Map of start => [legacy_event_type => count]
+     * @throws \RuntimeException If the query fails
+     */
+    public function queryMultiple(array $pathPrefixes, string $size, int $start, int $end): array;
+
+    /**
      * Truncate all distribution data.
      * Used when rebuilding the distribution table from scratch.
      *
