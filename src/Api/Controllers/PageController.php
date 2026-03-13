@@ -164,13 +164,13 @@ class PageController extends Controller
         <ul>
             <li><div class="endpoint">GET /helioviewer/events/{source}/observation/{timestamp}</div> Legacy format for Helioviewer.org</li>
             <li><div class="endpoint">POST /helioviewer/events/from/{from}/to/{to}</div> Events by path prefixes and time range</li>
-            <li><div class="endpoint">GET /helioviewer/distributions/path/{path}/size/{size}/start/{start}/end/{end}</div> Event count distribution by time buckets</li>
+            <li><div class="endpoint">POST /helioviewer/distributions/size/{size}/from/{from}/to/{to}</div> Event count distribution by time buckets</li>
         </ul>
         <p style="margin: 10px 0; font-size: 13px; color: #666;">
             <strong>Events by paths (POST):</strong> Body: {"paths": ["HEK>>Flare", "CCMC>>CME"]}, from/to (Unix timestamps)
         </p>
         <p style="margin: 10px 0; font-size: 13px; color: #666;">
-            <strong>Distribution params:</strong> path (e.g., HEK, HEK>>Flare), size (30m, h, D, W, M, Y), start/end (Unix timestamps)
+            <strong>Distribution (POST):</strong> Body: {"paths": ["HEK>>Flare", "CCMC>>CME"]}, size (30m, h, D, W, M, Y), from/to (Unix timestamps)
         </p>
 
         <h3>Event Data</h3>
