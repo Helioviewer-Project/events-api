@@ -26,6 +26,23 @@ class PageController extends Controller
     }
 
     /**
+     * Show implementation plan page
+     */
+    public function planPage(Request $request, Response $response): Response
+    {
+        $htmlPath = __DIR__ . '/../../../public/plan.html';
+
+        if (!file_exists($htmlPath)) {
+            return $this->error($response, 'Plan page not found', 404);
+        }
+
+        $html = file_get_contents($htmlPath);
+        $response->getBody()->write($html);
+
+        return $response->withHeader('Content-Type', 'text/html');
+    }
+
+    /**
      * Show home page
      */
     public function home(Request $request, Response $response): Response
@@ -181,10 +198,10 @@ class PageController extends Controller
             flex-shrink: 0;
         }
         .method-get {
-            background: #27ae60;
+            background: #888;
         }
         .method-post {
-            background: #2980b9;
+            background: #666;
         }
         .endpoint-path {
             flex-grow: 1;

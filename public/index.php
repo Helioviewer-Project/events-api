@@ -69,6 +69,8 @@ $app->get('/stats', [$pageController, 'statsPage']);
 
 $app->get('/active-regions', [$pageController, 'predictionsPage']);
 
+$app->get('/plan', [$pageController, 'planPage']);
+
 $app->get('/', [$pageController, 'home']);
 
 // Run application
