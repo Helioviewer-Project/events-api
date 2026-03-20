@@ -1,11 +1,11 @@
 # events-api
-A unified API and event database that collects, normalizes, and serves solar event data from multiple sources (HEK, CCMC, WSA, RHESSI) for use in Helioviewer.org and related tools.
+A unified API and event database that collects, normalizes, and serves solar event data from multiple sources (HEK, CCMC, RHESSI) for use in Helioviewer.org and related tools.
 
 ## Features
 
-- **Multi-source Event Collection**: Collects and normalizes solar event data from CCMC DONKI, WSA, and other sources
+- **Multi-source Event Collection**: Collects and normalizes solar event data from CCMC DONKI and other sources
 - **Coordinate Transformation**: High-performance batch coordinate transformation from HGS to HPC with caching
-- **RESTful API**: Modern REST API with v1 and v2 endpoints for event querying
+- **RESTful API**: Modern REST API with v1 endpoints for event querying
 - **Real-time Processing**: Event collection with configurable chunk intervals for efficient data processing
 - **Event Distribution Aggregation**: Pre-aggregated event counts by time buckets (30m, hourly, daily, weekly, monthly, yearly) for fast distribution queries
 - **Redis Caching**: Comprehensive caching layer for HTTP requests and coordinate transformations
@@ -93,45 +93,412 @@ make
 
 ## API Endpoints
 
-The API provides several endpoints for accessing solar event data:
+**Base URL:** `https://events.helioviewer.org`
+
+### Supported Sources
+
+| Source | Description |
+|--------|-------------|
+| CCMC | Community Coordinated Modeling Center (DONKI, FlareScoreboard) |
+| HEK | Heliophysics Event Knowledgebase |
+| RHESSI | Reuven Ramaty High Energy Solar Spectroscopic Imager |
+
+Source names are case-insensitive in all endpoints.
+
+### Accepted Timestamp Formats
+
+| Format | Example |
+|--------|---------|
+| Unix timestamp | `1705314645` |
+| ISO 8601 with microseconds & timezone | `2024-01-15T10:30:45.123456+00:00` |
+| ISO 8601 with milliseconds & Z | `2024-01-15T10:30:45.123Z` |
+| ISO 8601 with timezone | `2024-01-15T10:30:45+00:00` |
+| ISO 8601 with Z | `2024-01-15T10:30:45Z` |
+| ISO 8601 without timezone | `2024-01-15T10:30:45` |
+| Space-separated | `2024-01-15 10:30:45` |
+| PHP strtotime fallback | `2024-01-15`, `now`, etc. |
+
+---
 
 ### Helioviewer.org Integration
-- `GET /helioviewer/events/{source}/observation/{timestamp}` - Legacy format for Helioviewer.org
-- `POST /helioviewer/events/from/{from}/to/{to}` - Get events by multiple path prefixes
-- `POST /helioviewer/distributions/size/{size}/from/{from}/to/{to}` - Get event count distribution
 
-**Distribution Endpoint:**
-- `size` - Bucket size: `30m`, `h`, `D`, `W`, `M`, `Y`
-- `from` / `to` - Unix timestamps (seconds)
-- Body: `{"paths": ["HEK>>Flare", "CCMC>>DONKI>>CME"]}`
+These endpoints return data in a format tailored for the Helioviewer.org client.
 
-**Response:**
+#### GET `/helioviewer/events/{source}/observation/{timestamp}`
+
+Get events active at a specific observation time, in Helioviewer legacy format. Returns events grouped by event type with nested groups by detection method.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `source` | path | Event source (CCMC, HEK, RHESSI) |
+| `timestamp` | path | Observation time (any supported timestamp format) |
+
+```python
+import requests
+
+response = requests.get(
+    "https://events.helioviewer.org/helioviewer/events/HEK/observation/2025-03-15T12:00:00Z"
+)
+data = response.json()
+```
+
+Example response:
+```json
+[
+  {
+    "name": "Active Region",
+    "pin": "AR",
+    "groups": [
+      {
+        "name": "HMI SHARP",
+        "contact": "turmon@jpl.nasa.gov",
+        "url": "http://sun.stanford.edu/~mbobra/spaceweather/sharps.htm",
+        "data": [
+          {
+            "id": "019c3d8f-0932-715c-b107-7599a5d9a5a9",
+            "path": "HEK>>Active Region>>HMI SHARP",
+            "start": "2025-03-15T08:00:00",
+            "end": "2025-03-15T12:00:00",
+            "hv_hpc_x": -806.97,
+            "hv_hpc_y": 440.01,
+            "label": "HMI SHARP 12923",
+            "..."
+          },
+          "..."
+        ]
+      }
+    ]
+  },
+  "... (31 event type groups)"
+]
+```
+
+#### POST `/helioviewer/events/from/{from}/to/{to}`
+
+Get events matching path prefixes within a time range. Returns a flat list with Helioviewer-specific fields (`x`, `x2` as millisecond timestamps, `event_type`, `frm_name`).
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `from` | path | Start time (Unix timestamp) |
+| `to` | path | End time (Unix timestamp) |
+| `paths` | body (JSON) | Array of event path prefixes |
+
+```python
+import requests
+
+response = requests.post(
+    "https://events.helioviewer.org/helioviewer/events/from/1741996800/to/1742083200",
+    json={"paths": ["HEK>>Flare"]}
+)
+data = response.json()
+```
+
+Example response:
 ```json
 {
-  "paths": ["HEK>>Flare", "CCMC>>DONKI>>CME"],
-  "size": "D",
-  "from": 1704067200,
-  "to": 1706745600,
-  "event_types": ["FL", "CE"],
-  "buckets": [
-    {"start": 1704067200, "counts": {"FL": 42, "CE": 5}},
-    {"start": 1704153600, "counts": {"FL": 38, "CE": 8}}
+  "paths": ["HEK>>Flare"],
+  "from": 1741996800,
+  "to": 1742083200,
+  "count": 33,
+  "events": [
+    {
+      "x": 1741999352000,
+      "x2": 1741999592000,
+      "y": 1,
+      "event_starttime": "2025-03-15 00:42:32",
+      "event_endtime": "2025-03-15 00:46:32",
+      "event_peaktime": "2025-03-15 00:44:20",
+      "hv_hpc_x": 345.6,
+      "hv_hpc_y": 192,
+      "url": "https://events.helioviewer.org/api/v1/events/019c3d8f-07d6-...",
+      "event_type": "FL",
+      "frm_name": "Flare Detective - Trigger Module",
+      "concept": "Flare",
+      "hv_labels_formatted": {"Peak Flux": "37.4 DN/sec/pixel"}
+    },
+    "..."
   ]
 }
 ```
 
-### V1 API
-- `GET /api/v1/events/recents` - Get last 100 updated events with enhanced data
-- `GET /api/v1/events/{uuid}` - Get single event by UUID with full details
-- `GET /api/v1/events/{uuid}/source` - Get raw source data for an event
-- `GET /api/v1/events/{source}/observation/{timestamp}` - Get events active at specific timestamp
-- `GET /api/v1/regions` - Get all active regions
-- `GET /api/v1/regions/{organization}/{external_id}` - Get events for a specific region
-- `GET /api/v1/stats` - Get API statistics
+#### POST `/helioviewer/distributions/size/{size}/from/{from}/to/{to}`
 
-**Supported Sources**: CCMC, HEK, WSA, RHESSI
+Get event count distributions aggregated into time buckets.
 
-**Timestamp Formats**: ISO 8601, Y-m-d, Y-m-d H:i:s, Unix timestamps
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `size` | path | Bucket size: `30m`, `h`, `D`, `W`, `M`, `Y` |
+| `from` | path | Start time (Unix timestamp) |
+| `to` | path | End time (Unix timestamp) |
+| `paths` | body (JSON) | Array of event path prefixes |
+
+```python
+import requests
+
+response = requests.post(
+    "https://events.helioviewer.org/helioviewer/distributions/size/D/from/1741996800/to/1742256000",
+    json={"paths": ["HEK>>Flare", "CCMC>>DONKI>>CME"]}
+)
+data = response.json()
+```
+
+Example response:
+```json
+{
+  "paths": ["HEK>>Flare", "CCMC>>DONKI>>CME"],
+  "size": "D",
+  "from": 1741996800,
+  "to": 1742256000,
+  "event_types": ["C3", "FL"],
+  "buckets": [
+    {"start": 1741996800, "counts": {"C3": 9, "FL": 33}},
+    {"start": 1742083200, "counts": {"C3": 13, "FL": 73}},
+    {"start": 1742169600, "counts": {"C3": 16, "FL": 79}},
+    {"start": 1742256000, "counts": {"C3": 16, "FL": 49}}
+  ]
+}
+```
+
+---
+
+### Event Data (API v1)
+
+#### GET `/api/v1/events/recents`
+
+Get the last 100 updated events with enhanced data.
+
+```python
+import requests
+
+response = requests.get(
+    "https://events.helioviewer.org/api/v1/events/recents"
+)
+events = response.json()
+```
+
+Example response:
+```json
+[
+  {
+    "url": "https://events.helioviewer.org/api/v1/events/019d0c00-1985-...",
+    "path": "CCMC>>Solar Flare Predictions>>ASSA",
+    "start": "2026-03-20 16:00:00",
+    "end": "2026-03-21 04:00:00",
+    "hv_hpc_x": -1,
+    "hv_hpc_y": -1,
+    "label": "ASSA \nC: 25%\nM: 4%\nX: 0%",
+    "coordinate_system": "stonyhurst",
+    "regions": [{"organization": "MODEL", "external_id": "4", "..."}],
+    "source_url": "https://events.helioviewer.org/api/v1/events/019d0c00-.../source",
+    "views": [{"name": "Flare Prediction", "content": {"C": 0.25, "M": 0.04, "..."}}],
+    "link": {"url": "...", "text": "Helioviewer Events API JSON"}
+  },
+  "... (100 events)"
+]
+```
+
+#### GET `/api/v1/events/{source}/observation/{timestamp}`
+
+Get events from a specific source active at a given observation time.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `source` | path | Event source (CCMC, HEK, RHESSI) |
+| `timestamp` | path | Observation time (any supported timestamp format) |
+
+```python
+import requests
+
+response = requests.get(
+    "https://events.helioviewer.org/api/v1/events/HEK/observation/2025-03-15T12:00:00Z"
+)
+events = response.json()
+```
+
+Example response:
+```json
+[
+  {
+    "url": "https://events.helioviewer.org/api/v1/events/019c3d8f-0932-...",
+    "path": "HEK>>Active Region>>HMI SHARP",
+    "start": "2025-03-15 08:00:00",
+    "end": "2025-03-15 12:00:00",
+    "hv_hpc_x": -806.97,
+    "hv_hpc_y": 440.01,
+    "label": "HMI SHARP 12923",
+    "coordinate_system": "helioprojective",
+    "regions": [{"organization": "NOAA", "external_id": "14033", "..."}],
+    "..."
+  },
+  "... (49 events)"
+]
+```
+
+#### GET `/api/v1/events/{uuid}`
+
+Get a single event by its UUID with full details.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `uuid` | path | Event UUID |
+
+```python
+import requests
+
+uuid = "019d0c00-1985-7131-84eb-24bc34a750ad"
+response = requests.get(
+    f"https://events.helioviewer.org/api/v1/events/{uuid}"
+)
+event = response.json()
+```
+
+Example response:
+```json
+{
+  "url": "https://events.helioviewer.org/api/v1/events/019d0c00-1985-...",
+  "path": "CCMC>>Solar Flare Predictions>>ASSA",
+  "start": "2026-03-20 16:00:00",
+  "peak": "2026-03-21 04:00:00",
+  "end": "2026-03-21 04:00:00",
+  "coordinate_time": "2026-03-20 17:24:36",
+  "hv_hpc_x": -1,
+  "hv_hpc_y": -1,
+  "label": "ASSA \nC: 25%\nM: 4%\nX: 0%",
+  "coordinate_system": "stonyhurst",
+  "regions": [{"organization": "MODEL", "external_id": "4", "..."}],
+  "source_url": "https://events.helioviewer.org/api/v1/events/019d0c00-.../source",
+  "views": [{"name": "Flare Prediction", "content": {"C": 0.25, "M": 0.04, "X": 0, "..."}}],
+  "link": {"url": "...", "text": "Helioviewer Events API JSON"}
+}
+```
+
+#### GET `/api/v1/events/{uuid}/source`
+
+Get the raw source data for an event (original data from the provider before normalization).
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `uuid` | path | Event UUID |
+
+```python
+import requests
+
+uuid = "019d0c00-1985-7131-84eb-24bc34a750ad"
+response = requests.get(
+    f"https://events.helioviewer.org/api/v1/events/{uuid}/source"
+)
+source_data = response.json()
+```
+
+Example response (CCMC FlareScoreboard source):
+```json
+{
+  "start_window": "2026-03-20T16:00:00.0Z",
+  "end_window": "2026-03-21T04:00:00.0Z",
+  "issue_time": "2026-03-20T16:00:00.0Z",
+  "C": 0.25,
+  "M": 0.04,
+  "X": 0,
+  "NOAALocationTime": "-1",
+  "NOAALatitude": "-1",
+  "NOAALongitude": "-1",
+  "ModelRegionId": 4,
+  "ModelLocationTime": "2026-03-20T16:00:00.0Z",
+  "ModelLatitude": -69,
+  "ModelLongitude": 25
+}
+```
+
+---
+
+### Active Regions (API v1)
+
+#### GET `/api/v1/regions`
+
+Get all active regions across all organizations.
+
+```python
+import requests
+
+response = requests.get(
+    "https://events.helioviewer.org/api/v1/regions"
+)
+data = response.json()
+regions = data["regions"]
+```
+
+Example response:
+```json
+{
+  "regions": [
+    {
+      "id": 1032,
+      "organization": "CATANIA",
+      "external_id": "1",
+      "event_count": 147,
+      "first_seen": "2025-09-24 23:38:31",
+      "last_updated": "2025-09-24 23:38:31",
+      "latest_event_start": "2026-03-19 12:30:00"
+    },
+    "... (11310 total regions)"
+  ]
+}
+```
+
+#### GET `/api/v1/regions/{organization}/{external_id}`
+
+Get events associated with a specific active region.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `organization` | path | Region organization (e.g., NOAA, CATANIA, HARP) |
+| `external_id` | path | Region identifier (e.g., 14188) |
+
+```python
+import requests
+
+response = requests.get(
+    "https://events.helioviewer.org/api/v1/regions/NOAA/14188"
+)
+data = response.json()
+region = data["region"]
+events = data["events"]
+```
+
+Example response:
+```json
+{
+  "region": {
+    "organization": "NOAA",
+    "external_id": "14188",
+    "event_count": 100
+  },
+  "events": [
+    {
+      "url": "https://events.helioviewer.org/api/v1/events/019981d6-c0db-...",
+      "path": "CCMC>>Solar Flare Predictions>>DAFFS",
+      "start": "2025-08-31 23:54:00",
+      "end": "2025-09-01 23:54:00",
+      "hv_hpc_x": -10.97,
+      "hv_hpc_y": 60.73,
+      "label": "DAFFS \nC+: 0.3%\nM+: 0.03%\nX: 0.06%",
+      "coordinate_system": "stonyhurst",
+      "..."
+    },
+    "... (100 events total)"
+  ]
+}
+```
+
+---
+
+### HTML Pages
+
+| Path | Description |
+|------|-------------|
+| `GET /` | Home page with API documentation |
+| `GET /stats` | Statistics dashboard |
+| `GET /active-regions` | Active regions search tool |
 
 ## Architecture
 

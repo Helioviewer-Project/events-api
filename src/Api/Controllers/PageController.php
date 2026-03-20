@@ -30,7 +30,7 @@ class PageController extends Controller
      */
     public function home(Request $request, Response $response): Response
     {
-        $html = <<<HTML
+        $html = <<<'HTML'
 <!DOCTYPE html>
 <html>
 <head>
@@ -119,8 +119,10 @@ class PageController extends Controller
             border-bottom: 2px solid #f0f0f0;
             padding-bottom: 10px;
         }
-        ul {
-            line-height: 1.8;
+        h3 {
+            color: #333;
+            margin-top: 20px;
+            margin-bottom: 10px;
         }
         a {
             color: #d35400;
@@ -129,12 +131,146 @@ class PageController extends Controller
         a:hover {
             text-decoration: underline;
         }
-        .endpoint {
+        /* Details / Summary collapsible sections */
+        details {
             background: #f8f9fa;
-            padding: 8px 12px;
-            border-radius: 6px;
+            border-radius: 8px;
+            margin: 8px 0;
+            border: 1px solid #e9ecef;
+        }
+        details[open] {
+            border-color: #d35400;
+        }
+        summary {
+            padding: 12px 16px;
+            cursor: pointer;
             font-family: 'Courier New', monospace;
-            margin: 5px 0;
+            font-size: 14px;
+            font-weight: 600;
+            color: #333;
+            list-style: none;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        summary::-webkit-details-marker {
+            display: none;
+        }
+        summary::before {
+            content: "\25b6";
+            font-size: 10px;
+            color: #d35400;
+            transition: transform 0.2s;
+            flex-shrink: 0;
+        }
+        details[open] > summary::before {
+            transform: rotate(90deg);
+        }
+        summary:hover {
+            background: #e9ecef;
+            border-radius: 8px;
+        }
+        .method-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 700;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            color: white;
+            flex-shrink: 0;
+        }
+        .method-get {
+            background: #27ae60;
+        }
+        .method-post {
+            background: #2980b9;
+        }
+        .endpoint-path {
+            flex-grow: 1;
+        }
+        .endpoint-desc {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-weight: 400;
+            color: #666;
+            font-size: 13px;
+        }
+        .endpoint-detail {
+            padding: 16px;
+            border-top: 1px solid #e9ecef;
+        }
+        .endpoint-detail p {
+            margin: 8px 0;
+            color: #555;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        .param-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 10px 0;
+            font-size: 13px;
+        }
+        .param-table th {
+            background: #e9ecef;
+            padding: 8px 12px;
+            text-align: left;
+            font-weight: 600;
+            color: #333;
+        }
+        .param-table td {
+            padding: 8px 12px;
+            border-bottom: 1px solid #e9ecef;
+        }
+        .param-table code {
+            background: #fff3e0;
+            padding: 1px 5px;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+        /* Code block styling */
+        pre {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 16px;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 10px 0;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        pre code {
+            background: none;
+            padding: 0;
+            color: inherit;
+            font-size: inherit;
+        }
+        /* Syntax highlighting classes */
+        .kw { color: #c586c0; }
+        .fn { color: #dcdcaa; }
+        .str { color: #ce9178; }
+        .cmt { color: #6a9955; }
+        /* Timestamp format table */
+        .info-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 10px 0;
+            font-size: 13px;
+        }
+        .info-table th {
+            background: #e9ecef;
+            padding: 8px 12px;
+            text-align: left;
+        }
+        .info-table td {
+            padding: 8px 12px;
+            border-bottom: 1px solid #e9ecef;
+        }
+        .info-table code {
+            background: #fff3e0;
+            padding: 1px 5px;
+            border-radius: 3px;
+            font-size: 12px;
         }
     </style>
 </head>
@@ -156,47 +292,390 @@ class PageController extends Controller
         <div class="container">
             <p class="version">Version 2.0</p>
 
-        <p>Welcome to the Helioviewer Events API. This API provides access to solar event data from multiple sources.</p>
+            <p>Welcome to the Helioviewer Events API. This API provides access to solar event data from multiple sources.</p>
 
-        <h2>API Endpoints</h2>
+            <details style="background: white; border: 1px solid #e9ecef; margin-top: 20px;">
+                <summary style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-weight: 600; color: #333;">Supported Sources &amp; Timestamp Formats</summary>
+                <div class="endpoint-detail">
+                    <h3>Supported Sources</h3>
+                    <table class="info-table">
+                        <tr><th>Source</th><th>Description</th></tr>
+                        <tr><td><code>CCMC</code></td><td>Community Coordinated Modeling Center (DONKI, FlareScoreboard)</td></tr>
+                        <tr><td><code>HEK</code></td><td>Heliophysics Event Knowledgebase</td></tr>
+                        <tr><td><code>RHESSI</code></td><td>Reuven Ramaty High Energy Solar Spectroscopic Imager</td></tr>
+                    </table>
+                    <p>Source names are case-insensitive in all endpoints.</p>
 
-        <h3>Helioviewer.org Integration</h3>
-        <ul>
-            <li><div class="endpoint">GET /helioviewer/events/{source}/observation/{timestamp}</div> Legacy format for Helioviewer.org</li>
-            <li><div class="endpoint">POST /helioviewer/events/from/{from}/to/{to}</div> Events by path prefixes and time range</li>
-            <li><div class="endpoint">POST /helioviewer/distributions/size/{size}/from/{from}/to/{to}</div> Event count distribution by time buckets</li>
-        </ul>
-        <p style="margin: 10px 0; font-size: 13px; color: #666;">
-            <strong>Events by paths (POST):</strong> Body: {"paths": ["HEK>>Flare", "CCMC>>CME"]}, from/to (Unix timestamps)
-        </p>
-        <p style="margin: 10px 0; font-size: 13px; color: #666;">
-            <strong>Distribution (POST):</strong> Body: {"paths": [...]}, size (30m, h, D, W, M, Y), from/to (Unix timestamps). Returns event_types and buckets with counts per type.
-        </p>
+                    <h3>Accepted Timestamp Formats</h3>
+                    <table class="info-table">
+                        <tr><th>Format</th><th>Example</th></tr>
+                        <tr><td>Unix timestamp</td><td><code>1705314645</code></td></tr>
+                        <tr><td>ISO 8601 with microseconds &amp; timezone</td><td><code>2024-01-15T10:30:45.123456+00:00</code></td></tr>
+                        <tr><td>ISO 8601 with milliseconds &amp; Z</td><td><code>2024-01-15T10:30:45.123Z</code></td></tr>
+                        <tr><td>ISO 8601 with timezone</td><td><code>2024-01-15T10:30:45+00:00</code></td></tr>
+                        <tr><td>ISO 8601 with Z</td><td><code>2024-01-15T10:30:45Z</code></td></tr>
+                        <tr><td>ISO 8601 without timezone</td><td><code>2024-01-15T10:30:45</code></td></tr>
+                        <tr><td>Space-separated</td><td><code>2024-01-15 10:30:45</code></td></tr>
+                        <tr><td>PHP strtotime fallback</td><td><code>2024-01-15</code>, <code>now</code>, etc.</td></tr>
+                    </table>
+                </div>
+            </details>
 
-        <h3>Event Data</h3>
-        <ul>
-            <li><div class="endpoint">GET /api/v1/events/recents</div> Get recent events</li>
-            <li><div class="endpoint">GET /api/v1/events/{uuid}</div> Get event by UUID</li>
-            <li><div class="endpoint">GET /api/v1/events/{uuid}/source</div> Get event source data</li>
-            <li><div class="endpoint">GET /api/v1/events/{source}/observation/{timestamp}</div> Get events by observation time</li>
-        </ul>
+            <h2>Helioviewer.org Integration</h2>
 
-        <h3>Active Region Data</h3>
-        <ul>
-            <li><div class="endpoint">GET /api/v1/regions</div> Get all regions</li>
-            <li><div class="endpoint">GET /api/v1/regions/{organization}/{external_id}</div> Get events for specific region</li>
-        </ul>
+            <details>
+                <summary>
+                    <span class="method-badge method-get">GET</span>
+                    <span class="endpoint-path">/helioviewer/events/{source}/observation/{timestamp}</span>
+                    <span class="endpoint-desc">Legacy observation format</span>
+                </summary>
+                <div class="endpoint-detail">
+                    <p>Get events active at a specific observation time, grouped by event type with nested detection method groups.</p>
+                    <table class="param-table">
+                        <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
+                        <tr><td><code>source</code></td><td>path</td><td>Event source (CCMC, HEK, RHESSI)</td></tr>
+                        <tr><td><code>timestamp</code></td><td>path</td><td>Observation time (any supported format)</td></tr>
+                    </table>
+                    <pre><code><span class="kw">import</span> requests
 
-        <h3>System Information</h3>
-        <ul>
-            <li><div class="endpoint">GET /api/v1/stats</div> Get API statistics (JSON)</li>
-            <li><div class="endpoint">GET /stats</div> View statistics dashboard (HTML)</li>
-        </ul>
+response = requests.<span class="fn">get</span>(
+    <span class="str">"https://events.helioviewer.org/helioviewer/events/HEK/observation/2025-03-15T12:00:00Z"</span>
+)
+data = response.<span class="fn">json</span>()</code></pre>
+                    <p><strong>Example response:</strong></p>
+                    <pre><code>[
+  {
+    "name": "Active Region",
+    "pin": "AR",
+    "groups": [{
+      "name": "HMI SHARP",
+      "contact": "turmon@jpl.nasa.gov",
+      "data": [{
+        "id": "019c3d8f-0932-...",
+        "path": "HEK&gt;&gt;Active Region&gt;&gt;HMI SHARP",
+        "start": "2025-03-15T08:00:00",
+        "end": "2025-03-15T12:00:00",
+        "hv_hpc_x": -806.97,
+        "hv_hpc_y": 440.01,
+        "label": "HMI SHARP 12923",
+        ...
+      }, ...]
+    }]
+  },
+  ... <span class="cmt">// 31 event type groups</span>
+]</code></pre>
+                </div>
+            </details>
 
-        <h3>Interactive Tools</h3>
-        <ul>
-            <li><div class="endpoint">GET /active-regions</div> Search active regions (HTML)</li>
-        </ul>
+            <details>
+                <summary>
+                    <span class="method-badge method-post">POST</span>
+                    <span class="endpoint-path">/helioviewer/events/from/{from}/to/{to}</span>
+                    <span class="endpoint-desc">Events by path prefixes</span>
+                </summary>
+                <div class="endpoint-detail">
+                    <p>Get events matching path prefixes within a time range. Returns flat list with Helioviewer-specific fields.</p>
+                    <table class="param-table">
+                        <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
+                        <tr><td><code>from</code></td><td>path</td><td>Start time (Unix timestamp)</td></tr>
+                        <tr><td><code>to</code></td><td>path</td><td>End time (Unix timestamp)</td></tr>
+                        <tr><td><code>paths</code></td><td>body (JSON)</td><td>Array of event path prefixes</td></tr>
+                    </table>
+                    <pre><code><span class="kw">import</span> requests
+
+response = requests.<span class="fn">post</span>(
+    <span class="str">"https://events.helioviewer.org/helioviewer/events/from/1741996800/to/1742083200"</span>,
+    json={<span class="str">"paths"</span>: [<span class="str">"HEK&gt;&gt;Flare"</span>]}
+)
+data = response.<span class="fn">json</span>()</code></pre>
+                    <p><strong>Example response:</strong></p>
+                    <pre><code>{
+  "paths": ["HEK&gt;&gt;Flare"],
+  "from": 1741996800,
+  "to": 1742083200,
+  "count": 33,
+  "events": [{
+    "x": 1741999352000,
+    "x2": 1741999592000,
+    "y": 1,
+    "event_starttime": "2025-03-15 00:42:32",
+    "event_endtime": "2025-03-15 00:46:32",
+    "event_peaktime": "2025-03-15 00:44:20",
+    "hv_hpc_x": 345.6,
+    "hv_hpc_y": 192,
+    "event_type": "FL",
+    "frm_name": "Flare Detective - Trigger Module",
+    "concept": "Flare",
+    "hv_labels_formatted": {"Peak Flux": "37.4 DN/sec/pixel"},
+    ...
+  }, ...]
+}</code></pre>
+                </div>
+            </details>
+
+            <details>
+                <summary>
+                    <span class="method-badge method-post">POST</span>
+                    <span class="endpoint-path">/helioviewer/distributions/size/{size}/from/{from}/to/{to}</span>
+                    <span class="endpoint-desc">Event count distributions</span>
+                </summary>
+                <div class="endpoint-detail">
+                    <p>Get event count distributions aggregated into time buckets.</p>
+                    <table class="param-table">
+                        <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
+                        <tr><td><code>size</code></td><td>path</td><td>Bucket size: <code>30m</code>, <code>h</code>, <code>D</code>, <code>W</code>, <code>M</code>, <code>Y</code></td></tr>
+                        <tr><td><code>from</code></td><td>path</td><td>Start time (Unix timestamp)</td></tr>
+                        <tr><td><code>to</code></td><td>path</td><td>End time (Unix timestamp)</td></tr>
+                        <tr><td><code>paths</code></td><td>body (JSON)</td><td>Array of event path prefixes</td></tr>
+                    </table>
+                    <pre><code><span class="kw">import</span> requests
+
+response = requests.<span class="fn">post</span>(
+    <span class="str">"https://events.helioviewer.org/helioviewer/distributions/size/D/from/1741996800/to/1742256000"</span>,
+    json={<span class="str">"paths"</span>: [<span class="str">"HEK&gt;&gt;Flare"</span>, <span class="str">"CCMC&gt;&gt;DONKI&gt;&gt;CME"</span>]}
+)
+data = response.<span class="fn">json</span>()</code></pre>
+                    <p><strong>Example response:</strong></p>
+                    <pre><code>{
+  "paths": ["HEK&gt;&gt;Flare", "CCMC&gt;&gt;DONKI&gt;&gt;CME"],
+  "size": "D",
+  "from": 1741996800,
+  "to": 1742256000,
+  "event_types": ["C3", "FL"],
+  "buckets": [
+    {"start": 1741996800, "counts": {"C3": 9, "FL": 33}},
+    {"start": 1742083200, "counts": {"C3": 13, "FL": 73}},
+    {"start": 1742169600, "counts": {"C3": 16, "FL": 79}},
+    {"start": 1742256000, "counts": {"C3": 16, "FL": 49}}
+  ]
+}</code></pre>
+                </div>
+            </details>
+
+            <h2>Event Data</h2>
+
+            <details>
+                <summary>
+                    <span class="method-badge method-get">GET</span>
+                    <span class="endpoint-path">/api/v1/events/recents</span>
+                    <span class="endpoint-desc">Recent events</span>
+                </summary>
+                <div class="endpoint-detail">
+                    <p>Get the last 100 updated events with enhanced data.</p>
+                    <pre><code><span class="kw">import</span> requests
+
+response = requests.<span class="fn">get</span>(
+    <span class="str">"https://events.helioviewer.org/api/v1/events/recents"</span>
+)
+events = response.<span class="fn">json</span>()</code></pre>
+                    <p><strong>Example response:</strong></p>
+                    <pre><code>[{
+  "url": "https://events.helioviewer.org/api/v1/events/019d0c00-1985-...",
+  "path": "CCMC&gt;&gt;Solar Flare Predictions&gt;&gt;ASSA",
+  "start": "2026-03-20 16:00:00",
+  "end": "2026-03-21 04:00:00",
+  "hv_hpc_x": -1,
+  "hv_hpc_y": -1,
+  "label": "ASSA \nC: 25%\nM: 4%\nX: 0%",
+  "coordinate_system": "stonyhurst",
+  "regions": [{"organization": "MODEL", "external_id": "4", ...}],
+  "source_url": "https://events.helioviewer.org/api/v1/events/019d0c00-.../source",
+  "views": [{"name": "Flare Prediction", "content": {"C": 0.25, "M": 0.04, ...}}],
+  "link": {"url": "...", "text": "Helioviewer Events API JSON"}
+}, ... <span class="cmt">// 100 events</span>]</code></pre>
+                </div>
+            </details>
+
+            <details>
+                <summary>
+                    <span class="method-badge method-get">GET</span>
+                    <span class="endpoint-path">/api/v1/events/{source}/observation/{timestamp}</span>
+                    <span class="endpoint-desc">Events by observation time</span>
+                </summary>
+                <div class="endpoint-detail">
+                    <p>Get events from a specific source active at a given observation time.</p>
+                    <table class="param-table">
+                        <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
+                        <tr><td><code>source</code></td><td>path</td><td>Event source (CCMC, HEK, RHESSI)</td></tr>
+                        <tr><td><code>timestamp</code></td><td>path</td><td>Observation time (any supported format)</td></tr>
+                    </table>
+                    <pre><code><span class="kw">import</span> requests
+
+response = requests.<span class="fn">get</span>(
+    <span class="str">"https://events.helioviewer.org/api/v1/events/HEK/observation/2025-03-15T12:00:00Z"</span>
+)
+events = response.<span class="fn">json</span>()</code></pre>
+                    <p><strong>Example response:</strong></p>
+                    <pre><code>[{
+  "url": "https://events.helioviewer.org/api/v1/events/019c3d8f-0932-...",
+  "path": "HEK&gt;&gt;Active Region&gt;&gt;HMI SHARP",
+  "start": "2025-03-15 08:00:00",
+  "end": "2025-03-15 12:00:00",
+  "hv_hpc_x": -806.97,
+  "hv_hpc_y": 440.01,
+  "label": "HMI SHARP 12923",
+  "coordinate_system": "helioprojective",
+  "regions": [{"organization": "NOAA", "external_id": "14033", ...}],
+  ...
+}, ... <span class="cmt">// 49 events</span>]</code></pre>
+                </div>
+            </details>
+
+            <details>
+                <summary>
+                    <span class="method-badge method-get">GET</span>
+                    <span class="endpoint-path">/api/v1/events/{uuid}</span>
+                    <span class="endpoint-desc">Single event by UUID</span>
+                </summary>
+                <div class="endpoint-detail">
+                    <p>Get a single event by its UUID with full details.</p>
+                    <table class="param-table">
+                        <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
+                        <tr><td><code>uuid</code></td><td>path</td><td>Event UUID</td></tr>
+                    </table>
+                    <pre><code><span class="kw">import</span> requests
+
+uuid = <span class="str">"019d0c00-1985-7131-84eb-24bc34a750ad"</span>
+response = requests.<span class="fn">get</span>(
+    <span class="str">f"https://events.helioviewer.org/api/v1/events/</span>{uuid}<span class="str">"</span>
+)
+event = response.<span class="fn">json</span>()</code></pre>
+                    <p><strong>Example response:</strong></p>
+                    <pre><code>{
+  "url": "https://events.helioviewer.org/api/v1/events/019d0c00-1985-...",
+  "path": "CCMC&gt;&gt;Solar Flare Predictions&gt;&gt;ASSA",
+  "start": "2026-03-20 16:00:00",
+  "peak": "2026-03-21 04:00:00",
+  "end": "2026-03-21 04:00:00",
+  "coordinate_time": "2026-03-20 17:24:36",
+  "hv_hpc_x": -1,
+  "hv_hpc_y": -1,
+  "label": "ASSA \nC: 25%\nM: 4%\nX: 0%",
+  "coordinate_system": "stonyhurst",
+  "regions": [{"organization": "MODEL", "external_id": "4", ...}],
+  "source_url": ".../source",
+  "views": [{"name": "Flare Prediction", "content": {"C": 0.25, "M": 0.04, "X": 0, ...}}],
+  "link": {"url": "...", "text": "Helioviewer Events API JSON"}
+}</code></pre>
+                </div>
+            </details>
+
+            <details>
+                <summary>
+                    <span class="method-badge method-get">GET</span>
+                    <span class="endpoint-path">/api/v1/events/{uuid}/source</span>
+                    <span class="endpoint-desc">Raw source data</span>
+                </summary>
+                <div class="endpoint-detail">
+                    <p>Get the raw source data for an event (original data from the provider before normalization).</p>
+                    <table class="param-table">
+                        <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
+                        <tr><td><code>uuid</code></td><td>path</td><td>Event UUID</td></tr>
+                    </table>
+                    <pre><code><span class="kw">import</span> requests
+
+uuid = <span class="str">"019d0c00-1985-7131-84eb-24bc34a750ad"</span>
+response = requests.<span class="fn">get</span>(
+    <span class="str">f"https://events.helioviewer.org/api/v1/events/</span>{uuid}<span class="str">/source"</span>
+)
+source_data = response.<span class="fn">json</span>()</code></pre>
+                    <p><strong>Example response</strong> (CCMC FlareScoreboard):</p>
+                    <pre><code>{
+  "start_window": "2026-03-20T16:00:00.0Z",
+  "end_window": "2026-03-21T04:00:00.0Z",
+  "issue_time": "2026-03-20T16:00:00.0Z",
+  "C": 0.25,
+  "M": 0.04,
+  "X": 0,
+  "NOAALocationTime": "-1",
+  "ModelRegionId": 4,
+  "ModelLatitude": -69,
+  "ModelLongitude": 25
+}</code></pre>
+                </div>
+            </details>
+
+            <h2>Active Regions</h2>
+
+            <details>
+                <summary>
+                    <span class="method-badge method-get">GET</span>
+                    <span class="endpoint-path">/api/v1/regions</span>
+                    <span class="endpoint-desc">All regions</span>
+                </summary>
+                <div class="endpoint-detail">
+                    <p>Get all active regions across all organizations.</p>
+                    <pre><code><span class="kw">import</span> requests
+
+response = requests.<span class="fn">get</span>(
+    <span class="str">"https://events.helioviewer.org/api/v1/regions"</span>
+)
+data = response.<span class="fn">json</span>()
+regions = data[<span class="str">"regions"</span>]</code></pre>
+                    <p><strong>Example response:</strong></p>
+                    <pre><code>{
+  "regions": [{
+    "id": 1032,
+    "organization": "CATANIA",
+    "external_id": "1",
+    "event_count": 147,
+    "first_seen": "2025-09-24 23:38:31",
+    "last_updated": "2025-09-24 23:38:31",
+    "latest_event_start": "2026-03-19 12:30:00"
+  }, ... <span class="cmt">// 11310 total regions</span>]
+}</code></pre>
+                </div>
+            </details>
+
+            <details>
+                <summary>
+                    <span class="method-badge method-get">GET</span>
+                    <span class="endpoint-path">/api/v1/regions/{organization}/{external_id}</span>
+                    <span class="endpoint-desc">Events for a region</span>
+                </summary>
+                <div class="endpoint-detail">
+                    <p>Get events associated with a specific active region.</p>
+                    <table class="param-table">
+                        <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
+                        <tr><td><code>organization</code></td><td>path</td><td>Region organization (e.g., NOAA, CATANIA, HARP)</td></tr>
+                        <tr><td><code>external_id</code></td><td>path</td><td>Region identifier (e.g., 14188)</td></tr>
+                    </table>
+                    <pre><code><span class="kw">import</span> requests
+
+response = requests.<span class="fn">get</span>(
+    <span class="str">"https://events.helioviewer.org/api/v1/regions/NOAA/14188"</span>
+)
+data = response.<span class="fn">json</span>()
+region = data[<span class="str">"region"</span>]
+events = data[<span class="str">"events"</span>]</code></pre>
+                    <p><strong>Example response:</strong></p>
+                    <pre><code>{
+  "region": {
+    "organization": "NOAA",
+    "external_id": "14188",
+    "event_count": 100
+  },
+  "events": [{
+    "url": "https://events.helioviewer.org/api/v1/events/019981d6-c0db-...",
+    "path": "CCMC&gt;&gt;Solar Flare Predictions&gt;&gt;DAFFS",
+    "start": "2025-08-31 23:54:00",
+    "end": "2025-09-01 23:54:00",
+    "hv_hpc_x": -10.97,
+    "hv_hpc_y": 60.73,
+    "label": "DAFFS \nC+: 0.3%\nM+: 0.03%\nX: 0.06%",
+    "coordinate_system": "stonyhurst",
+    ...
+  }, ... <span class="cmt">// 100 events total</span>]
+}</code></pre>
+                </div>
+            </details>
+
+            <h3 style="margin-top: 20px;">Interactive Tools</h3>
+            <table class="info-table">
+                <tr><th>Path</th><th>Description</th></tr>
+                <tr><td><a href="/stats"><code>/stats</code></a></td><td>Statistics dashboard</td></tr>
+                <tr><td><a href="/active-regions"><code>/active-regions</code></a></td><td>Active regions search tool</td></tr>
+            </table>
 
             <h2>Documentation</h2>
             <p>For more information, visit the <a href="https://helioviewer.org" target="_blank">Helioviewer website</a>.</p>
