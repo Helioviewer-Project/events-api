@@ -48,6 +48,150 @@ class HelioviewerController extends Controller
     }
 
     /**
+     * Get batch observations for multiple timestamps.
+     *
+     * Returns deduplicated response: static event data sent once,
+     * per-timestamp rotated coordinates sent separately.
+     *
+     * Route: POST /helioviewer/events/{sources}/observations
+     * Body: { "timestamps": ["2024-01-15 12:00:00", "2024-01-15 12:01:00", ...] }
+     */
+    public function getBatchObservations(Request $request, Response $response, array $args): Response
+    {
+        // Parse and validate sources
+        $sourcesRaw = strtoupper($args['sources'] ?? '');
+        $sources = array_filter(explode('::', $sourcesRaw), fn($s) => $s !== '');
+        $validSources = JsonSource::VALID_SOURCES;
+        $validatedSources = [];
+        $errors = [];
+
+        foreach ($sources as $source) {
+            if (in_array($source, $validSources)) {
+                $validatedSources[] = $source;
+            } else {
+                $errors[$source] = "Invalid source. Must be one of: " . implode(', ', $validSources);
+            }
+        }
+
+        if (empty($validatedSources)) {
+            return $this->error($response, 'No valid sources provided. Must be one of: ' . implode(', ', $validSources), 400);
+        }
+
+        // Parse JSON body
+        $body = $request->getBody()->getContents();
+        $json = json_decode($body, true);
+
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            return $this->error($response, 'Invalid JSON body', 400);
+        }
+
+        $timestamps = $json['timestamps'] ?? [];
+
+        if (!is_array($timestamps) || empty($timestamps)) {
+            return $this->error($response, 'timestamps must be a non-empty array', 400);
+        }
+
+        if (count($timestamps) > 150) {
+            return $this->error($response, 'timestamps array exceeds maximum of 150 entries. Split into multiple requests and merge observations.', 400);
+        }
+
+        // Parse all timestamps
+        $parsedTimestamps = [];
+        foreach ($timestamps as $i => $ts) {
+            try {
+                $parsedTimestamps[] = TimestampParser::parseTimestamp($ts);
+            } catch (\InvalidArgumentException $e) {
+                return $this->error($response, "Invalid timestamp at index {$i}: " . $e->getMessage(), 400);
+            }
+        }
+
+        $minTime = min($parsedTimestamps);
+        $maxTime = max($parsedTimestamps);
+
+        // Single DB query for all sources and the full time window
+        try {
+            $allEvents = $this->eventRepository->findActiveInWindow($validatedSources, $minTime, $maxTime);
+        } catch (\Exception $e) {
+            $this->logger->error("Batch observations DB query failed: " . $e->getMessage());
+            return $this->error($response, 'Failed to query events', 500);
+        }
+
+        $this->logger->debug("Batch observations: {$allEvents->count()} events for " . implode('::', $validatedSources) . " across " . count($parsedTimestamps) . " timestamps");
+
+        // Group events by source for formatting
+        $eventsBySource = [];
+        foreach ($validatedSources as $source) {
+            $sourceId = $this->getSourceIdByName($source);
+            $eventsBySource[$source] = $allEvents->filter(fn($e) => $e->source_id === $sourceId);
+        }
+
+        // Build event_types and events dict per source, then merge
+        $allEventTypes = [];
+        $eventsDict = [];
+
+        foreach ($eventsBySource as $source => $sourceEvents) {
+            try {
+                $legacy = new LegacyEventResponse($this->jsonStorage);
+                $formatted = $legacy->formatEventsBatched($source, $sourceEvents->toArray());
+                $allEventTypes = array_merge($allEventTypes, $formatted['event_types']);
+                $eventsDict = array_merge($eventsDict, $formatted['events']);
+            } catch (\Exception $e) {
+                $this->logger->error("Batch observations format failed for {$source}: " . $e->getMessage());
+                $errors[$source] = $e->getMessage();
+            }
+        }
+
+        // Build observations: per-timestamp rotated coordinates
+        $observations = [];
+
+        foreach ($parsedTimestamps as $idx => $t) {
+            $tsKey = $timestamps[$idx]; // Use original timestamp string as key
+
+            // Filter superset to events active at this timestamp
+            // Clone each event so rotate() doesn't mutate the originals —
+            // rotate() overwrites hv_hpc_x/y in-place, which would corrupt
+            // coords for subsequent timestamps and break cache keys
+            $activeEvents = $allEvents
+                ->filter(fn($e) => $e->start <= $t && $e->end >= $t)
+                ->map(fn($e) => clone $e);
+
+            if ($activeEvents->isEmpty()) {
+                $observations[$tsKey] = (object) [];
+                continue;
+            }
+
+            // Rotate coordinates using existing CoordinateRotator
+            $rotated = $this->coordinateRotator->rotate($activeEvents, $t);
+
+            // Extract only coordinate fields
+            $obsEntry = [];
+            foreach ($rotated as $event) {
+                $obsEntry[$event->id] = [
+                    'hv_hpc_x' => $event->hv_hpc_x,
+                    'hv_hpc_y' => $event->hv_hpc_y,
+                ];
+            }
+
+            $observations[$tsKey] = $obsEntry;
+        }
+
+        return $this->json($response, [
+            'event_types' => $allEventTypes,
+            'events' => $eventsDict,
+            'observations' => $observations,
+            'errors' => (object) $errors,
+        ]);
+    }
+
+    /**
+     * Map source name to source_id constant.
+     */
+    private function getSourceIdByName(string $source): int
+    {
+        return JsonSource::getSourceId($source);
+    }
+
+    /**
      * Get event distribution (aggregated counts by time buckets) for multiple paths.
      *
      * Route: POST /helioviewer/distributions/size/{size}/from/{from}/to/{to}

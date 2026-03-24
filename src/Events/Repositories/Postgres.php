@@ -131,6 +131,27 @@ class Postgres implements RepositoryInterface
     }
 
     /**
+     * Find all events active at any point within a time window across multiple sources.
+     *
+     * Single query for the superset of events that overlap [minTime, maxTime].
+     * Used by batch observations to avoid N queries per source.
+     *
+     * @param array $sources Array of source names (e.g., ['CCMC', 'HEK'])
+     * @param int $minTime Start of window (Unix timestamp)
+     * @param int $maxTime End of window (Unix timestamp)
+     * @return Collection<int, Event>
+     */
+    public function findActiveInWindow(array $sources, int $minTime, int $maxTime): Collection
+    {
+        $sourceIds = array_map(fn($s) => $this->getSourceId($s), $sources);
+
+        return Event::whereIn('source_id', $sourceIds)
+            ->where('start', '<=', $maxTime)
+            ->where('end', '>=', $minTime)
+            ->get();
+    }
+
+    /**
      * Retrieve events within a specified time range.
      *
      * Returns solar events that have any temporal overlap with the given
@@ -470,14 +491,6 @@ class Postgres implements RepositoryInterface
      */
     private function getSourceId(string $source): int
     {
-        // Use match expression for efficient source name resolution
-        // Case-insensitive matching with strict return type validation
-        return match (strtoupper($source)) {
-            'CCMC' => JsonSource::CCMC,
-            'HEK' => JsonSource::HEK,
-            'WSA' => JsonSource::WSA,
-            'RHESSI' => JsonSource::RHESSI,
-            default => throw new \InvalidArgumentException("Unknown source: $source")
-        };
+        return JsonSource::getSourceId($source);
     }
 }

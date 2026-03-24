@@ -241,6 +241,136 @@ class Legacy
     }
     
     /**
+     * Format events for batch observations endpoint.
+     *
+     * Returns event_types hierarchy (with event_ids instead of data) and
+     * a static events dict keyed by ID. No source/views/links loaded.
+     *
+     * @param string $source Source name for dictionary filtering
+     * @param array $events Array of event records
+     * @return array ['event_types' => [...], 'events' => [...]]
+     */
+    public function formatEventsBatched(string $source, array $events): array
+    {
+        $processedResult = [];
+        $eventsDict = [];
+
+        foreach ($events as $row) {
+            $path = is_array($row) ? ($row['path'] ?? null) : ($row->path ?? null);
+            if (!$path) continue;
+
+            $parts = explode('>>', $path);
+            $eventArray = is_array($row) ? $row : $row->toArray();
+            $eventId = $eventArray['id'];
+
+            // Build static event entry
+            if (!isset($eventsDict[$eventId])) {
+                $eventsDict[$eventId] = [
+                    'label' => $eventArray['label'] ?? null,
+                    'short_label' => $eventArray['short_label'] ?? null,
+                    'start' => isset($eventArray['start']) ? date('Y-m-d\TH:i:s', $eventArray['start']) : null,
+                    'end' => isset($eventArray['end']) ? date('Y-m-d\TH:i:s', $eventArray['end']) : null,
+                    'peak' => isset($eventArray['peak']) ? date('Y-m-d\TH:i:s', $eventArray['peak']) : null,
+                    'hv_hpc_x' => $eventArray['hv_hpc_x'] ?? null,
+                    'hv_hpc_y' => $eventArray['hv_hpc_y'] ?? null,
+                    'footprint' => $eventArray['footprint'] ?? [],
+                    'coordinate_system' => $eventArray['coordinate_system'] ?? null,
+                    'coordinate_time' => $eventArray['coordinate_time'] ?? null,
+                    'type' => $eventArray['legacy_type'] ?? null,
+                    'version' => $eventArray['legacy_version'] ?? null,
+                    'pin' => $eventArray['legacy_pin'] ?? null,
+                    'concept' => $eventArray['concept'] ?? null,
+                    'legacy_id' => $eventArray['legacy_id'] ?? $eventId,
+                ];
+            }
+
+            if (count($parts) <= 2) {
+                if (!isset($processedResult[$path])) {
+                    if (isset($this->dictionary[$path])) {
+                        $processedResult[$path] = [
+                            'name' => $this->dictionary[$path]['name'] ?: $path,
+                            'pin' => $this->dictionary[$path]['pin'] ?: $path,
+                            'groups' => []
+                        ];
+                    } else {
+                        $processedResult[$path] = [
+                            'name' => $path,
+                            'pin' => $path,
+                            'groups' => []
+                        ];
+                    }
+                }
+            } elseif (count($parts) == 3) {
+                $parentPath = $parts[0] . '>>' . $parts[1];
+
+                if (!isset($processedResult[$parentPath])) {
+                    if (isset($this->dictionary[$parentPath])) {
+                        $processedResult[$parentPath] = [
+                            'name' => $this->dictionary[$parentPath]['name'] ?: $parentPath,
+                            'pin' => $this->dictionary[$parentPath]['pin'] ?: $parentPath,
+                            'groups' => []
+                        ];
+                    } else {
+                        $processedResult[$parentPath] = [
+                            'name' => $parentPath,
+                            'pin' => $parentPath,
+                            'groups' => []
+                        ];
+                    }
+                }
+
+                if (!isset($processedResult[$parentPath]['groups'][$path])) {
+                    if (isset($this->dictionary[$path])) {
+                        $processedResult[$parentPath]['groups'][$path] = [
+                            'name' => $this->dictionary[$path]['name'] ?: $parts[2],
+                            'contact' => $this->dictionary[$path]['contact'] ?? '',
+                            'url' => $this->dictionary[$path]['url'] ?? '',
+                            'event_ids' => []
+                        ];
+                    } else {
+                        $processedResult[$parentPath]['groups'][$path] = [
+                            'name' => $parts[2],
+                            'contact' => '',
+                            'url' => '',
+                            'event_ids' => []
+                        ];
+                    }
+                }
+
+                $processedResult[$parentPath]['groups'][$path]['event_ids'][] = $eventId;
+            }
+        }
+
+        ksort($processedResult);
+
+        foreach ($processedResult as &$item) {
+            if (isset($item['groups']) && is_array($item['groups'])) {
+                $item['groups'] = array_values($item['groups']);
+            }
+        }
+
+        // Build final result using dictionary order
+        $eventTypes = [];
+        foreach ($this->dictionary as $dictPath => $dictValue) {
+            if (isset($processedResult[$dictPath])) {
+                $eventTypes[] = $processedResult[$dictPath];
+            } else {
+                $pathParts = explode('>>', $dictPath);
+                $isTopLevelForSource = count($pathParts) === 2 && str_starts_with($dictPath, $source . '>>');
+                if ($isTopLevelForSource) {
+                    $dictValue['groups'] = [];
+                    $eventTypes[] = $dictValue;
+                }
+            }
+        }
+
+        return [
+            'event_types' => $eventTypes,
+            'events' => $eventsDict,
+        ];
+    }
+
+    /**
      * Update the dictionary with new values
      * 
      * @param string $path The path key
