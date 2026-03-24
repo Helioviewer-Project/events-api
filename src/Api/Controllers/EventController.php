@@ -5,6 +5,7 @@ namespace Helioviewer\EventsApi\Api\Controllers;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Helioviewer\EventsApi\Utils\TimestampParser;
+use Helioviewer\EventsApi\Events\Sources\JsonSource;
 
 class EventController extends Controller
 {
@@ -78,8 +79,8 @@ class EventController extends Controller
         $source = strtoupper($args['source']);
 
         // Validate source
-        if (!in_array($source, ['CCMC', 'HEK', 'WSA', 'RHESSI'])) {
-            return $this->error($response, 'Invalid source. Must be one of: CCMC, HEK, WSA, RHESSI', 400);
+        if (!in_array($source, JsonSource::VALID_SOURCES)) {
+            return $this->error($response, 'Invalid source. Must be one of: ' . implode(', ', JsonSource::VALID_SOURCES), 400);
         }
 
         $timestamp = $args['timestamp'];

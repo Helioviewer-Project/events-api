@@ -49,8 +49,26 @@ abstract class JsonSource implements SourceInterface
      */
     public const CCMC = 1;    // Community Coordinated Modeling Center
     public const HEK = 2;     // Heliophysics Event Knowledgebase
-    public const WSA = 3;     // Wang-Sheeley-Arge model
     public const RHESSI = 4;  // Reuven Ramaty High Energy Solar Spectroscopic Imager
+
+    /** Currently active sources — single source of truth for validation */
+    public const VALID_SOURCES = ['CCMC', 'HEK', 'RHESSI'];
+
+    /** Map source name to source_id */
+    private const SOURCE_MAP = [
+        'CCMC' => self::CCMC,
+        'HEK' => self::HEK,
+        'RHESSI' => self::RHESSI,
+    ];
+
+    public static function getSourceId(string $source): int
+    {
+        $name = strtoupper($source);
+        if (!isset(self::SOURCE_MAP[$name])) {
+            throw new \InvalidArgumentException("Unknown source: $source");
+        }
+        return self::SOURCE_MAP[$name];
+    }
 
     /**
      * HTTP client for making API requests to JSON endpoints.

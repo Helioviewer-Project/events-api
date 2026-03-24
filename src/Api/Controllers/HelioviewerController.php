@@ -11,11 +11,6 @@ use Helioviewer\EventsApi\Events\Sources\JsonSource;
 
 class HelioviewerController extends Controller
 {
-    // Source ID constants
-    private const SOURCE_CCMC = 1;
-    private const SOURCE_HEK = 2;
-    private const SOURCE_WSA = 3;
-    private const SOURCE_RHESSI = 4;
     /**
      * Get events by observation (Legacy format for Helioviewer.org)
      */
@@ -24,8 +19,8 @@ class HelioviewerController extends Controller
         $source = strtoupper($args['source']);
 
         // Validate source
-        if (!in_array($source, ['CCMC', 'HEK', 'WSA', 'RHESSI'])) {
-            return $this->error($response, 'Invalid source. Must be one of: CCMC, HEK, WSA, RHESSI', 400);
+        if (!in_array($source, JsonSource::VALID_SOURCES)) {
+            return $this->error($response, 'Invalid source. Must be one of: ' . implode(', ', JsonSource::VALID_SOURCES), 400);
         }
 
         $timestamp = $args['timestamp'];
@@ -243,7 +238,7 @@ class HelioviewerController extends Controller
 
     /**
      * Format event for Helioviewer.org Event Timeline.
-     * Formats differently based on source_id (HEK, CCMC, WSA, RHESSI).
+     * Formats differently based on source_id (HEK, CCMC, RHESSI).
      *
      * @param Event $event The event to format
      * @return array Formatted event data
@@ -273,7 +268,7 @@ class HelioviewerController extends Controller
         // $formatted['source'] = $source;
 
         // Format based on source_id
-        if ($event->source_id === self::SOURCE_HEK) {
+        if ($event->source_id === JsonSource::HEK) {
             $formatted['kb_archivid'] = str_replace("ivo://helio-informatics.org/", "", $source['kb_archivid'] ?? $event->remote_id);
             $formatted['hv_labels_formatted'] = $this->buildHekLabelArray($source);
             $formatted['event_type'] = $source['event_type'] ?? $event->legacy_type;
@@ -282,7 +277,7 @@ class HelioviewerController extends Controller
             $formatted['concept'] = $source['concept'] ?? $event->label;
         }
 
-        if ($event->source_id === self::SOURCE_CCMC) {
+        if ($event->source_id === JsonSource::CCMC) {
             $pathParts = explode('>>', $event->path);
 
             if ($event->path === 'CCMC>>DONKI>>CME') {
@@ -312,7 +307,7 @@ class HelioviewerController extends Controller
             $formatted['event_type'] = $source['event_type'] ?? $event->legacy_type;
         }
 
-        if ($event->source_id === self::SOURCE_RHESSI) {
+        if ($event->source_id === JsonSource::RHESSI) {
             if (str_starts_with($event->path, 'RHESSI>>Solar Flares>>Flare')) {
                 $formatted['kb_archivid'] = $source['id'] ?? $event->remote_id;
                 $formatted['frm_name'] = 'RHESSI';
