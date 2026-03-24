@@ -23,6 +23,7 @@ class CoordinateRotator
     private CoordinatorInterface $backupCoordinator;
     private LoggerInterface $logger;
     private ?CacheInterface $cache;
+    private bool $primaryFailed = false;
 
     /**
      * Constructor
@@ -212,16 +213,25 @@ class CoordinateRotator
      */
     private function transformWithFallback(callable $primary, callable $backup, string $system): array
     {
-        try {
-            return $primary();
-        } catch (CoordinatorException $e) {
-            $this->logger->warning("CoordinateRotator | {$system} | Primary (HttpCoordinator) failed: " . $e->getMessage() . " | Falling back to backup LOCAL http coordinator");
+        // Skip primary if it had a connection failure during this request
+        if (!$this->primaryFailed) {
             try {
-                return $backup();
-            } catch (CoordinatorException $backupError) {
-                $this->logger->error("CoordinateRotator | {$system} | Backup LOCAL http coordinator also failed: " . $backupError->getMessage() . " | No coordinates rotated");
-                return [];
+                return $primary();
+            } catch (CoordinatorConnectionException $e) {
+                // Server unreachable (timeout, refused, DNS) — skip primary for remaining calls
+                $this->primaryFailed = true;
+                $this->logger->warning("CoordinateRotator | {$system} | Primary unreachable: " . $e->getMessage() . " | Skipping primary for remaining calls, falling back to backup");
+            } catch (CoordinatorException $e) {
+                // Server reachable but returned error (400, 500, bad format) — try primary again next time
+                $this->logger->warning("CoordinateRotator | {$system} | Primary returned error: " . $e->getMessage() . " | Falling back to backup for this call");
             }
+        }
+
+        try {
+            return $backup();
+        } catch (CoordinatorException $backupError) {
+            $this->logger->error("CoordinateRotator | {$system} | Backup LOCAL http coordinator also failed: " . $backupError->getMessage() . " | No coordinates rotated");
+            return [];
         }
     }
 }

@@ -113,6 +113,9 @@ class HttpCoordinator implements CoordinatorInterface
             if ($this->logger) {
                 $this->logger->error("HttpCoordinator | stonyhurst -> helioprojective | POST {$url} | FAILED | {$coordCount} coordinates | " . $e->getMessage());
             }
+            if ($e instanceof \GuzzleHttp\Exception\ConnectException) {
+                throw new CoordinatorConnectionException("Failed to connect for coordinate rotation: " . $e->getMessage(), 0, $e);
+            }
             throw new CoordinatorException("Failed to rotate coordinates: " . $e->getMessage(), 0, $e);
         }
     }
@@ -198,6 +201,9 @@ class HttpCoordinator implements CoordinatorInterface
         } catch (Exception $e) {
             if ($this->logger) {
                 $this->logger->error("HttpCoordinator | helioprojective -> helioprojective | POST {$url} | FAILED | {$coordCount} coordinates | " . $e->getMessage());
+            }
+            if ($e instanceof \GuzzleHttp\Exception\ConnectException) {
+                throw new CoordinatorConnectionException("Failed to connect for HPC transformation: " . $e->getMessage(), 0, $e);
             }
             throw new CoordinatorException("Failed to transform HPC coordinates: " . $e->getMessage(), 0, $e);
         }
