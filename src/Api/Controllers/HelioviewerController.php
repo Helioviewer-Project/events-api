@@ -396,6 +396,7 @@ class HelioviewerController extends Controller
 
         // Base fields common to all sources
         $formatted = [
+            'id' => $uuid,
             'x' => $event->start * 1000,           // milliseconds
             'x2' => $event->end * 1000,            // milliseconds
             'y' => 1,
