@@ -30,7 +30,7 @@ shell:
 	$(DOCKER_COMPOSE) exec --user $(shell id -u):$(shell id -g) phpfpm bash
 
 shell-root:
-	$(DOCKER_COMPOSE) exec phpfpm bash
+	$(DOCKER_COMPOSE) exec --user 0:0 phpfpm bash
 
 db-shell:
 	$(DOCKER_COMPOSE) exec postgres sh -c 'psql -U $$POSTGRES_USER -d $$POSTGRES_DB'
