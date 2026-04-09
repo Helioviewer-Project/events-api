@@ -267,6 +267,7 @@ class PageController extends Controller
         .fn { color: #dcdcaa; }
         .str { color: #ce9178; }
         .cmt { color: #6a9955; }
+        .num { color: #b5cea8; }
         /* Timestamp format table */
         .info-table {
             width: 100%;
@@ -458,14 +459,53 @@ data = response.<span class="fn">json</span>()</code></pre>
   "size": "D",
   "from": 1741996800,
   "to": 1742256000,
-  "event_types": ["C3", "FL"],
+  "event_types": ["CE", "FL"],
   "buckets": [
-    {"start": 1741996800, "counts": {"C3": 9, "FL": 33}},
-    {"start": 1742083200, "counts": {"C3": 13, "FL": 73}},
-    {"start": 1742169600, "counts": {"C3": 16, "FL": 79}},
-    {"start": 1742256000, "counts": {"C3": 16, "FL": 49}}
+    {"start": 1741996800, "counts": {"CE": 9, "FL": 33}},
+    {"start": 1742083200, "counts": {"CE": 13, "FL": 73}},
+    {"start": 1742169600, "counts": {"CE": 16, "FL": 79}},
+    {"start": 1742256000, "counts": {"CE": 16, "FL": 49}}
   ]
 }</code></pre>
+                </div>
+            </details>
+
+            <details>
+                <summary>
+                    <span class="method-badge method-post">POST</span>
+                    <span class="endpoint-path">/helioviewer/events/{sources}/observations</span>
+                    <span class="endpoint-desc">Batch observations (movie frames)</span>
+                </summary>
+                <div class="endpoint-detail">
+                    <p>Get deduplicated events + rotated coordinates for multiple timestamps in one request. Designed for movie rendering.</p>
+                    <table class="param-table">
+                        <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
+                        <tr><td><code>sources</code></td><td>path</td><td>Sources joined by <code>::</code> (e.g., <code>HEK::CCMC</code>)</td></tr>
+                        <tr><td><code>timestamps</code></td><td>body (JSON)</td><td>Array of datetime strings (max 150)</td></tr>
+                    </table>
+                    <pre><code><span class="kw">import</span> requests
+
+response = requests.<span class="fn">post</span>(
+    <span class="str">"https://events.helioviewer.org/helioviewer/events/HEK::CCMC/observations"</span>,
+    json={<span class="str">"timestamps"</span>: [<span class="str">"2025-03-15 11:00:00"</span>, <span class="str">"2025-03-15 12:00:00"</span>]}
+)
+data = response.<span class="fn">json</span>()</code></pre>
+                    <p><strong>Example response:</strong></p>
+                    <pre><code>{
+  <span class="str">"event_types"</span>: [{<span class="str">"name"</span>: <span class="str">"Active Region"</span>, <span class="str">"pin"</span>: <span class="str">"AR"</span>, <span class="str">"groups"</span>: [{<span class="str">"name"</span>: <span class="str">"HMI SHARP"</span>, <span class="str">"event_ids"</span>: [...]}]}, ...],
+  <span class="str">"events"</span>: {
+    <span class="str">"019c3d8f-0932-..."</span>: {
+      <span class="str">"label"</span>: <span class="str">"HMI SHARP 12923"</span>, <span class="str">"start"</span>: <span class="str">"2025-03-15T08:00:00"</span>, <span class="str">"end"</span>: <span class="str">"2025-03-15T12:00:00"</span>,
+      <span class="str">"hv_hpc_x"</span>: <span class="num">-806.97</span>, <span class="str">"hv_hpc_y"</span>: <span class="num">440.01</span>, <span class="str">"footprint"</span>: [...], ...
+    }, ...
+  },
+  <span class="str">"observations"</span>: {
+    <span class="str">"2025-03-15 11:00:00"</span>: {<span class="str">"019c3d8f-0932-..."</span>: {<span class="str">"hv_hpc_x"</span>: <span class="num">-800.12</span>, <span class="str">"hv_hpc_y"</span>: <span class="num">439.88</span>}, ...},
+    <span class="str">"2025-03-15 12:00:00"</span>: { ... }
+  },
+  <span class="str">"errors"</span>: {}
+}</code></pre>
+                    <p>Static event data sent once in <code>events</code>. Per-timestamp rotated coords in <code>observations</code>. Client shifts footprints by center offset. Max 150 timestamps per request.</p>
                 </div>
             </details>
 
