@@ -230,11 +230,6 @@ class HelioviewerController extends Controller
             return $this->error($response, 'Timestamps appear to be in milliseconds. Please use seconds (10 digits, not 13)', 400);
         }
 
-        // Check for reasonable range (year 1970 to 2200)
-        if ($from < 0 || $to < 0 || $from > 7258118400 || $to > 7258118400) {
-            return $this->error($response, 'Timestamps must be between 1970 and 2200', 400);
-        }
-
         // Validate from < to
         if ($from >= $to) {
             return $this->error($response, 'from must be less than to', 400);

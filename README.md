@@ -249,15 +249,58 @@ Example response:
   "size": "D",
   "from": 1741996800,
   "to": 1742256000,
-  "event_types": ["C3", "FL"],
+  "event_types": ["CE", "FL"],
   "buckets": [
-    {"start": 1741996800, "counts": {"C3": 9, "FL": 33}},
-    {"start": 1742083200, "counts": {"C3": 13, "FL": 73}},
-    {"start": 1742169600, "counts": {"C3": 16, "FL": 79}},
-    {"start": 1742256000, "counts": {"C3": 16, "FL": 49}}
+    {"start": 1741996800, "counts": {"CE": 9, "FL": 33}},
+    {"start": 1742083200, "counts": {"CE": 13, "FL": 73}},
+    {"start": 1742169600, "counts": {"CE": 16, "FL": 79}},
+    {"start": 1742256000, "counts": {"CE": 16, "FL": 49}}
   ]
 }
 ```
+
+#### POST `/helioviewer/events/{sources}/observations`
+
+Get deduplicated events + rotated coordinates for multiple timestamps. Designed for movie rendering — static event data sent once, per-timestamp rotated coordinates sent separately.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `sources` | path | Sources joined by `::` (e.g., `HEK::CCMC`) |
+| `timestamps` | body (JSON) | Array of datetime strings (max 150 per request) |
+
+```python
+import requests
+
+response = requests.post(
+    "https://events.helioviewer.org/helioviewer/events/HEK::CCMC/observations",
+    json={"timestamps": ["2025-03-15 11:00:00", "2025-03-15 12:00:00"]}
+)
+data = response.json()
+```
+
+Example response:
+```json
+{
+  "event_types": [{"name": "Active Region", "pin": "AR", "groups": [{"name": "HMI SHARP", "event_ids": ["019c3d8f-..."]}]}],
+  "events": {
+    "019c3d8f-...": {
+      "label": "HMI SHARP 12923",
+      "start": "2025-03-15T08:00:00",
+      "end": "2025-03-15T12:00:00",
+      "hv_hpc_x": -806.97, "hv_hpc_y": 440.01,
+      "footprint": [{"x": -810.2, "y": 438.5}, "..."],
+      "type": "AR", "concept": "Active Region"
+    }
+  },
+  "observations": {
+    "2025-03-15 11:00:00": {"019c3d8f-...": {"hv_hpc_x": -800.12, "hv_hpc_y": 439.88}, "..."},
+    "2025-03-15 12:00:00": {"..."}
+  },
+  "errors": {}
+}
+```
+
+For movies > 150 frames, split timestamps into chunks and merge `observations` across responses.
 
 ---
 
