@@ -109,6 +109,7 @@ class Legacy
 
                 // Add legacy field transformations
                 $eventArray['type'] = $eventArray['legacy_type'] ?? null;
+                $eventArray['event_type'] = $eventArray['legacy_type'] ?? null;
                 $eventArray['version'] = $eventArray['legacy_version'] ?? null;
                 $eventArray['pin'] = $eventArray['legacy_pin'] ?? null;
 
