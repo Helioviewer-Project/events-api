@@ -182,7 +182,7 @@ class RhessiSeeder extends AbstractSeed
             'short_label' => $rawEvent['id'] . ': ' . date('Y-m-d H:i:s', $startTime),
             'legacy_version' => '',
             'legacy_type' => 'FL', // Flare type
-            'legacy_pin' => 'F2',
+            'legacy_pin' => 'FL',
         ];
 
         // Create Event model instance (not saved to database)

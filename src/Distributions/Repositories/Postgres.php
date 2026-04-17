@@ -109,6 +109,7 @@ class Postgres implements RepositoryInterface
                                 'path' => $event->path,
                                 'start' => $current,
                                 'count' => 0,
+                                'legacy_event_type' => $event->legacy_type,
                             ];
                         }
                         $bucketCounts[$key]['count']++;
@@ -132,7 +133,7 @@ class Postgres implements RepositoryInterface
                     'path' => $bucket['path'],
                     'start' => $bucket['start'],
                     'count' => $bucket['count'],
-                    'legacy_event_type' => Distribution::getLegacyEventType($bucket['path']),
+                    'legacy_event_type' => $bucket['legacy_event_type'],
                     'created_at' => $now,
                     'updated_at' => $now,
                 ];
@@ -377,7 +378,7 @@ class Postgres implements RepositoryInterface
                     ],
                     [
                         'count' => 0,
-                        'legacy_event_type' => Distribution::getLegacyEventType($event->path),
+                        'legacy_event_type' => $event->legacy_type,
                     ]
                 );
                 $created = $distribution->wasRecentlyCreated ? 'NEW' : 'EXISTS';
