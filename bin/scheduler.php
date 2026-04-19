@@ -72,7 +72,7 @@ $scheduler->call(function() use ($eventCollector, $logger) {
         
         // Show summary
         $avgRate = round($totalEvents / max($duration, 0.1), 2);
-        $logger->info("[EVERY 6 MINUTES] Collection completed with total {$totalEvents} events, average {$avgRate} events/sec");
+        $logger->info("[EVERY 6 MINUTES] Collection completed in {$duration}s with total {$totalEvents} events, average {$avgRate} events/sec");
         
     } catch (\Throwable $e) {
         $logger->critical("[EVERY 6 MINUTES] Collection failed: " . $e->getMessage());
@@ -109,7 +109,7 @@ $scheduler->call(function() use ($eventCollector, $logger) {
         
         // Show summary
         $avgRate = round($totalEvents / max($duration, 0.1), 2);
-        $logger->info("[DAILY 2AM] Collection completed with total {$totalEvents} events, average {$avgRate} events/sec");
+        $logger->info("[DAILY 2AM] Collection completed in {$duration}s with total {$totalEvents} events, average {$avgRate} events/sec");
         
     } catch (\Throwable $e) {
         $logger->critical("[DAILY 2AM] Collection failed: " . $e->getMessage());
@@ -124,6 +124,82 @@ $scheduler->call(function() use ($eventCollector, $logger) {
     })
     ->then(function($output) use ($logger) {
         $logger->info("[DAILY 2AM] Daily collection completed");
+    });
+
+// Weekly full collection at Monday 01:00 UTC - sweeps the just-completed Mon→Sun week
+$scheduler->call(function() use ($eventCollector, $logger) {
+    $now      = \Carbon\CarbonImmutable::now('UTC');
+    $lastWeek = $now->subWeek();
+    $start    = $lastWeek->startOfWeek(\Carbon\Carbon::MONDAY);  // Mon 00:00:00 UTC
+    $end      = $lastWeek->endOfWeek(\Carbon\Carbon::SUNDAY);    // Sun 23:59:59 UTC
+
+    $timeRange = TimeRange::fromTimestamps($start->timestamp, $end->timestamp);
+
+    $logger->info("[WEEKLY MON 1AM UTC] Starting event collection for "
+        . $start->toIso8601String() . " to " . $end->toIso8601String());
+
+    $startTime = microtime(true);
+
+    try {
+        $totalEvents = $eventCollector->collect($timeRange);
+
+        $endTime  = microtime(true);
+        $duration = round($endTime - $startTime, 2);
+
+        $avgRate = round($totalEvents / max($duration, 0.1), 2);
+        $logger->info("[WEEKLY MON 1AM UTC] Collection completed in {$duration}s with total {$totalEvents} events, average {$avgRate} events/sec");
+
+    } catch (\Throwable $e) {
+        $logger->critical("[WEEKLY MON 1AM UTC] Collection failed: " . $e->getMessage());
+        $logger->debug("[WEEKLY MON 1AM UTC] Stack trace: " . $e->getTraceAsString());
+        throw new \RuntimeException("[WEEKLY MON 1AM UTC] Scheduler failed: " . get_class($e) . " - " . $e->getMessage(), 0, $e);
+    }
+}, [], 'weekly_monday_1am_utc_collection')
+    ->weekly(1, 1, 0)  // weekday 1 = Monday, 01:00
+    ->onlyOne()
+    ->before(function() use ($logger) {
+        $logger->info("[WEEKLY MON 1AM UTC] Starting scheduled collection");
+    })
+    ->then(function($output) use ($logger) {
+        $logger->info("[WEEKLY MON 1AM UTC] Scheduled collection completed");
+    });
+
+// Monthly full collection at 1st of month 03:00 UTC - sweeps the just-completed calendar month
+$scheduler->call(function() use ($eventCollector, $logger) {
+    $now       = \Carbon\CarbonImmutable::now('UTC');
+    $lastMonth = $now->subMonth();
+    $start     = $lastMonth->startOfMonth();  // 1st 00:00:00 UTC
+    $end       = $lastMonth->endOfMonth();    // last day 23:59:59 UTC
+
+    $timeRange = TimeRange::fromTimestamps($start->timestamp, $end->timestamp);
+
+    $logger->info("[MONTHLY 1ST 3AM UTC] Starting event collection for "
+        . $start->toIso8601String() . " to " . $end->toIso8601String());
+
+    $startTime = microtime(true);
+
+    try {
+        $totalEvents = $eventCollector->collect($timeRange);
+
+        $endTime  = microtime(true);
+        $duration = round($endTime - $startTime, 2);
+
+        $avgRate = round($totalEvents / max($duration, 0.1), 2);
+        $logger->info("[MONTHLY 1ST 3AM UTC] Collection completed in {$duration}s with total {$totalEvents} events, average {$avgRate} events/sec");
+
+    } catch (\Throwable $e) {
+        $logger->critical("[MONTHLY 1ST 3AM UTC] Collection failed: " . $e->getMessage());
+        $logger->debug("[MONTHLY 1ST 3AM UTC] Stack trace: " . $e->getTraceAsString());
+        throw new \RuntimeException("[MONTHLY 1ST 3AM UTC] Scheduler failed: " . get_class($e) . " - " . $e->getMessage(), 0, $e);
+    }
+}, [], 'monthly_first_3am_utc_collection')
+    ->monthly('*', 1, 3, 0)  // every month, day 1, 03:00
+    ->onlyOne()
+    ->before(function() use ($logger) {
+        $logger->info("[MONTHLY 1ST 3AM UTC] Starting scheduled collection");
+    })
+    ->then(function($output) use ($logger) {
+        $logger->info("[MONTHLY 1ST 3AM UTC] Scheduled collection completed");
     });
 
 $logger->info("Scheduler run started at " . date('Y-m-d H:i:s'));
