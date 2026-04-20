@@ -1,4 +1,4 @@
-.PHONY: composer-install composer-require composer-dump up down build shell shell-root nginx-reload migrate-status migrate-create migrate-run migrate-rollback seed-run collect recents reset stats logs db-shell db-backup cache-flush fix-regions distribution-build help
+.PHONY: composer-install composer-require composer-dump up down build shell shell-root nginx-reload migrate-status migrate-create migrate-run migrate-rollback seed-run collect recents reset stats logs db-shell db-backup cache-flush fix-regions distribution-build reprocess help
 .DEFAULT_GOAL := help
 
 # Set compose file based on ENV
@@ -78,6 +78,9 @@ fix-regions:
 distribution-build:
 	$(DOCKER_COMPOSE) run --rm --user $(shell id -u):$(shell id -g) phpfpm php bin/build-distribution.php
 
+reprocess:
+	PATHS='$(PATHS)' APPLY='$(APPLY)' $(DOCKER_COMPOSE) run --rm --user $(shell id -u):$(shell id -g) -e PATHS -e APPLY phpfpm php bin/reprocess.php
+
 logs:
 	$(DOCKER_COMPOSE) exec phpfpm sh -c 'tail -f /u/apps/data/logs/*.log'
 
@@ -144,6 +147,8 @@ help:
 	@echo "                          Dry run: make fix-regions"
 	@echo "                          Apply:   make fix-regions apply"
 	@echo "  distribution-build    - Build distribution aggregations from events"
+	@echo "  reprocess             - Reprocess events from stored sources (dry run by default)"
+	@echo "                          Optional: PATHS=\"HEK,HEK>>Flare\" APPLY=1"
 	@echo ""
 	@echo "Cache Management:"
 	@echo "  cache-flush           - Flush Redis cache"

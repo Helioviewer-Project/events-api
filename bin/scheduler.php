@@ -58,22 +58,22 @@ $scheduler->call(function() use ($eventCollector, $logger) {
     $start = strtotime('today');
     $end = strtotime('tomorrow') - 1;
     $timeRange = TimeRange::fromTimestamps($start, $end);
-    
+
     $logger->info("[EVERY 6 MINUTES] Starting event collection for " . date('Y-m-d', $start));
-    
+
     $startTime = microtime(true);
-    
+
     try {
         // Collect from all sources (returns event count)
         $totalEvents = $eventCollector->collect($timeRange);
-        
+
         $endTime = microtime(true);
         $duration = round($endTime - $startTime, 2);
-        
+
         // Show summary
         $avgRate = round($totalEvents / max($duration, 0.1), 2);
         $logger->info("[EVERY 6 MINUTES] Collection completed in {$duration}s with total {$totalEvents} events, average {$avgRate} events/sec");
-        
+
     } catch (\Throwable $e) {
         $logger->critical("[EVERY 6 MINUTES] Collection failed: " . $e->getMessage());
         $logger->debug("[EVERY 6 MINUTES] Stack trace: " . $e->getTraceAsString());
@@ -95,22 +95,22 @@ $scheduler->call(function() use ($eventCollector, $logger) {
     $start = strtotime('yesterday');
     $end = strtotime('tomorrow') - 1;
     $timeRange = TimeRange::fromTimestamps($start, $end);
-    
+
     $logger->info("[DAILY 2AM] Starting event collection for " . date('Y-m-d', $start) . " to " . date('Y-m-d', $end));
-    
+
     $startTime = microtime(true);
-    
+
     try {
         // Collect from all sources (2 days, returns event count)
         $totalEvents = $eventCollector->collect($timeRange);
-        
+
         $endTime = microtime(true);
         $duration = round($endTime - $startTime, 2);
-        
+
         // Show summary
         $avgRate = round($totalEvents / max($duration, 0.1), 2);
         $logger->info("[DAILY 2AM] Collection completed in {$duration}s with total {$totalEvents} events, average {$avgRate} events/sec");
-        
+
     } catch (\Throwable $e) {
         $logger->critical("[DAILY 2AM] Collection failed: " . $e->getMessage());
         $logger->debug("[DAILY 2AM] Stack trace: " . $e->getTraceAsString());
@@ -128,10 +128,10 @@ $scheduler->call(function() use ($eventCollector, $logger) {
 
 // Weekly full collection at Monday 01:00 UTC - sweeps the just-completed Mon→Sun week
 $scheduler->call(function() use ($eventCollector, $logger) {
-    $now      = \Carbon\CarbonImmutable::now('UTC');
+    $now = \Carbon\CarbonImmutable::now('UTC');
     $lastWeek = $now->subWeek();
-    $start    = $lastWeek->startOfWeek(\Carbon\Carbon::MONDAY);  // Mon 00:00:00 UTC
-    $end      = $lastWeek->endOfWeek(\Carbon\Carbon::SUNDAY);    // Sun 23:59:59 UTC
+    $start = $lastWeek->startOfWeek(\Carbon\Carbon::MONDAY);
+    $end = $lastWeek->endOfWeek(\Carbon\Carbon::SUNDAY);
 
     $timeRange = TimeRange::fromTimestamps($start->timestamp, $end->timestamp);
 
@@ -143,7 +143,7 @@ $scheduler->call(function() use ($eventCollector, $logger) {
     try {
         $totalEvents = $eventCollector->collect($timeRange);
 
-        $endTime  = microtime(true);
+        $endTime = microtime(true);
         $duration = round($endTime - $startTime, 2);
 
         $avgRate = round($totalEvents / max($duration, 0.1), 2);
@@ -166,10 +166,10 @@ $scheduler->call(function() use ($eventCollector, $logger) {
 
 // Monthly full collection at 1st of month 03:00 UTC - sweeps the just-completed calendar month
 $scheduler->call(function() use ($eventCollector, $logger) {
-    $now       = \Carbon\CarbonImmutable::now('UTC');
+    $now = \Carbon\CarbonImmutable::now('UTC');
     $lastMonth = $now->subMonth();
-    $start     = $lastMonth->startOfMonth();  // 1st 00:00:00 UTC
-    $end       = $lastMonth->endOfMonth();    // last day 23:59:59 UTC
+    $start = $lastMonth->startOfMonth();
+    $end = $lastMonth->endOfMonth();
 
     $timeRange = TimeRange::fromTimestamps($start->timestamp, $end->timestamp);
 
@@ -181,7 +181,7 @@ $scheduler->call(function() use ($eventCollector, $logger) {
     try {
         $totalEvents = $eventCollector->collect($timeRange);
 
-        $endTime  = microtime(true);
+        $endTime = microtime(true);
         $duration = round($endTime - $startTime, 2);
 
         $avgRate = round($totalEvents / max($duration, 0.1), 2);
