@@ -20,8 +20,30 @@ $app = AppFactory::create();
 // Add routing middleware
 $app->addRoutingMiddleware();
 
+// Tag Sentry events coming from the web entrypoint
+$sentry = $container['sentry'];
+$sentry->setTag('Type', 'web');
+
 // Add error handling
-$app->addErrorMiddleware(true, true, true);
+$errorMiddleware = $app->addErrorMiddleware(true, true, true);
+$errorMiddleware->setDefaultErrorHandler(
+    function (Request $request, \Throwable $exception, bool $displayErrorDetails) use ($app, $sentry) {
+        $sentry->setContext('Request', [
+            'method' => $request->getMethod(),
+            'uri'    => (string) $request->getUri(),
+        ]);
+        $sentry->capture($exception);
+
+        $response = $app->getResponseFactory()->createResponse();
+        $response->getBody()->write(json_encode([
+            'error'   => $exception->getMessage(),
+            'details' => $displayErrorDetails ? $exception->getTraceAsString() : null,
+        ]));
+        return $response
+            ->withHeader('Content-Type', 'application/json')
+            ->withStatus(500);
+    }
+);
 
 // Initialize all controllers
 $eventController = new EventController($container);
@@ -39,29 +61,30 @@ $app->post('/helioviewer/distributions/size/{size}/from/{from}/to/{to}', [$helio
 $app->post('/helioviewer/events/{sources}/observations', [$helioviewerController, 'getBatchObservations']);
 
 // ===========================
-// Event Routes
+// /api/* Routes
+// v1 is the canonical version; v2 is kept as an alias so older persisted
+// links (e.g. https://events.helioviewer.org/api/v2/events/<uuid>) keep resolving.
 // ===========================
-$app->get('/api/v1/events/recents', [$eventController, 'getRecents']);
+foreach (['v1', 'v2'] as $apiVersion) {
+    // Event Routes
+    $app->get("/api/{$apiVersion}/events/recents", [$eventController, 'getRecents']);
 
-$app->get('/api/v1/events/{source}/observation/{timestamp}', [$eventController, 'getByObservation']);
+    $app->get("/api/{$apiVersion}/events/{source}/observation/{timestamp}", [$eventController, 'getByObservation']);
 
-$app->get('/api/v1/events/{uuid:[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}}',
-    [$eventController, 'getByUuid']);
+    $app->get("/api/{$apiVersion}/events/{uuid:[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}}",
+        [$eventController, 'getByUuid']);
 
-$app->get('/api/v1/events/{uuid:[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}}/source',
-    [$eventController, 'getEventSource']);
+    $app->get("/api/{$apiVersion}/events/{uuid:[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}}/source",
+        [$eventController, 'getEventSource']);
 
-// ===========================
-// Region Routes
-// ===========================
-$app->get('/api/v1/regions', [$regionController, 'getAll']);
+    // Region Routes
+    $app->get("/api/{$apiVersion}/regions", [$regionController, 'getAll']);
 
-$app->get('/api/v1/regions/{organization}/{external_id}', [$regionController, 'getByOrganizationAndId']);
+    $app->get("/api/{$apiVersion}/regions/{organization}/{external_id}", [$regionController, 'getByOrganizationAndId']);
 
-// ===========================
-// Statistics Routes
-// ===========================
-$app->get('/api/v1/stats', [$statsController, 'getStats']);
+    // Statistics Routes
+    $app->get("/api/{$apiVersion}/stats", [$statsController, 'getStats']);
+}
 
 // ===========================
 // HTML Page Routes
