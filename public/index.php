@@ -25,8 +25,10 @@ $app->addRoutingMiddleware();
 $sentry = $container['sentry'];
 $sentry->setTag('Type', 'web');
 
-// Add error handling
-$errorMiddleware = $app->addErrorMiddleware(true, true, true);
+// Add error handling.
+// displayErrorDetails=false so Slim does not leak stack/paths into responses.
+// logErrors=true still writes full details to the server log.
+$errorMiddleware = $app->addErrorMiddleware(false, true, true);
 $errorMiddleware->setDefaultErrorHandler(
     function (Request $request, \Throwable $exception, bool $displayErrorDetails) use ($app, $sentry) {
         // Use Slim's HttpException status codes (404, 405, 400, ...) when present
@@ -41,10 +43,22 @@ $errorMiddleware->setDefaultErrorHandler(
             $sentry->capture($exception);
         }
 
+        // Static message per status code — never use the exception's own message
+        // (it may embed file paths, SQL, env values, etc.)
+        $message = match (true) {
+            $status === 400 => 'Bad Request',
+            $status === 401 => 'Unauthorized',
+            $status === 403 => 'Forbidden',
+            $status === 404 => 'Not Found',
+            $status === 405 => 'Method Not Allowed',
+            $status >= 500  => 'Server Error',
+            default         => 'Error',
+        };
+
         $response = $app->getResponseFactory()->createResponse();
         $response->getBody()->write(json_encode([
-            'error'   => $exception->getMessage(),
-            'details' => $displayErrorDetails ? $exception->getTraceAsString() : null,
+            'status' => $status,
+            'error'  => $message,
         ]));
         return $response
             ->withHeader('Content-Type', 'application/json')
