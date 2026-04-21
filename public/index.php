@@ -3,6 +3,7 @@
 require __DIR__ . '/../src/bootstrap.php';
 
 use Slim\Factory\AppFactory;
+use Slim\Exception\HttpException;
 use Helioviewer\EventsApi\Utils\Container;
 
 $container = Container::getInstance();
@@ -28,11 +29,17 @@ $sentry->setTag('Type', 'web');
 $errorMiddleware = $app->addErrorMiddleware(true, true, true);
 $errorMiddleware->setDefaultErrorHandler(
     function (Request $request, \Throwable $exception, bool $displayErrorDetails) use ($app, $sentry) {
-        $sentry->setContext('Request', [
-            'method' => $request->getMethod(),
-            'uri'    => (string) $request->getUri(),
-        ]);
-        $sentry->capture($exception);
+        // Use Slim's HttpException status codes (404, 405, 400, ...) when present
+        $status = $exception instanceof HttpException ? $exception->getCode() : 500;
+
+        // Only report real server errors to Sentry — 4xx client errors shouldn't flood it
+        if ($status >= 500) {
+            $sentry->setContext('Request', [
+                'method' => $request->getMethod(),
+                'uri'    => (string) $request->getUri(),
+            ]);
+            $sentry->capture($exception);
+        }
 
         $response = $app->getResponseFactory()->createResponse();
         $response->getBody()->write(json_encode([
@@ -41,7 +48,7 @@ $errorMiddleware->setDefaultErrorHandler(
         ]));
         return $response
             ->withHeader('Content-Type', 'application/json')
-            ->withStatus(500);
+            ->withStatus($status);
     }
 );
 
