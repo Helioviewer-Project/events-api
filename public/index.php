@@ -20,8 +20,30 @@ $app = AppFactory::create();
 // Add routing middleware
 $app->addRoutingMiddleware();
 
+// Tag Sentry events coming from the web entrypoint
+$sentry = $container['sentry'];
+$sentry->setTag('Type', 'web');
+
 // Add error handling
-$app->addErrorMiddleware(true, true, true);
+$errorMiddleware = $app->addErrorMiddleware(true, true, true);
+$errorMiddleware->setDefaultErrorHandler(
+    function (Request $request, \Throwable $exception, bool $displayErrorDetails) use ($app, $sentry) {
+        $sentry->setContext('Request', [
+            'method' => $request->getMethod(),
+            'uri'    => (string) $request->getUri(),
+        ]);
+        $sentry->capture($exception);
+
+        $response = $app->getResponseFactory()->createResponse();
+        $response->getBody()->write(json_encode([
+            'error'   => $exception->getMessage(),
+            'details' => $displayErrorDetails ? $exception->getTraceAsString() : null,
+        ]));
+        return $response
+            ->withHeader('Content-Type', 'application/json')
+            ->withStatus(500);
+    }
+);
 
 // Initialize all controllers
 $eventController = new EventController($container);

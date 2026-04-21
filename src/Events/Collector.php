@@ -17,6 +17,8 @@ use Helioviewer\EventsApi\Events\Sources\JsonSource;
 use Helioviewer\EventsApi\Exception\CoordinateResolutionException;
 use Helioviewer\EventsApi\Exception\SourceException;
 use Helioviewer\EventsApi\Exception\InvalidEventException;
+use Helioviewer\EventsApi\Sentry\ClientInterface as SentryClientInterface;
+use Helioviewer\EventsApi\Sentry\VoidClient as SentryVoidClient;
 use Psr\Log\LoggerInterface;
 use Monolog\Processor\TagProcessor;
 // Sources for createStandard factory method
@@ -90,9 +92,11 @@ class Collector
         private DistributionRepositoryInterface $distributionRepository,
         private JsonStorageInterface $json_storage,
         private JsonStorageInterface $failure_storage,
-        private ?LoggerInterface $logger = null
+        private ?LoggerInterface $logger = null,
+        private ?SentryClientInterface $sentry = null
     ) {
         $this->logger = $logger ?? new \Psr\Log\NullLogger();
+        $this->sentry = $sentry ?? new SentryVoidClient([]);
     }
     
     /**
@@ -121,23 +125,27 @@ class Collector
         \Helioviewer\EventsApi\Utils\CachedHttpClient $httpClient,
         \Helioviewer\EventsApi\Jsoc\HarpService $harpService,
         \Helioviewer\EventsApi\Jsoc\NoaaService $noaaService,
-        ?LoggerInterface $logger = null
+        ?LoggerInterface $logger = null,
+        ?SentryClientInterface $sentry = null
     ): self {
         // Create collector instance
-        $collector = new self($repository, $regionRepository, $distributionRepository, $json_storage, $failure_storage, $logger);
+        $collector = new self($repository, $regionRepository, $distributionRepository, $json_storage, $failure_storage, $logger, $sentry);
         
         // === SOURCES ===
         $collector->addSource('HEK', new HEKSource($httpClient));
 
+        // Reuse the sentry client from the collector instance for all processors
+        $sentryForProcessors = $collector->sentry;
+
         // === PROCESSORS ===
         // Specialized HEK processors
-        $collector->addProcessor(new HEKARProcessor($logger));  // AR - Active Region
-        $collector->addProcessor(new HEKCEProcessor($logger));  // CE - CME
-        $collector->addProcessor(new HEKCHProcessor($logger));  // CH - Coronal Hole
-        $collector->addProcessor(new HEKEFProcessor($logger));  // EF - Emerging Flux
-        $collector->addProcessor(new HEKFIProcessor($logger));  // FI - Filament
-        $collector->addProcessor(new HEKFlareProcessor($logger));  // FL - Flare (uses peak for coordinate_time)
-        $collector->addProcessor(new HEKSGProcessor($logger));  // SG - Sigmoid
+        $collector->addProcessor(new HEKARProcessor($logger, $sentryForProcessors));  // AR - Active Region
+        $collector->addProcessor(new HEKCEProcessor($logger, $sentryForProcessors));  // CE - CME
+        $collector->addProcessor(new HEKCHProcessor($logger, $sentryForProcessors));  // CH - Coronal Hole
+        $collector->addProcessor(new HEKEFProcessor($logger, $sentryForProcessors));  // EF - Emerging Flux
+        $collector->addProcessor(new HEKFIProcessor($logger, $sentryForProcessors));  // FI - Filament
+        $collector->addProcessor(new HEKFlareProcessor($logger, $sentryForProcessors));  // FL - Flare (uses peak for coordinate_time)
+        $collector->addProcessor(new HEKSGProcessor($logger, $sentryForProcessors));  // SG - Sigmoid
 
         // Generic HEK event type processors for remaining event types
         $hekEventTypes = [
@@ -169,7 +177,7 @@ class Collector
         ];
 
         foreach ($hekEventTypes as $eventType) {
-            $collector->addProcessor(new HEKEventTypeProcessor($eventType, $logger));
+            $collector->addProcessor(new HEKEventTypeProcessor($eventType, $logger, $sentryForProcessors));
         }
 
         $collector->addSource('CCMC>>DONKI>>CME', new DonkiCmeSource($httpClient));
@@ -198,19 +206,19 @@ class Collector
 
         // === PROCESSORS ===
         // DONKI processors don't need coordinate resolution (coordinates in raw data)
-        $collector->addProcessor(new DonkiFlareProcessor($logger));
-        $collector->addProcessor(new DonkiCmeProcessor($logger));
+        $collector->addProcessor(new DonkiFlareProcessor($logger, $sentryForProcessors));
+        $collector->addProcessor(new DonkiCmeProcessor($logger, $sentryForProcessors));
 
         // DAFF processor uses direct service integration (no resolvers)
-        $daffProcessor = new DaffProcessor($harpService, $noaaService, $logger);
+        $daffProcessor = new DaffProcessor($harpService, $noaaService, $logger, $sentryForProcessors);
         $collector->addProcessor($daffProcessor);
 
         // ASSA processor with custom coordinate extraction
-        $assaProcessor = new AssaProcessor($logger);
+        $assaProcessor = new AssaProcessor($logger, $sentryForProcessors);
         $collector->addProcessor($assaProcessor);
 
         // FlareScoreboard processor reads coordinates directly from fields (no resolvers needed)
-        $flareScoreboardProcessor = new FlareScoreboardProcessor($logger);
+        $flareScoreboardProcessor = new FlareScoreboardProcessor($logger, $sentryForProcessors);
         $collector->addProcessor($flareScoreboardProcessor);
         
         return $collector;
@@ -617,12 +625,26 @@ class Collector
 
                     // Log warning with exception details
                     $this->logger->warning((new \ReflectionClass($e))->getShortName() . " | {$e->getMessage()} | {$failureURL}");
+
+                    // Report to Sentry with context pointing at the stored failure record
+                    $this->sentry->setContext('EventFailure', [
+                        'source' => $sourceName,
+                        'failure_url' => $failureURL,
+                        'exception' => get_class($e),
+                    ]);
+                    $this->sentry->capture($e);
                 }
             }
 
             if (!$processorFound) {
                 $remoteId = $source->extractRawRecordId($rawRecord);
                 $this->logger->warning("No processor found for event | source: {$path} | remote_id: {$remoteId}");
+                $this->sentry->setContext('NoProcessor', [
+                    'source' => $sourceName,
+                    'path' => $path,
+                    'remote_id' => $remoteId,
+                ]);
+                $this->sentry->message("No processor found for event: {$path} / {$remoteId}");
             }
         }
 

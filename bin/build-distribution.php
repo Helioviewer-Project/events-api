@@ -21,6 +21,10 @@ $container = Container::getInstance();
 $eventRepository = $container['eventRepository'];
 $distributionRepository = $container['distributionRepository'];
 $logger = $container['logger'];
+$sentry = $container['sentry'];
+
+$sentry->setTag('Type', 'cli');
+$sentry->setTag('Command', 'build-distribution');
 
 $logger->info("Starting distribution build");
 
@@ -64,29 +68,32 @@ $startTime = microtime(true);
 $lastLogTime = $startTime;
 
 try {
-    for ($page = 0; $page < $totalPages; $page++) {
-        $pageStart = microtime(true);
-        $logger->debug("Fetching page {$page}/{$totalPages}...");
-        $events = $eventRepository->getWithPage($page, $pageSize);
-        $eventCount = count($events);
-        $logger->debug("Fetched {$eventCount} events for page {$page}");
+    $sentry->withTransaction('cli.build-distribution', 'cli', function() use ($totalPages, $pageSize, $totalEvents, $eventRepository, $distributionRepository, $logger, $startTime, &$processed) {
+        for ($page = 0; $page < $totalPages; $page++) {
+            $pageStart = microtime(true);
+            $logger->debug("Fetching page {$page}/{$totalPages}...");
+            $events = $eventRepository->getWithPage($page, $pageSize);
+            $eventCount = count($events);
+            $logger->debug("Fetched {$eventCount} events for page {$page}");
 
-        // Use batch method for bulk insert/update
-        $buckets = $distributionRepository->addEventsBatch($events);
-        $processed += $eventCount;
+            // Use batch method for bulk insert/update
+            $buckets = $distributionRepository->addEventsBatch($events);
+            $processed += $eventCount;
 
-        // Log after each page
-        $percent = round(($processed / $totalEvents) * 100, 1);
-        $memory = round(memory_get_usage(true) / 1024 / 1024, 1);
-        $elapsed = round(microtime(true) - $startTime, 1);
-        $pageTime = round(microtime(true) - $pageStart, 2);
-        $rate = $processed > 0 ? round($processed / max($elapsed, 0.1), 0) : 0;
-        $logger->info("Page {$page}/{$totalPages} done - {$processed}/{$totalEvents} ({$percent}%) - {$rate} evt/s - {$buckets} buckets - {$pageTime}s - {$memory}MB");
+            // Log after each page
+            $percent = round(($processed / $totalEvents) * 100, 1);
+            $memory = round(memory_get_usage(true) / 1024 / 1024, 1);
+            $elapsed = round(microtime(true) - $startTime, 1);
+            $pageTime = round(microtime(true) - $pageStart, 2);
+            $rate = $processed > 0 ? round($processed / max($elapsed, 0.1), 0) : 0;
+            $logger->info("Page {$page}/{$totalPages} done - {$processed}/{$totalEvents} ({$percent}%) - {$rate} evt/s - {$buckets} buckets - {$pageTime}s - {$memory}MB");
 
-        // Free memory
-        unset($events);
-    }
+            // Free memory
+            unset($events);
+        }
+    });
 } catch (Throwable $e) {
+    $sentry->capture($e);
     $logger->critical("Fatal error at event {$processed}: " . $e->getMessage());
     $logger->debug("Stack trace: " . $e->getTraceAsString());
     exit(1);

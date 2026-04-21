@@ -4,11 +4,12 @@ declare(strict_types=1);
 
 namespace Helioviewer\EventsApi\Events\Processors\HEK;
 
-use Helioviewer\EventsApi\Events\Processors\ProcessorInterface;
+use Helioviewer\EventsApi\Events\Processors\BaseProcessor;
 use Helioviewer\EventsApi\Events\Event;
 use Helioviewer\EventsApi\Events\Sources\JsonSource;
 use Helioviewer\EventsApi\Events\Sources\SourceInterface;
 use Helioviewer\EventsApi\Exception\InvalidEventException;
+use Helioviewer\EventsApi\Sentry\ClientInterface as SentryClientInterface;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -21,15 +22,17 @@ use Psr\Log\LoggerInterface;
  * @author     Kasim Necdet Percinel <kasim.n.percinel@nasa.gov>
  * @since      1.0.0
  */
-class EventTypeProcessor implements ProcessorInterface
+class EventTypeProcessor extends BaseProcessor
 {
     protected string $eventType;
-    protected LoggerInterface $logger;
 
-    public function __construct(string $eventType, ?LoggerInterface $logger = null)
-    {
+    public function __construct(
+        string $eventType,
+        ?LoggerInterface $logger = null,
+        ?SentryClientInterface $sentry = null
+    ) {
+        parent::__construct($logger, $sentry);
         $this->eventType = $eventType;
-        $this->logger = $logger ?? new \Psr\Log\NullLogger();
     }
 
     /**

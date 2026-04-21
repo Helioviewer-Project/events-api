@@ -55,6 +55,10 @@ $httpClient = $container['httpClient'];
 $harpService = $container['harp'];
 $noaaService = $container['noaa'];
 $logger = $container['logger'];
+$sentry = $container['sentry'];
+
+$sentry->setTag('Type', 'cli');
+$sentry->setTag('Command', 'collect');
 
 // Log collection start with chunk interval info
 $chunkInfo = $intervalDays > 1 ? " in {$intervalDays}-day chunks" : " in daily chunks";
@@ -71,7 +75,8 @@ $collector = EventCollector::createStandard(
     $httpClient,
     $harpService,
     $noaaService,
-    $logger
+    $logger,
+    $sentry
 );
 
 // Log registered sources
@@ -83,19 +88,20 @@ foreach ($sources as $path => $source) {
 $startTime = microtime(true);
 
 try {
+    $sentry->withTransaction('cli.collect', 'cli', function() use ($collector, $timeRange, $intervalDays, $logger, $startTime) {
+        // Collect from all sources with specified chunk interval
+        // Returns count (not events array) to prevent memory accumulation on large date ranges
+        $totalEvents = $collector->collect($timeRange, $intervalDays);
 
-    // Collect from all sources with specified chunk interval
-    // Returns count (not events array) to prevent memory accumulation on large date ranges
-    $totalEvents = $collector->collect($timeRange, $intervalDays);
+        $endTime = microtime(true);
+        $duration = round($endTime - $startTime, 2);
 
-    $endTime = microtime(true);
-    $duration = round($endTime - $startTime, 2);
-
-    // Show summary
-    $avgRate = round($totalEvents / max($duration, 0.1), 2);
-    $logger->info("Collection completed with total {$totalEvents} events, average {$avgRate} events/sec");
-
+        // Show summary
+        $avgRate = round($totalEvents / max($duration, 0.1), 2);
+        $logger->info("Collection completed with total {$totalEvents} events, average {$avgRate} events/sec");
+    });
 } catch (\Throwable $e) {
+    $sentry->capture($e);
     $logger->critical("Collection failed: " . $e->getMessage());
     $logger->debug("Stack trace: " . $e->getTraceAsString());
     exit(1);

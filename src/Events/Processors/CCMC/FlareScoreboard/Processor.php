@@ -5,8 +5,9 @@ declare(strict_types=1);
 namespace Helioviewer\EventsApi\Events\Processors\CCMC\FlareScoreboard;
 
 use Psr\Log\LoggerInterface;
-use Helioviewer\EventsApi\Events\Processors\ProcessorInterface;
+use Helioviewer\EventsApi\Events\Processors\BaseProcessor;
 use Helioviewer\EventsApi\Events\Event;
+use Helioviewer\EventsApi\Sentry\ClientInterface as SentryClientInterface;
 use Helioviewer\EventsApi\Events\Sources\JsonSource;
 use Helioviewer\EventsApi\Events\Sources\SourceInterface;
 use Helioviewer\EventsApi\Exception\CoordinateResolutionException;
@@ -54,13 +55,13 @@ use HelioviewerEventInterface\Util\LocationParser;
  * @see        https://ccmc.gsfc.nasa.gov/challenges/flare-scoreboard/
  * @see        ProcessorInterface
  */
-class Processor implements ProcessorInterface
+class Processor extends BaseProcessor
 {
-    protected LoggerInterface $logger;
-
-    public function __construct(?LoggerInterface $logger = null)
-    {
-        $this->logger = $logger ?? new \Psr\Log\NullLogger();
+    public function __construct(
+        ?LoggerInterface $logger = null,
+        ?SentryClientInterface $sentry = null
+    ) {
+        parent::__construct($logger, $sentry);
     }
     /**
      * Create labels for FlareScoreboard prediction to match event interface format exactly

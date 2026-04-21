@@ -83,6 +83,10 @@ use Helioviewer\EventsApi\Events\Repositories\Postgres;
 use Helioviewer\EventsApi\Regions\Repositories\Postgres as RegionPostgres;
 use Helioviewer\EventsApi\Distributions\Repositories\Postgres as DistributionPostgres;
 
+// Sentry
+use Helioviewer\EventsApi\Sentry\Client as SentryClient;
+use Helioviewer\EventsApi\Sentry\VoidClient as SentryVoidClient;
+
 // === HELPER FUNCTIONS ===
 function pr($m): void {
     echo '<pre>';
@@ -224,13 +228,25 @@ $consoleHandler = new ErrorLogHandler(ErrorLogHandler::OPERATING_SYSTEM, $monolo
 $consoleHandler->setFormatter($formatter);
 $logger->pushHandler($consoleHandler);
 
+// === SENTRY INITIALIZATION ===
+$sentryConfig = [
+    'environment' => $_ENV['APP_ENV'] ?? 'development',
+    'sample_rate' => (float)($_ENV['SENTRY_SAMPLE_RATE'] ?? 0.1),
+    'traces_sample_rate' => (float)($_ENV['SENTRY_TRACES_SAMPLE_RATE'] ?? 0.0),
+    'dsn' => $_ENV['SENTRY_DSN'] ?? '',
+];
+$sentryEnabled = ($_ENV['SENTRY_ENABLED'] ?? 'false') === 'true';
+$sentry = $sentryEnabled
+    ? new SentryClient($sentryConfig)
+    : new SentryVoidClient($sentryConfig);
+
 // HTTP and external services
 $httpClient = new CachedHttpClient(null, $redisCache, 120, 'http_client:', $logger); // 2 minute cache
 $coordinator = new HttpCoordinator($httpClient, $logger);
 $backup_coordinator = new HttpCoordinator($httpClient, $logger, 'http://coordinator');
 $harpService = new HarpService($httpClient, $redisCache, $logger);
 $noaaService = new NoaaService($httpClient, $redisCache, $logger);
-$coordinateRotator = new CoordinateRotator($coordinator, $backup_coordinator, $logger, $redisCache);
+$coordinateRotator = new CoordinateRotator($coordinator, $backup_coordinator, $logger, $redisCache, $sentry);
 $distributionRepository = new DistributionPostgres($redisCache, $logger);
 
 // Initialize container with all services
@@ -244,6 +260,7 @@ $distributionRepository = new DistributionPostgres($redisCache, $logger);
     'regionRepository' => $regionRepository,
     'distributionRepository' => $distributionRepository,
     'logger' => $logger,
+    'sentry' => $sentry,
 
     // HTTP and external services
     'httpClient' => $httpClient,
