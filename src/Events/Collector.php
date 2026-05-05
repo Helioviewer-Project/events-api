@@ -497,13 +497,26 @@ class Collector
                         usleep($sleepTime);
                     }
                 } catch (SourceException $e) {
+                    // One source dying must not stop the others. Log + report, then continue.
                     $this->logger->critical("Source exception: {$e->getSourcePath()} => {$e->getSourceName()}: {$e->getMessage()}");
                     $this->logger->debug("SourceException details: " . $e->getTraceAsString());
-                    throw $e;
+                    $this->sentry->setContext('SourceFailure', [
+                        'source'     => $source->getName(),
+                        'path'       => $path,
+                        'chunk'      => $index + 1,
+                        'date_range' => $chunkRange->getStartDate() . " to " . $chunkRange->getEndDate(),
+                    ]);
+                    $this->sentry->capture($e);
                 } catch (\Exception $e) {
                     $this->logger->critical("Failed to collect: {$e->getMessage()}");
                     $this->logger->debug("Exception details: " . get_class($e) . " - " . $e->getTraceAsString());
-                    throw $e;
+                    $this->sentry->setContext('SourceFailure', [
+                        'source'     => $source->getName(),
+                        'path'       => $path,
+                        'chunk'      => $index + 1,
+                        'date_range' => $chunkRange->getStartDate() . " to " . $chunkRange->getEndDate(),
+                    ]);
+                    $this->sentry->capture($e);
                 } finally {
                     // Remove the processor when done with this source
                     $this->logger->popProcessor();
