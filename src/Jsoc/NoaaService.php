@@ -88,18 +88,22 @@ class NoaaService
         
         // Cache key for JSOC records
         $cacheKey = "1bust_noaa_service_{$noaaNumber}";
-        
+
         $records = null;
-        
+
         // Try to get JSOC records from cache first
         if ($this->cache) {
             $records = $this->cache->get($cacheKey);
+            if ($records !== null) {
+                $this->logger->info("NoaaService: cache HIT for NOAA AR {$noaaNumber} (" . count($records) . " record(s)) — JSOC NOT queried");
+            }
         }
-        
+
         // If not in cache, fetch from JSOC
         if ($records === null) {
+            $this->logger->info("NoaaService: cache MISS for NOAA AR {$noaaNumber} — querying JSOC");
             $records = $this->jsoc->fetchNoaaActiveRegions($noaaNumber);
-            
+
             // Cache the JSOC records
             if ($this->cache && $records) {
                 $this->cache->set($cacheKey, $records, $this->cacheTtl);

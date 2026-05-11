@@ -182,9 +182,8 @@ foreach ((scandir(FAILURES_ROOT) ?: []) as $type) {
                 }
             } catch (\Throwable $e) {
                 $stats['retried_still_fail']++;
-                $logger->debug(
-                    "Retry still failing: " . failureUrl($type, $sourceName, $file) . " - " . $e->getMessage()
-                );
+                $logger->info("Retry still failing: " . failureUrl($type, $sourceName, $file));
+                $logger->debug("  └─ " . $e->getMessage());
             }
 
             $stats['attempted']++;
