@@ -1,4 +1,4 @@
-.PHONY: composer-install composer-require composer-dump up down build shell shell-root nginx-reload migrate-status migrate-create migrate-run migrate-rollback seed-run collect recents reset stats logs db-shell db-backup cache-flush fix-regions distribution-build reprocess build-failure-report help
+.PHONY: composer-install composer-require composer-dump up down build shell shell-root nginx-reload migrate-status migrate-create migrate-run migrate-rollback seed-run collect recents reset stats logs db-shell db-backup cache-flush fix-regions distribution-build reprocess build-failure-report retry-failures help
 .DEFAULT_GOAL := help
 
 # Set compose file based on ENV
@@ -84,6 +84,9 @@ reprocess:
 build-failure-report:
 	$(DOCKER_COMPOSE) run --rm --user $(shell id -u):$(shell id -g) phpfpm php bin/build-failure-report.php
 
+retry-failures:
+	TYPES='$(TYPES)' SOURCES='$(SOURCES)' APPLY='$(APPLY)' $(DOCKER_COMPOSE) run --rm --user $(shell id -u):$(shell id -g) -e TYPES -e SOURCES -e APPLY phpfpm php bin/retry-failures.php
+
 logs:
 	$(DOCKER_COMPOSE) exec phpfpm sh -c 'tail -f /u/apps/data/logs/*.log'
 
@@ -152,7 +155,9 @@ help:
 	@echo "  distribution-build    - Build distribution aggregations from events"
 	@echo "  reprocess             - Reprocess events from stored sources (dry run by default)"
 	@echo "                          Optional: PATHS=\"HEK,HEK>>Flare\" APPLY=1"
-	@echo "  build-failure-report  - Rebuild aggregated failure report (powers /failures page)"
+	@echo "  build-failure-report  - Rebuild aggregated failure report (powers /exceptions page)"
+	@echo "  retry-failures        - Retry stored failure JSONs through processors (dry run by default)"
+	@echo "                          Optional: TYPES=\"coordinate_errors\" SOURCES=\"name1,name2\" APPLY=1"
 	@echo ""
 	@echo "Cache Management:"
 	@echo "  cache-flush           - Flush Redis cache"

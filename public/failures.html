@@ -173,6 +173,15 @@
     overflow-wrap: anywhere;
     word-break: break-all;
   }
+  .region-link {
+    display: inline-block;
+    background: #fff3e0; color: #d35400;
+    padding: 2px 8px; border-radius: 3px;
+    font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+    font-size: 0.78rem;
+    text-decoration: none; font-weight: 600;
+  }
+  .region-link:hover { background: #ffe0b2; text-decoration: underline; }
   .datetime {
     color: #555; font-family: ui-monospace, 'SF Mono', Menlo, monospace;
     font-size: 0.78rem; white-space: nowrap;
@@ -514,12 +523,29 @@
     });
   }
 
+  // NOAA region IDs prior to the 14000 cycle had to be offset by +10000 to
+  // match the canonical external_id used in /api/v1/regions/NOAA/<id>.
+  function noaaExternalId(id) {
+    const n = parseInt(id, 10);
+    if (!Number.isFinite(n) || n <= 0) return String(id);
+    return n < 9000 ? String(n + 10000) : String(n);
+  }
+
+  function sourceCellHtml(item) {
+    const noaa = item.raw_record && item.raw_record.NOAARegionId;
+    if (noaa !== undefined && noaa !== null && noaa !== '') {
+      const ext = noaaExternalId(noaa);
+      return `<a class="region-link" href="/api/v1/regions/NOAA/${esc(ext)}" target="_blank" title="NOAA Region ${esc(noaa)}">NOAA ${esc(noaa)}</a>`;
+    }
+    return `<code class="source-path">${esc(item.display_source || (item.source_family + '>>' + item.source))}</code>`;
+  }
+
   function rowHtml(item) {
     return `
       <tr class="row" data-id="${esc(item.id)}">
         <td class="datetime">${esc(item.datetime || '')}</td>
         <td><span class="exc-tag" title="${esc(item.exception_class || '')}">${esc(item.exception_short || '—')}</span></td>
-        <td><code class="source-path">${esc(item.display_source || (item.source_family + '>>' + item.source))}</code></td>
+        <td>${sourceCellHtml(item)}</td>
         <td class="error-cell">${esc(item.error)}</td>
       </tr>
       <tr class="detail-row" id="detail-${esc(item.id)}" style="display:none;">

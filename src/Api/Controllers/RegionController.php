@@ -83,7 +83,7 @@ class RegionController extends Controller
                 ->join('event_regions', 'events.id', '=', 'event_regions.event_id')
                 ->where('event_regions.region_id', $region->id)
                 ->orderBy('events.start', 'desc')
-                ->limit(100)
+                ->limit(2000)
                 ->get();
 
             // Format events
