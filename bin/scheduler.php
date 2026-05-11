@@ -222,6 +222,45 @@ $scheduler->call(function() use ($eventCollector, $logger, $sentry) {
         $logger->info("[MONTHLY 1ST 3AM UTC] Scheduled collection completed");
     });
 
+// Build aggregated failures report every 2 hours so /failures stays current
+// without scanning ~1k+ files on every page load.
+$scheduler->call(function() use ($logger, $sentry) {
+    $sentry->withTransaction('scheduler.failure_report_every_2h', 'cron', function() use ($logger, $sentry) {
+        $logger->info("[FAILURE REPORT 2H] Building failure report");
+        $startTime = microtime(true);
+
+        try {
+            $cmd = escapeshellcmd('/usr/local/bin/php') . ' ' . escapeshellarg(__DIR__ . '/build-failure-report.php');
+            $output = [];
+            $code = 0;
+            exec($cmd . ' 2>&1', $output, $code);
+            $duration = round(microtime(true) - $startTime, 2);
+
+            if ($code !== 0) {
+                $msg = "[FAILURE REPORT 2H] Build failed (exit {$code}) in {$duration}s: " . implode("\n", array_slice($output, -10));
+                $logger->critical($msg);
+                $sentry->setTag('Job', 'failure_report_every_2h');
+                $sentry->message($msg);
+                return;
+            }
+            $logger->info("[FAILURE REPORT 2H] Build completed in {$duration}s");
+        } catch (\Throwable $e) {
+            $sentry->setTag('Job', 'failure_report_every_2h');
+            $sentry->capture($e);
+            $logger->critical("[FAILURE REPORT 2H] Build crashed: " . $e->getMessage());
+            $logger->debug("[FAILURE REPORT 2H] Stack: " . $e->getTraceAsString());
+        }
+    });
+}, [], 'failure_report_every_2h')
+    ->at('5 */2 * * *')  // every 2 hours at minute 5 (offset from on-the-hour collection jobs)
+    ->onlyOne()
+    ->before(function() use ($logger) {
+        $logger->info("[FAILURE REPORT 2H] Starting scheduled rebuild");
+    })
+    ->then(function() use ($logger) {
+        $logger->info("[FAILURE REPORT 2H] Scheduled rebuild completed");
+    });
+
 $logger->info("Scheduler run started at " . date('Y-m-d H:i:s'));
 
 // Check if scheduler is enabled via environment variable

@@ -14,6 +14,7 @@ use Helioviewer\EventsApi\Api\Controllers\RegionController;
 use Helioviewer\EventsApi\Api\Controllers\StatsController;
 use Helioviewer\EventsApi\Api\Controllers\PageController;
 use Helioviewer\EventsApi\Api\Controllers\HelioviewerController;
+use Helioviewer\EventsApi\Api\Controllers\FailuresController;
 
 // Create Slim app
 $app = AppFactory::create();
@@ -72,6 +73,7 @@ $regionController = new RegionController($container);
 $statsController = new StatsController($container);
 $pageController = new PageController($container);
 $helioviewerController = new HelioviewerController($container);
+$failuresController = new FailuresController($container);
 
 // ===========================
 // Helioviewer Routes (Legacy format for Helioviewer.org)
@@ -105,6 +107,9 @@ foreach (['v1', 'v2'] as $apiVersion) {
 
     // Statistics Routes
     $app->get("/api/{$apiVersion}/stats", [$statsController, 'getStats']);
+
+    // Failures listing (JSON) — paginated/filterable
+    $app->get("/api/{$apiVersion}/failures", [$failuresController, 'listJson']);
 }
 
 // ===========================
@@ -115,6 +120,8 @@ $app->get('/stats', [$pageController, 'statsPage']);
 $app->get('/active-regions', [$pageController, 'predictionsPage']);
 
 $app->get('/plan', [$pageController, 'planPage']);
+
+$app->get('/exceptions', [$failuresController, 'page']);
 
 $app->get('/', [$pageController, 'home']);
 

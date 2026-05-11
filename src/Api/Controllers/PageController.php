@@ -304,6 +304,7 @@ class PageController extends Controller
                 <a href="/" class="nav-button active">Home</a>
                 <a href="/stats" class="nav-button">Statistics Dashboard</a>
                 <a href="/active-regions" class="nav-button">Active Regions</a>
+                <a href="/exceptions" class="nav-button">Source Exceptions</a>
             </div>
         </header>
 
@@ -732,6 +733,7 @@ events = data[<span class="str">"events"</span>]</code></pre>
                 <tr><th>Path</th><th>Description</th></tr>
                 <tr><td><a href="/stats"><code>/stats</code></a></td><td>Statistics dashboard</td></tr>
                 <tr><td><a href="/active-regions"><code>/active-regions</code></a></td><td>Active regions search tool</td></tr>
+                <tr><td><a href="/exceptions"><code>/exceptions</code></a></td><td>Browse source exceptions (invalid events, coordinate errors, etc.)</td></tr>
             </table>
 
             <h2>Documentation</h2>
@@ -996,6 +998,7 @@ HTML;
                 <a href="/" class="nav-button">Home</a>
                 <a href="/stats" class="nav-button">Statistics Dashboard</a>
                 <a href="/active-regions" class="nav-button active">Active Regions</a>
+                <a href="/exceptions" class="nav-button">Source Exceptions</a>
             </div>
         </header>
 
