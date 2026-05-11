@@ -19,10 +19,12 @@ declare(strict_types=1);
  *   make retry-failures TYPES="coordinate_errors" APPLY=1            # only coord errors
  *   make retry-failures SOURCES="FLARE_SCOREBOARD_DAFFS_REGIONS"     # filter by source
  *   make retry-failures LIMIT=50                                     # stop after 50 attempts
+ *   make retry-failures HASHES="7f972a3f...,abc123..."                # retry only specific JSONs
  *
  * Env vars consumed:
  *   TYPES    comma-separated subtypes to walk (default: all — coordinate_errors, invalid_events, general_errors)
  *   SOURCES  comma-separated source names (matches the on-disk failure subdir)
+ *   HASHES   comma-separated sha256 filenames (no .json suffix) — only files matching are processed
  *   LIMIT    integer cap on the number of failures attempted (0 or unset = no limit)
  *   APPLY    truthy = retry + delete on success; unset/empty/0 = dry run (default)
  */
@@ -42,6 +44,7 @@ const FAILURES_ROOT = '/u/apps/data/failures';
 // === ENV ===
 $typeFilter   = $_ENV['TYPES']   ?? getenv('TYPES')   ?: '';
 $sourceFilter = $_ENV['SOURCES'] ?? getenv('SOURCES') ?: '';
+$hashFilter   = $_ENV['HASHES']  ?? getenv('HASHES')  ?: '';
 $limitRaw     = $_ENV['LIMIT']   ?? getenv('LIMIT')   ?: '';
 $applyRaw     = $_ENV['APPLY']   ?? getenv('APPLY')   ?: '';
 $apply        = $applyRaw !== '' && $applyRaw !== '0' && strcasecmp($applyRaw, 'false') !== 0;
@@ -49,6 +52,10 @@ $limit        = max(0, (int) $limitRaw);  // 0 = no limit
 
 $typeFilters   = $typeFilter   !== '' ? array_filter(array_map('trim', explode(',', $typeFilter)))   : [];
 $sourceFilters = $sourceFilter !== '' ? array_filter(array_map('trim', explode(',', $sourceFilter))) : [];
+// Strip optional .json suffix so users can paste filenames verbatim
+$hashFilters   = $hashFilter   !== ''
+    ? array_filter(array_map(fn($h) => preg_replace('/\.json$/', '', trim($h)), explode(',', $hashFilter)))
+    : [];
 
 // === SERVICES ===
 $container = Container::getInstance();
@@ -79,6 +86,7 @@ $mode = $apply ? 'APPLY' : 'DRY RUN';
 $logger->info("Starting failure retry [{$mode}]");
 if ($typeFilters)   $logger->info("Type filter: " . implode(', ', $typeFilters));
 if ($sourceFilters) $logger->info("Source filter: " . implode(', ', $sourceFilters));
+if ($hashFilters)   $logger->info("Hash filter: " . count($hashFilters) . " hash(es)");
 if ($limit > 0)     $logger->info("Limit: {$limit} attempt(s)");
 if (!$apply) {
     $logger->info("DRY RUN: nothing will be written or deleted. Pass APPLY=1 to apply.");
@@ -129,6 +137,12 @@ foreach ((scandir(FAILURES_ROOT) ?: []) as $type) {
         $pathPrefix = $pathBySourceName[$sourceName];
 
         foreach (glob($sourceDir . '/*.json') ?: [] as $file) {
+            // Hash filter: filename without .json must be in HASHES list
+            if ($hashFilters) {
+                $hash = preg_replace('/\.json$/', '', basename($file));
+                if (!in_array($hash, $hashFilters, true)) continue;
+            }
+
             $stats['considered']++;
 
             $raw = @file_get_contents($file);
@@ -168,7 +182,9 @@ foreach ((scandir(FAILURES_ROOT) ?: []) as $type) {
                 }
             } catch (\Throwable $e) {
                 $stats['retried_still_fail']++;
-                $logger->debug("Retry still failing for {$file}: " . $e->getMessage());
+                $logger->debug(
+                    "Retry still failing: " . failureUrl($type, $sourceName, $file) . " - " . $e->getMessage()
+                );
             }
 
             $stats['attempted']++;
@@ -197,12 +213,18 @@ $logger->info(
 );
 
 /**
- * Format the dry-run log line as a clickable link to the stored failure JSON,
- * e.g. https://events.helioviewer.org/static/failures/coordinate_errors/<source>/<hash>.json
- * Most terminals auto-link the URL so you can open the raw record directly.
+ * Build a clickable URL for a stored failure JSON, served by nginx at
+ * /static/failures/<type>/<source>/<hash>.json. Used in dry-run and
+ * still-failing log lines so terminals auto-link to the raw record.
  */
-function formatDryRunLine(string $type, string $sourceName, string $file, array $rawRecord): string
+function failureUrl(string $type, string $sourceName, string $file): string
 {
     $apiUrl = rtrim($_ENV['APIURL'] ?? 'https://events.helioviewer.org/', '/');
     return $apiUrl . '/static/failures/' . $type . '/' . $sourceName . '/' . basename($file);
+}
+
+/** Backwards-compatible wrapper used by the dry-run code path. */
+function formatDryRunLine(string $type, string $sourceName, string $file, array $rawRecord): string
+{
+    return failureUrl($type, $sourceName, $file);
 }
