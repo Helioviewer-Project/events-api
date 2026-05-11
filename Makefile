@@ -85,7 +85,7 @@ build-failure-report:
 	$(DOCKER_COMPOSE) run --rm --user $(shell id -u):$(shell id -g) phpfpm php bin/build-failure-report.php
 
 retry-failures:
-	TYPES='$(TYPES)' SOURCES='$(SOURCES)' APPLY='$(APPLY)' $(DOCKER_COMPOSE) run --rm --user $(shell id -u):$(shell id -g) -e TYPES -e SOURCES -e APPLY phpfpm php bin/retry-failures.php
+	TYPES='$(TYPES)' SOURCES='$(SOURCES)' LIMIT='$(LIMIT)' APPLY='$(APPLY)' $(DOCKER_COMPOSE) run --rm --user $(shell id -u):$(shell id -g) -e TYPES -e SOURCES -e LIMIT -e APPLY phpfpm php bin/retry-failures.php
 
 logs:
 	$(DOCKER_COMPOSE) exec phpfpm sh -c 'tail -f /u/apps/data/logs/*.log'
@@ -157,7 +157,7 @@ help:
 	@echo "                          Optional: PATHS=\"HEK,HEK>>Flare\" APPLY=1"
 	@echo "  build-failure-report  - Rebuild aggregated failure report (powers /exceptions page)"
 	@echo "  retry-failures        - Retry stored failure JSONs through processors (dry run by default)"
-	@echo "                          Optional: TYPES=\"coordinate_errors\" SOURCES=\"name1,name2\" APPLY=1"
+	@echo "                          Optional: TYPES=\"coordinate_errors\" SOURCES=\"name1,name2\" LIMIT=50 APPLY=1"
 	@echo ""
 	@echo "Cache Management:"
 	@echo "  cache-flush           - Flush Redis cache"

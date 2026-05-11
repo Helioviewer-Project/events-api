@@ -18,10 +18,12 @@ declare(strict_types=1);
  *   make retry-failures APPLY=1                                      # apply, all failures
  *   make retry-failures TYPES="coordinate_errors" APPLY=1            # only coord errors
  *   make retry-failures SOURCES="FLARE_SCOREBOARD_DAFFS_REGIONS"     # filter by source
+ *   make retry-failures LIMIT=50                                     # stop after 50 attempts
  *
  * Env vars consumed:
  *   TYPES    comma-separated subtypes to walk (default: all — coordinate_errors, invalid_events, general_errors)
  *   SOURCES  comma-separated source names (matches the on-disk failure subdir)
+ *   LIMIT    integer cap on the number of failures attempted (0 or unset = no limit)
  *   APPLY    truthy = retry + delete on success; unset/empty/0 = dry run (default)
  */
 
@@ -40,8 +42,10 @@ const FAILURES_ROOT = '/u/apps/data/failures';
 // === ENV ===
 $typeFilter   = $_ENV['TYPES']   ?? getenv('TYPES')   ?: '';
 $sourceFilter = $_ENV['SOURCES'] ?? getenv('SOURCES') ?: '';
+$limitRaw     = $_ENV['LIMIT']   ?? getenv('LIMIT')   ?: '';
 $applyRaw     = $_ENV['APPLY']   ?? getenv('APPLY')   ?: '';
 $apply        = $applyRaw !== '' && $applyRaw !== '0' && strcasecmp($applyRaw, 'false') !== 0;
+$limit        = max(0, (int) $limitRaw);  // 0 = no limit
 
 $typeFilters   = $typeFilter   !== '' ? array_filter(array_map('trim', explode(',', $typeFilter)))   : [];
 $sourceFilters = $sourceFilter !== '' ? array_filter(array_map('trim', explode(',', $sourceFilter))) : [];
@@ -75,6 +79,7 @@ $mode = $apply ? 'APPLY' : 'DRY RUN';
 $logger->info("Starting failure retry [{$mode}]");
 if ($typeFilters)   $logger->info("Type filter: " . implode(', ', $typeFilters));
 if ($sourceFilters) $logger->info("Source filter: " . implode(', ', $sourceFilters));
+if ($limit > 0)     $logger->info("Limit: {$limit} attempt(s)");
 if (!$apply) {
     $logger->info("DRY RUN: nothing will be written or deleted. Pass APPLY=1 to apply.");
 }
@@ -87,6 +92,7 @@ if (!is_dir(FAILURES_ROOT)) {
 // === WALK ===
 $stats = [
     'considered'         => 0,
+    'attempted'          => 0,  // counts toward LIMIT
     'retried_success'    => 0,
     'retried_still_fail' => 0,
     'no_processor'       => 0,
@@ -139,6 +145,11 @@ foreach ((scandir(FAILURES_ROOT) ?: []) as $type) {
 
             if (!$apply) {
                 $logger->info("DRY RUN would retry: " . formatDryRunLine($type, $sourceName, $file, $rawRecord));
+                $stats['attempted']++;
+                if ($limit > 0 && $stats['attempted'] >= $limit) {
+                    $logger->info("Reached LIMIT={$limit}; stopping early.");
+                    break 3;
+                }
                 continue;
             }
 
@@ -147,17 +158,23 @@ foreach ((scandir(FAILURES_ROOT) ?: []) as $type) {
                 if ($saved === null) {
                     $stats['no_processor']++;
                     $logger->warning("No processor matched for {$file}");
-                    continue;
+                } else {
+                    // Success — drop the failure JSON
+                    if (@unlink($file)) {
+                        $stats['deleted']++;
+                    }
+                    $stats['retried_success']++;
+                    $logger->info("Retry SUCCESS: {$type}/{$sourceName} -> event {$saved->id}");
                 }
-                // Success — drop the failure JSON
-                if (@unlink($file)) {
-                    $stats['deleted']++;
-                }
-                $stats['retried_success']++;
-                $logger->info("Retry SUCCESS: {$type}/{$sourceName} -> event {$saved->id}");
             } catch (\Throwable $e) {
                 $stats['retried_still_fail']++;
                 $logger->debug("Retry still failing for {$file}: " . $e->getMessage());
+            }
+
+            $stats['attempted']++;
+            if ($limit > 0 && $stats['attempted'] >= $limit) {
+                $logger->info("Reached LIMIT={$limit}; stopping early.");
+                break 3;
             }
         }
 
@@ -173,9 +190,10 @@ foreach ((scandir(FAILURES_ROOT) ?: []) as $type) {
 $duration = round(microtime(true) - $startTime, 2);
 $logger->info(
     "Retry [{$mode}] completed in {$duration}s: "
-    . "considered={$stats['considered']}, success={$stats['retried_success']}, "
-    . "still_fail={$stats['retried_still_fail']}, no_processor={$stats['no_processor']}, "
-    . "no_source_match={$stats['no_source_match']}, deleted={$stats['deleted']}"
+    . "considered={$stats['considered']}, attempted={$stats['attempted']}, "
+    . "success={$stats['retried_success']}, still_fail={$stats['retried_still_fail']}, "
+    . "no_processor={$stats['no_processor']}, no_source_match={$stats['no_source_match']}, "
+    . "deleted={$stats['deleted']}"
 );
 
 /**
