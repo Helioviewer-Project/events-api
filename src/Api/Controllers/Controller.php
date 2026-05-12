@@ -6,6 +6,7 @@ use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Container\ContainerInterface;
 use Helioviewer\EventsApi\Events\Repositories\RepositoryInterface as EventRepositoryInterface;
 use Helioviewer\EventsApi\Regions\Repositories\RepositoryInterface as RegionRepositoryInterface;
+use Helioviewer\EventsApi\Distributions\Repositories\RepositoryInterface as DistributionRepositoryInterface;
 use Helioviewer\EventsApi\Storage\Json\JsonStorageInterface;
 use Helioviewer\EventsApi\Jsoc\HarpService;
 use Helioviewer\EventsApi\Jsoc\NoaaService;
@@ -25,6 +26,7 @@ abstract class Controller
     // Core repositories
     protected EventRepositoryInterface $eventRepository;
     protected RegionRepositoryInterface $regionRepository;
+    protected DistributionRepositoryInterface $distributionRepository;
 
     // Storage services
     protected JsonStorageInterface $jsonStorage;
@@ -49,6 +51,7 @@ abstract class Controller
         // Initialize all dependencies from container
         $this->eventRepository = $container->get('eventRepository');
         $this->regionRepository = $container->get('regionRepository');
+        $this->distributionRepository = $container->get('distributionRepository');
 
         $this->jsonStorage = $container->get('jsonStorage');
         $this->failureStorage = $container->get('failureStorage');
@@ -110,6 +113,19 @@ abstract class Controller
         $eventArray['views'] = $this->jsonStorage->load("/u/apps/data/views/{$uuid}.json") ?: [];
         $eventArray['link'] = $this->jsonStorage->load("/u/apps/data/links/{$uuid}.json");
 
-        return $eventArray;
+        // Add API URLs - replace id with url, source with source_url
+        $apiUrl = rtrim($_ENV['APIURL'] ?? 'https://events.helioviewer.org/', '/');
+        $reorderedArray = [];
+        foreach ($eventArray as $key => $value) {
+            if ($key === 'id') {
+                $reorderedArray['url'] = "{$apiUrl}/api/v1/events/{$uuid}";
+            } elseif ($key === 'source') {
+                $reorderedArray['source_url'] = "{$apiUrl}/api/v1/events/{$uuid}/source";
+            } else {
+                $reorderedArray[$key] = $value;
+            }
+        }
+
+        return $reorderedArray;
     }
 }

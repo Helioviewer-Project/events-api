@@ -229,6 +229,7 @@
                 <a href="/" class="nav-button">Home</a>
                 <a href="/stats" class="nav-button active">Statistics Dashboard</a>
                 <a href="/active-regions" class="nav-button">Active Regions</a>
+                <a href="/exceptions" class="nav-button">Source Exceptions</a>
             </div>
         </header>
 
@@ -252,6 +253,10 @@
             <div class="stat-card">
                 <div class="stat-value" id="weekEvents">-</div>
                 <div class="stat-label">This Week</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="totalDistributions">-</div>
+                <div class="stat-label">Distributions</div>
             </div>
             <div class="stat-card">
                 <div class="stat-value" id="dateRange" style="font-size: 1rem;">-</div>
@@ -315,6 +320,20 @@
                     <tbody id="recentTableBody">
                     </tbody>
                 </table>
+
+                <h2 class="section-title">Top Distributions by Event Count</h2>
+                <table id="distributionsTable">
+                    <thead>
+                        <tr>
+                            <th>Path</th>
+                            <th>Bucket Size</th>
+                            <th>Bucket Start</th>
+                            <th>Event Count</th>
+                        </tr>
+                    </thead>
+                    <tbody id="distributionsTableBody">
+                    </tbody>
+                </table>
             </div>
 
             <div class="last-updated" id="lastUpdated"></div>
@@ -333,7 +352,7 @@
 
             try {
                 // Fetch comprehensive statistics
-                const response = await fetch('/api/v2/stats');
+                const response = await fetch('/api/v1/stats');
                 if (!response.ok) throw new Error('Failed to fetch statistics');
 
                 const data = await response.json();
@@ -344,6 +363,7 @@
                 document.getElementById('totalSources').textContent = data.summary.unique_sources;
                 document.getElementById('todayEvents').textContent = formatNumber(data.summary.today_events);
                 document.getElementById('weekEvents').textContent = formatNumber(data.summary.week_events);
+                document.getElementById('totalDistributions').textContent = formatNumber(data.summary.total_distributions || 0);
 
                 // Format date range
                 if (data.summary.date_range.oldest && data.summary.date_range.newest) {
@@ -362,9 +382,15 @@
                 // Populate recent events
                 populateRecentEvents(data.recent_events);
 
+                // Populate top distributions
+                populateDistributions(data.top_distributions || []);
+
                 // Update last updated time
-                document.getElementById('lastUpdated').textContent =
-                    'Last updated: ' + new Date(data.generated_at).toLocaleString();
+                let updateText = 'Generated: ' + new Date(data.generated_at).toLocaleString();
+                if (data.cached_until) {
+                    updateText += ' | Cache expires: ' + new Date(data.cached_until).toLocaleString();
+                }
+                document.getElementById('lastUpdated').textContent = updateText;
 
                 loading.style.display = 'none';
                 content.style.display = 'block';
@@ -434,13 +460,38 @@
 
             events.forEach(event => {
                 const tr = document.createElement('tr');
-                const eventUrl = `/api/v2/events/${event.id}`;
+                const eventUrl = `/api/v1/events/${event.id}`;
                 const label = event.label || 'Unknown';
                 tr.innerHTML = `
                     <td><a href="${eventUrl}" target="_blank">${label}</a></td>
                     <td>${event.path || 'Unknown'}</td>
                     <td>${formatDate(event.start)}</td>
                     <td>${formatDate(event.end)}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function populateDistributions(distributions) {
+            const tbody = document.getElementById('distributionsTableBody');
+            tbody.innerHTML = '';
+
+            const sizeLabels = {
+                '30m': '30 Minutes',
+                'h': 'Hourly',
+                'D': 'Daily',
+                'W': 'Weekly',
+                'M': 'Monthly',
+                'Y': 'Yearly'
+            };
+
+            distributions.forEach(dist => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${dist.path || 'Unknown'}</td>
+                    <td>${sizeLabels[dist.size] || dist.size}</td>
+                    <td>${dist.start}</td>
+                    <td class="number">${formatNumber(dist.count)}</td>
                 `;
                 tbody.appendChild(tr);
             });

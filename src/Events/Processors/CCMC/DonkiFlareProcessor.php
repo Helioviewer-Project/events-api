@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Helioviewer\EventsApi\Events\Processors\CCMC;
 
-use Helioviewer\EventsApi\Events\Processors\ProcessorInterface;
+use Helioviewer\EventsApi\Events\Processors\BaseProcessor;
 use Helioviewer\EventsApi\Events\Event;
 use Helioviewer\EventsApi\Events\Sources\JsonSource;
 use Helioviewer\EventsApi\Events\Sources\SourceInterface;
@@ -12,6 +12,7 @@ use HelioviewerEventInterface\Translator\DonkiFlare as EventInterfaceDonkiFlare;
 use HelioviewerEventInterface\Util\LocationParser;
 use Helioviewer\EventsApi\Exception\CoordinateResolutionException;
 use Helioviewer\EventsApi\Exception\InvalidEventException;
+use Helioviewer\EventsApi\Sentry\ClientInterface as SentryClientInterface;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -49,13 +50,13 @@ use Psr\Log\LoggerInterface;
  * @see        https://kauai.ccmc.gsfc.nasa.gov/DONKI/
  * @see        EventProcessorInterface
  */
-class DonkiFlareProcessor implements ProcessorInterface
+class DonkiFlareProcessor extends BaseProcessor
 {
-    private LoggerInterface $logger;
-
-    public function __construct(?LoggerInterface $logger = null)
-    {
-        $this->logger = $logger ?? new \Psr\Log\NullLogger();
+    public function __construct(
+        ?LoggerInterface $logger = null,
+        ?SentryClientInterface $sentry = null
+    ) {
+        parent::__construct($logger, $sentry);
     }
 
     /**

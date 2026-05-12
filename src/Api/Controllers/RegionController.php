@@ -83,7 +83,7 @@ class RegionController extends Controller
                 ->join('event_regions', 'events.id', '=', 'event_regions.event_id')
                 ->where('event_regions.region_id', $region->id)
                 ->orderBy('events.start', 'desc')
-                ->limit(100)
+                ->limit(2000)
                 ->get();
 
             // Format events
@@ -117,9 +117,9 @@ class RegionController extends Controller
                 $reorderedArray = [];
                 foreach ($eventArray as $key => $value) {
                     if ($key === 'id') {
-                        $reorderedArray['url'] = "{$apiUrl}/api/v2/events/{$uuid}";
+                        $reorderedArray['url'] = "{$apiUrl}/api/v1/events/{$uuid}";
                     } elseif ($key === 'source') {
-                        $reorderedArray['source_url'] = "{$apiUrl}/api/v2/events/{$uuid}/source";
+                        $reorderedArray['source_url'] = "{$apiUrl}/api/v1/events/{$uuid}/source";
                     } else {
                         $reorderedArray[$key] = $value;
                     }

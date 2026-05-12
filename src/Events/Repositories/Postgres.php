@@ -131,6 +131,27 @@ class Postgres implements RepositoryInterface
     }
 
     /**
+     * Find all events active at any point within a time window across multiple sources.
+     *
+     * Single query for the superset of events that overlap [minTime, maxTime].
+     * Used by batch observations to avoid N queries per source.
+     *
+     * @param array $sources Array of source names (e.g., ['CCMC', 'HEK'])
+     * @param int $minTime Start of window (Unix timestamp)
+     * @param int $maxTime End of window (Unix timestamp)
+     * @return Collection<int, Event>
+     */
+    public function findActiveInWindow(array $sources, int $minTime, int $maxTime): Collection
+    {
+        $sourceIds = array_map(fn($s) => $this->getSourceId($s), $sources);
+
+        return Event::whereIn('source_id', $sourceIds)
+            ->where('start', '<=', $maxTime)
+            ->where('end', '>=', $minTime)
+            ->get();
+    }
+
+    /**
      * Retrieve events within a specified time range.
      *
      * Returns solar events that have any temporal overlap with the given
@@ -400,6 +421,52 @@ class Postgres implements RepositoryInterface
     }
 
     /**
+     * Get events with pagination, ordered by start time.
+     *
+     * @param int $page     Page number (0-indexed)
+     * @param int $pageSize Number of events per page
+     * @return array<Event> Array of Event objects for the requested page
+     */
+    public function getWithPage(int $page, int $pageSize): array
+    {
+        $offset = $page * $pageSize;
+
+        return Event::orderBy('start')
+            ->offset($offset)
+            ->limit($pageSize)
+            ->get()
+            ->all();
+    }
+
+    /**
+     * Find events matching any of the given path prefixes that overlap with time range.
+     *
+     * An event overlaps with [start, end] if: event.start < end AND event.end > start
+     *
+     * @param array<string> $pathPrefixes Array of path prefixes to match
+     * @param int $start Start timestamp (Unix)
+     * @param int $end End timestamp (Unix)
+     * @return array<Event> Array of matching Event objects ordered by start time
+     */
+    public function findByPathPrefixesAndTimeRange(array $pathPrefixes, int $start, int $end): array
+    {
+        if (empty($pathPrefixes)) {
+            return [];
+        }
+
+        return Event::where(function (Builder $query) use ($pathPrefixes) {
+                foreach ($pathPrefixes as $prefix) {
+                    $query->orWhere('path', 'LIKE', $prefix . '%');
+                }
+            })
+            ->where('start', '<', $end)
+            ->where('end', '>', $start)
+            ->orderBy('start')
+            ->get()
+            ->all();
+    }
+
+    /**
      * Convert source name to normalized source ID.
      *
      * Maps human-readable source names to their corresponding integer
@@ -424,14 +491,6 @@ class Postgres implements RepositoryInterface
      */
     private function getSourceId(string $source): int
     {
-        // Use match expression for efficient source name resolution
-        // Case-insensitive matching with strict return type validation
-        return match (strtoupper($source)) {
-            'CCMC' => JsonSource::CCMC,
-            'HEK' => JsonSource::HEK,
-            'WSA' => JsonSource::WSA,
-            'RHESSI' => JsonSource::RHESSI,
-            default => throw new \InvalidArgumentException("Unknown source: $source")
-        };
+        return JsonSource::getSourceId($source);
     }
 }

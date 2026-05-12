@@ -10,14 +10,31 @@ use Helioviewer\EventsApi\Events\Sources\JsonSource;
 class StatsController extends Controller
 {
     /**
-     * Get comprehensive statistics
+     * Cache TTL in seconds (1 hour)
+     */
+    private const CACHE_TTL = 3600;
+
+    /**
+     * Cache key for statistics
+     */
+    private const CACHE_KEY = 'stats:dashboard';
+
+    /**
+     * Get comprehensive statistics (cached for 1 hour)
      */
     public function getStats(Request $request, Response $response): Response
     {
         try {
+            // Check cache first
+            $cached = $this->cache->get(self::CACHE_KEY);
+            if ($cached !== null) {
+                return $this->json($response, $cached);
+            }
+
             // Get total counts
             $totalEvents = DB::table('events')->count();
             $totalRegions = DB::table('regions')->count();
+            $totalDistributions = DB::table('distributions')->count();
             $uniqueSources = DB::table('events')->distinct()->count('source_id');
 
             // Get today's events count
@@ -44,6 +61,7 @@ class StatsController extends Controller
             $summary = [
                 'total_events' => $totalEvents,
                 'total_regions' => $totalRegions,
+                'total_distributions' => $totalDistributions,
                 'unique_sources' => $uniqueSources,
                 'today_events' => $todayEvents,
                 'week_events' => $weekEvents,
@@ -154,6 +172,22 @@ class StatsController extends Controller
                 ];
             })->toArray();
 
+            // Get top distributions by event count
+            $topDistributions = DB::table('distributions')
+                ->select(['path', 'size', 'start', 'count'])
+                ->orderBy('count', 'desc')
+                ->limit(20)
+                ->get();
+
+            $formattedDistributions = $topDistributions->map(function ($dist) {
+                return [
+                    'path' => $dist->path,
+                    'size' => $dist->size,
+                    'start' => date('Y-m-d H:i:s', $dist->start),
+                    'count' => (int)$dist->count,
+                ];
+            })->toArray();
+
             // Build final response
             $stats = [
                 'summary' => $summary,
@@ -161,8 +195,13 @@ class StatsController extends Controller
                 'by_source_path' => $formattedBySourcePath,
                 'by_label' => $formattedByLabel,
                 'recent_events' => $formattedRecent,
+                'top_distributions' => $formattedDistributions,
                 'generated_at' => date('c'),
+                'cached_until' => date('c', time() + self::CACHE_TTL),
             ];
+
+            // Cache the result for 1 hour
+            $this->cache->set(self::CACHE_KEY, $stats, self::CACHE_TTL);
 
             return $this->json($response, $stats);
 

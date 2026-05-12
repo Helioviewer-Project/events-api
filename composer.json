@@ -11,6 +11,7 @@
         "psr/simple-cache": "^3.0",
         "ramsey/uuid": "^4.9",
         "robmorgan/phinx": "^0.16.10",
+        "sentry/sentry": "^4.24",
         "slim/psr7": "^1.7",
         "slim/slim": "^4.14",
         "symfony/filesystem": "^7.3",

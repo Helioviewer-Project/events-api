@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Helioviewer\EventsApi\Events\Processors\HEK;
 
 use Psr\Log\LoggerInterface;
+use Helioviewer\EventsApi\Sentry\ClientInterface as SentryClientInterface;
 
 /**
  * HEK Flare (FL) Event Processor
@@ -19,9 +20,9 @@ use Psr\Log\LoggerInterface;
  */
 class FlareProcessor extends EventTypeProcessor
 {
-    public function __construct(?LoggerInterface $logger = null)
+    public function __construct(?LoggerInterface $logger = null, ?SentryClientInterface $sentry = null)
     {
-        parent::__construct('FL', $logger);
+        parent::__construct('FL', $logger, $sentry);
     }
 
     /**

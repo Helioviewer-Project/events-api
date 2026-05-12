@@ -103,8 +103,8 @@ $hek = [
         "name" => "Hypothesis",
         "pin" => "HY",
     ],
-    'HEK>>UV Burst' => [
-        "name" => "UV Burst",
+    'HEK>>UVBurst' => [
+        "name" => "UVBurst",
         "pin" => "BU",
     ],
     'HEK>>Explosive Event' => [
@@ -120,15 +120,15 @@ $hek = [
         "pin" => "PT",
     ],
     'HEK>>SEPs' => [
-        "name" => "Solar Energetic Particles",
+        "name" => "SEPs",
         "pin" => "EP",
     ],
     'HEK>>ICMEs' => [
-        "name" => "Interplanetary Coronal Mass Ejections",
+        "name" => "ICMEs",
         "pin" => "IC",
     ],
     'HEK>>SIRs' => [
-        "name" => "Stream Interaction Regions",
+        "name" => "SIRs",
         "pin" => "SR",
     ],
 ];

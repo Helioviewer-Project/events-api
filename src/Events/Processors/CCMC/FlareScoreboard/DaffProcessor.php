@@ -8,6 +8,8 @@ use Helioviewer\EventsApi\Events\Sources\SourceInterface;
 use Helioviewer\EventsApi\Jsoc\HarpService;
 use Helioviewer\EventsApi\Jsoc\NoaaService;
 use Helioviewer\EventsApi\Exception\CoordinateResolutionException;
+use Helioviewer\EventsApi\Exception\JsocException;
+use Helioviewer\EventsApi\Sentry\ClientInterface as SentryClientInterface;
 
 /**
  * DAFF Solar Flare Event Processor
@@ -29,9 +31,10 @@ class DaffProcessor extends Processor
     public function __construct(
         HarpService $harpService,
         NoaaService $noaaService,
-        ?\Psr\Log\LoggerInterface $logger = null
+        ?\Psr\Log\LoggerInterface $logger = null,
+        ?SentryClientInterface $sentry = null
     ) {
-        parent::__construct($logger);
+        parent::__construct($logger, $sentry);
         $this->harpService = $harpService;
         $this->noaaService = $noaaService;
     }
@@ -92,7 +95,18 @@ class DaffProcessor extends Processor
             
             $noaaId = (int) $rawRecord['NOAARegionId'];
 
-            $noaaData = $this->noaaService->getLastCoordinateForNoaa($noaaId, $eventDateTime);
+            try {
+                $noaaData = $this->noaaService->getLastCoordinateForNoaa($noaaId, $eventDateTime);
+            } catch (JsocException $e) {
+                $this->logger->warning("DAFF: JSOC NOAA service failed for region {$noaaId}: " . $e->getMessage());
+                $this->sentry->setContext('Jsoc', [
+                    'service' => 'NoaaService',
+                    'noaa_id' => $noaaId,
+                    'event_datetime' => $eventDateTime,
+                ]);
+                $this->sentry->capture($e);
+                $noaaData = null;
+            }
             
             if ($noaaData) {
                 $this->logger->info("DAFF: Found coordinates from NOAA service for region {$noaaId}");

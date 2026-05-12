@@ -7,6 +7,8 @@ namespace Helioviewer\EventsApi\Coordinator;
 use Psr\SimpleCache\CacheInterface;
 use Psr\Log\LoggerInterface;
 use Illuminate\Database\Eloquent\Collection;
+use Helioviewer\EventsApi\Sentry\ClientInterface as SentryClientInterface;
+use Helioviewer\EventsApi\Sentry\VoidClient as SentryVoidClient;
 
 /**
  * Coordinate Rotator
@@ -23,6 +25,8 @@ class CoordinateRotator
     private CoordinatorInterface $backupCoordinator;
     private LoggerInterface $logger;
     private ?CacheInterface $cache;
+    private SentryClientInterface $sentry;
+    private bool $primaryFailed = false;
 
     /**
      * Constructor
@@ -31,17 +35,20 @@ class CoordinateRotator
      * @param CoordinatorInterface $backupCoordinator Backup coordinator for failover
      * @param LoggerInterface $logger Logger for debug/error messages
      * @param CacheInterface|null $cache Optional cache for rotation results
+     * @param SentryClientInterface|null $sentry Optional Sentry client for failure reporting
      */
     public function __construct(
         CoordinatorInterface $coordinator,
         CoordinatorInterface $backupCoordinator,
         LoggerInterface $logger,
-        ?CacheInterface $cache = null
+        ?CacheInterface $cache = null,
+        ?SentryClientInterface $sentry = null
     ) {
         $this->coordinator = $coordinator;
         $this->backupCoordinator = $backupCoordinator;
         $this->logger = $logger;
         $this->cache = $cache;
+        $this->sentry = $sentry ?? new SentryVoidClient([]);
     }
 
     /**
@@ -212,16 +219,45 @@ class CoordinateRotator
      */
     private function transformWithFallback(callable $primary, callable $backup, string $system): array
     {
-        try {
-            return $primary();
-        } catch (CoordinatorException $e) {
-            $this->logger->warning("CoordinateRotator | {$system} | Primary (HttpCoordinator) failed: " . $e->getMessage() . " | Falling back to backup LOCAL http coordinator");
+        // Skip primary if it had a connection failure during this request
+        if (!$this->primaryFailed) {
             try {
-                return $backup();
-            } catch (CoordinatorException $backupError) {
-                $this->logger->error("CoordinateRotator | {$system} | Backup LOCAL http coordinator also failed: " . $backupError->getMessage() . " | No coordinates rotated");
-                return [];
+                return $primary();
+            } catch (CoordinatorConnectionException $e) {
+                // Server unreachable (timeout, refused, DNS) — skip primary for remaining calls
+                $this->primaryFailed = true;
+                $this->logger->warning("CoordinateRotator | {$system} | Primary unreachable: " . $e->getMessage() . " | Skipping primary for remaining calls, falling back to backup");
+                $this->sentry->setContext('Coordinator', [
+                    'system' => $system,
+                    'tier' => 'primary',
+                    'reason' => 'unreachable',
+                ]);
+                $this->sentry->capture($e);
+            } catch (CoordinatorException $e) {
+                // Server reachable but returned error (400, 500, bad format) — treat primary as
+                // down for the rest of this request so Sentry fires at most once per request.
+                $this->primaryFailed = true;
+                $this->logger->warning("CoordinateRotator | {$system} | Primary returned error: " . $e->getMessage() . " | Skipping primary for remaining calls, falling back to backup");
+                $this->sentry->setContext('Coordinator', [
+                    'system' => $system,
+                    'tier' => 'primary',
+                    'reason' => 'error_response',
+                ]);
+                $this->sentry->capture($e);
             }
+        }
+
+        try {
+            return $backup();
+        } catch (CoordinatorException $backupError) {
+            $this->logger->error("CoordinateRotator | {$system} | Backup LOCAL http coordinator also failed: " . $backupError->getMessage() . " | No coordinates rotated");
+            $this->sentry->setContext('Coordinator', [
+                'system' => $system,
+                'tier' => 'backup',
+                'primary_failed' => $this->primaryFailed,
+            ]);
+            $this->sentry->capture($backupError);
+            return [];
         }
     }
 }

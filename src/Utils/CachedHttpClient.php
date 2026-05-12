@@ -37,6 +37,7 @@ class CachedHttpClient implements ClientInterface
     ) {
         $this->client = $client ?? new Client([
             'timeout' => 60.0,
+            'connect_timeout' => 3.0,
             'http_errors' => true,
             'headers' => [
                 'User-Agent' => 'Helioviewer Events API/1.0',

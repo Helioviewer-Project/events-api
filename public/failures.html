@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Source Exceptions - Helioviewer Events API</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+    min-height: 100vh;
+    padding: 20px;
+  }
+  .main-container { max-width: 1200px; margin: 0 auto; }
+
+  header { text-align: center; color: white; margin-bottom: 30px; padding: 20px; }
+  .header-content {
+    display: flex; align-items: center; justify-content: center;
+    gap: 20px; margin-bottom: 10px;
+  }
+  .logo { width: 60px; height: 60px; }
+  header h1 {
+    font-size: 2.5rem; margin: 0;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.2); color: white;
+  }
+  .subtitle { font-size: 1.1rem; opacity: 0.9; color: white; }
+  .nav-buttons { display: flex; justify-content: center; gap: 15px; margin-top: 20px; flex-wrap: wrap; }
+  .nav-button {
+    display: inline-block;
+    background: rgba(255, 255, 255, 0.2);
+    color: white; padding: 10px 20px; border-radius: 6px;
+    text-decoration: none; transition: background 0.3s;
+  }
+  .nav-button:hover { background: rgba(255, 255, 255, 0.3); text-decoration: none; }
+  .nav-button.active { background: rgba(255, 255, 255, 0.35); font-weight: bold; }
+
+  .container {
+    background: white; border-radius: 12px; padding: 28px 32px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+  }
+  h2 {
+    color: #d35400; margin-top: 24px;
+    border-bottom: 2px solid #f0f0f0; padding-bottom: 8px;
+    font-size: 1.25rem;
+  }
+  h2:first-child { margin-top: 0; }
+  .heading-row {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 14px; flex-wrap: wrap;
+    border-bottom: 2px solid #f0f0f0; padding-bottom: 8px;
+    margin-top: 0;
+  }
+  .heading-row h2 {
+    margin: 0; border-bottom: none; padding-bottom: 0;
+  }
+  .heading-row .meta-line {
+    color: #666; font-size: 0.85rem; margin: 0;
+  }
+
+  /* Compact filter bar */
+  .filter-bar {
+    display: flex; align-items: center; flex-wrap: wrap;
+    gap: 10px; margin: 12px 0 14px;
+  }
+  .filter-bar .label {
+    font-weight: 600; color: #555; font-size: 0.9rem;
+  }
+  .filter-bar select {
+    padding: 6px 10px;
+    border: 1px solid #ddd; border-radius: 6px;
+    font-size: 0.85rem; color: #333; background: #fff;
+    cursor: pointer; max-width: 280px;
+  }
+  .filter-bar select:focus { outline: none; border-color: #d35400; }
+  .filter-bar .search-input {
+    flex: 1; min-width: 200px;
+    padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px;
+    font-size: 0.85rem;
+  }
+  .filter-bar .search-input:focus { outline: none; border-color: #d35400; }
+  .filter-bar .result-count {
+    color: #666; font-size: 0.85rem; margin-left: auto; white-space: nowrap;
+  }
+
+  /* Selected pills */
+  .selected-pills {
+    display: flex; flex-wrap: wrap; gap: 6px;
+    min-height: 0; margin: 8px 0;
+  }
+  .pill {
+    display: inline-flex; align-items: center;
+    background: #d35400; color: #fff;
+    padding: 4px 4px 4px 10px; border-radius: 14px;
+    font-size: 0.8rem;
+    max-width: 100%;
+  }
+  .pill .pill-group {
+    text-transform: uppercase; letter-spacing: 0.3px;
+    font-size: 0.65rem; opacity: 0.85; margin-right: 6px;
+  }
+  .pill .pill-value {
+    max-width: 280px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .pill .pill-close {
+    background: rgba(255,255,255,0.25);
+    border: none; color: #fff;
+    width: 18px; height: 18px;
+    border-radius: 50%; margin-left: 8px;
+    font-size: 0.8rem; cursor: pointer; line-height: 1;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .pill .pill-close:hover { background: rgba(255,255,255,0.45); }
+  .pill.error-cluster {
+    font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+    font-size: 0.75rem;
+  }
+  .selected-pills .placeholder {
+    color: #aaa; font-size: 0.82rem; font-style: italic;
+  }
+  .clear-btn {
+    background: #f0f0f0; border: 1px solid #ddd; color: #555;
+    padding: 4px 10px; border-radius: 6px; cursor: pointer;
+    font-size: 0.8rem; margin-left: auto;
+  }
+  .clear-btn:hover { background: #e0e0e0; }
+
+  /* Table */
+  .info-table {
+    width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.85rem;
+    table-layout: fixed;
+  }
+  .info-table th {
+    background: #e9ecef; padding: 9px 12px; text-align: left;
+    font-weight: 600; color: #333; font-size: 0.78rem;
+    text-transform: uppercase; letter-spacing: 0.3px;
+  }
+  .info-table td {
+    padding: 10px 12px; border-bottom: 1px solid #e9ecef; vertical-align: top;
+    overflow-wrap: anywhere;
+  }
+  tr.row { cursor: pointer; }
+  tr.row:hover { background: #fdf6f0; }
+  tr.detail-row td { background: #fafafa; padding: 14px 18px; border-bottom: 2px solid #e9ecef; }
+  tr.detail-row .field { margin-bottom: 10px; }
+  tr.detail-row .label {
+    font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.4px;
+    color: #888; margin-bottom: 4px; font-weight: 600;
+  }
+  tr.detail-row code { background: #fff3e0; padding: 1px 5px; border-radius: 3px; font-size: 0.8rem; }
+  tr.detail-row pre {
+    background: #1e1e1e; color: #d4d4d4;
+    padding: 12px; border-radius: 6px;
+    overflow-x: auto; max-height: 420px;
+    font-size: 0.78rem; line-height: 1.5;
+  }
+  tr.detail-row a.static-link { color: #d35400; font-size: 0.82rem; text-decoration: none; }
+  tr.detail-row a.static-link:hover { text-decoration: underline; }
+
+  .exc-tag {
+    display: inline-block; padding: 2px 8px; border-radius: 3px;
+    font-size: 0.72rem; font-weight: 700; color: #fff;
+    background: #455a64;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+  .source-path {
+    display: inline-block;
+    background: #fff3e0; color: #5d4037;
+    padding: 2px 8px; border-radius: 3px;
+    font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+    font-size: 0.78rem;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    word-break: break-all;
+  }
+  .region-link {
+    display: inline-block;
+    background: #fff3e0; color: #d35400;
+    padding: 2px 8px; border-radius: 3px;
+    font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+    font-size: 0.78rem;
+    text-decoration: none; font-weight: 600;
+  }
+  .region-link:hover { background: #ffe0b2; text-decoration: underline; }
+  .datetime {
+    color: #555; font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+    font-size: 0.78rem; white-space: nowrap;
+  }
+  .error-cell { color: #c0392b; overflow-wrap: anywhere; }
+
+  .pagination {
+    display: flex; align-items: center; gap: 6px;
+  }
+  .pagination button {
+    background: #f0f0f0; border: 1px solid #ddd; color: #555;
+    padding: 5px 11px; border-radius: 6px; cursor: pointer; font-size: 0.85rem;
+  }
+  .pagination button:hover:not(:disabled) { background: #e0e0e0; }
+  .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .pagination .indicator { color: #666; font-size: 0.85rem; padding: 5px 10px; }
+
+  .empty, .loading {
+    text-align: center; padding: 40px 20px;
+    color: #888; font-size: 0.95rem;
+  }
+  .spinner {
+    display: inline-block; width: 18px; height: 18px;
+    border: 2px solid #ddd; border-top-color: #d35400;
+    border-radius: 50%; animation: spin 0.8s linear infinite;
+    vertical-align: middle; margin-right: 8px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="main-container">
+
+  <header>
+    <div class="header-content">
+      <img src="https://helioviewer-project.github.io/event-tree/helioviewer-logo.png" alt="Helioviewer Logo" class="logo">
+      <h1>Helioviewer Events API</h1>
+    </div>
+    <div class="subtitle">Source Exceptions</div>
+    <div class="nav-buttons">
+      <a href="/" class="nav-button">Home</a>
+      <a href="/stats" class="nav-button">Statistics Dashboard</a>
+      <a href="/active-regions" class="nav-button">Active Regions</a>
+      <a href="/exceptions" class="nav-button active">Source Exceptions</a>
+    </div>
+  </header>
+
+  <div class="container">
+
+    <div class="heading-row">
+      <h2>Filter</h2>
+      <div class="meta-line" id="meta-line">Loading report…</div>
+    </div>
+
+    <div class="filter-bar">
+      <select id="select-exception">
+        <option value="">+ Exception</option>
+      </select>
+
+      <select id="select-source">
+        <option value="">+ Source</option>
+      </select>
+
+      <select id="select-error">
+        <option value="">+ Error cluster</option>
+      </select>
+
+      <span class="result-count" id="result-count">—</span>
+    </div>
+
+    <div class="selected-pills" id="selected-pills"></div>
+
+    <div class="heading-row">
+      <h2>Source Exceptions</h2>
+      <div class="pagination" id="pagination" style="display:none;">
+        <button id="prev">‹ Prev</button>
+        <span class="indicator" id="page-indicator">1 / 1</span>
+        <button id="next">Next ›</button>
+      </div>
+    </div>
+
+    <table class="info-table">
+      <thead>
+        <tr>
+          <th style="width: 160px;">When (UTC)</th>
+          <th style="width: 220px;">Exception</th>
+          <th style="width: 320px;">Source</th>
+          <th>Error</th>
+        </tr>
+      </thead>
+      <tbody id="tbody">
+        <tr><td colspan="4" class="loading"><span class="spinner"></span>Loading failures report…</td></tr>
+      </tbody>
+    </table>
+
+  </div>
+</div>
+
+<script>
+(() => {
+  const PER_PAGE = 50;
+  const REPORT_URL = '/api/v1/failures';
+
+  // group key -> Set of selected values.
+  // `source` holds either a family name (e.g. "CCMC") or a full path
+  // (e.g. "CCMC>>DONKI_CME"); passesFilter accepts either form.
+  const filters = {
+    exception: new Set(),
+    source:    new Set(),
+    error:     new Set(),
+  };
+
+  // Labels shown on pills + select boxes
+  const groupLabels = {
+    exception: 'Exception',
+    source:    'Source',
+    error:     'Error',
+  };
+
+  const state = {
+    report: null,
+    page: 1,
+  };
+
+  // value -> sample text for the error cluster dropdown labels
+  let errorSampleByKey = {};
+
+  const $ = (id) => document.getElementById(id);
+
+  /**
+   * Run filters but ignore the one named in `excludedGroup`.
+   * Used for faceted counts so each dropdown shows totals as if its
+   * own filter were empty (otherwise selecting one option zeroes out
+   * the rest of its dropdown).
+   */
+  function filterItemsExcept(excludedGroup) {
+    return state.report.items.filter(item => {
+      if (excludedGroup !== 'exception' && filters.exception.size
+          && !filters.exception.has(item.exception_short)) return false;
+      if (excludedGroup !== 'source' && filters.source.size) {
+        const ok = filters.source.has(item.source_family)
+                || filters.source.has(item.display_source);
+        if (!ok) return false;
+      }
+      if (excludedGroup !== 'error' && filters.error.size
+          && !filters.error.has(item.error_cluster)) return false;
+      return true;
+    });
+  }
+
+  function aggregateFromItems(items) {
+    const out = { exception: {}, family: {}, displaySource: {}, error: {} };
+    for (const item of items) {
+      if (item.exception_short) out.exception[item.exception_short] = (out.exception[item.exception_short] || 0) + 1;
+      if (item.source_family)   out.family[item.source_family]      = (out.family[item.source_family] || 0) + 1;
+      if (item.display_source)  out.displaySource[item.display_source] = (out.displaySource[item.display_source] || 0) + 1;
+      if (item.error_cluster)   out.error[item.error_cluster]       = (out.error[item.error_cluster] || 0) + 1;
+    }
+    return out;
+  }
+
+  function esc(s) {
+    return String(s ?? '').replace(/[&<>"']/g, ch =>
+      ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  }
+
+  function populateSelect(selectId, placeholder, entries) {
+    const sel = $(selectId);
+    sel.innerHTML = `<option value="">+ ${esc(placeholder)}</option>`;
+    for (const e of entries) {
+      const opt = document.createElement('option');
+      opt.value = e.value;
+      opt.textContent = `${e.label} (${e.count})`;
+      opt.title = e.title || e.label;
+      sel.appendChild(opt);
+    }
+  }
+
+  function populateGroupedSelect(selectId, placeholder, groups) {
+    const sel = $(selectId);
+    sel.innerHTML = `<option value="">+ ${esc(placeholder)}</option>`;
+    for (const g of groups) {
+      const og = document.createElement('optgroup');
+      og.label = g.label;
+      for (const e of g.entries) {
+        const opt = document.createElement('option');
+        opt.value = e.value;
+        opt.textContent = `${e.label} (${e.count})`;
+        opt.title = e.title || e.label;
+        og.appendChild(opt);
+      }
+      sel.appendChild(og);
+    }
+  }
+
+  function renderSelects() {
+    const r = state.report;
+    if (!r) return;
+
+    // Build error-key -> sample-text lookup once
+    if (!Object.keys(errorSampleByKey).length) {
+      for (const g of (r.error_groups || [])) {
+        errorSampleByKey[g.key] = g.sample;
+      }
+    }
+
+    // Faceted: each dropdown shows counts assuming its own group's filter is empty
+    const excAgg = aggregateFromItems(filterItemsExcept('exception'));
+    const srcAgg = aggregateFromItems(filterItemsExcept('source'));
+    const errAgg = aggregateFromItems(filterItemsExcept('error'));
+
+    const exceptionEntries = Object.entries(excAgg.exception)
+      .sort((a, b) => b[1] - a[1])
+      .map(([k, v]) => ({ value: k, label: k, count: v }));
+
+    const familyEntries = Object.entries(srcAgg.family)
+      .sort((a, b) => b[1] - a[1])
+      .map(([k, v]) => ({ value: k, label: k, count: v }));
+
+    const displaySourceEntries = Object.entries(srcAgg.displaySource)
+      .sort((a, b) => b[1] - a[1])
+      .map(([k, v]) => ({ value: k, label: k, count: v }));
+
+    const errorEntries = Object.entries(errAgg.error)
+      .sort((a, b) => b[1] - a[1])
+      .map(([k, v]) => {
+        const sample = errorSampleByKey[k] || k;
+        const lbl = sample.length > 70 ? sample.slice(0, 70) + '…' : sample;
+        return { value: k, label: lbl, title: sample, count: v };
+      });
+
+    populateSelect('select-exception', 'Exception', exceptionEntries);
+    populateGroupedSelect('select-source', 'Source', [
+      { label: 'Families',       entries: familyEntries },
+      { label: 'Family>>Source', entries: displaySourceEntries },
+    ]);
+    populateSelect('select-error', 'Error cluster', errorEntries);
+  }
+
+  function renderPills() {
+    const root = $('selected-pills');
+    const any = Object.values(filters).some(s => s.size > 0);
+    root.innerHTML = '';
+    if (!any) return;
+    for (const [groupKey, set] of Object.entries(filters)) {
+      for (const value of set) {
+        const pill = document.createElement('span');
+        pill.className = 'pill' + (groupKey === 'error' ? ' error-cluster' : '');
+        const displayValue = groupKey === 'error'
+          ? truncateForPill(value)
+          : value;
+        pill.title = value;
+        pill.innerHTML = `
+          <span class="pill-group">${esc(groupLabels[groupKey])}</span>
+          <span class="pill-value">${esc(displayValue)}</span>
+        `;
+        const close = document.createElement('button');
+        close.className = 'pill-close';
+        close.textContent = '×';
+        close.setAttribute('aria-label', 'Remove filter');
+        close.addEventListener('click', () => {
+          set.delete(value);
+          state.page = 1;
+          rerender();
+        });
+        pill.appendChild(close);
+        root.appendChild(pill);
+      }
+    }
+    const clear = document.createElement('button');
+    clear.id = 'clear-all';
+    clear.className = 'clear-btn';
+    clear.textContent = 'Clear all';
+    clear.addEventListener('click', () => {
+      Object.values(filters).forEach(s => s.clear());
+      state.page = 1;
+      rerender();
+    });
+    root.appendChild(clear);
+  }
+
+  function truncateForPill(s) {
+    if (!s) return '';
+    return s.length > 60 ? s.slice(0, 60) + '…' : s;
+  }
+
+  function passesFilter(item) {
+    if (filters.exception.size && !filters.exception.has(item.exception_short)) return false;
+    if (filters.source.size) {
+      // Source filter holds either a family ("CCMC") or a full path ("CCMC>>DONKI_CME").
+      const ok = filters.source.has(item.source_family)
+              || filters.source.has(item.display_source);
+      if (!ok) return false;
+    }
+    if (filters.error.size && !filters.error.has(item.error_cluster)) return false;
+    return true;
+  }
+
+  function rerender() {
+    if (!state.report) return;
+    renderPills();
+    renderSelects();  // recompute faceted counts based on current filters
+
+    const items = state.report.items.filter(passesFilter);
+    const total = items.length;
+    const pages = Math.max(1, Math.ceil(total / PER_PAGE));
+    if (state.page > pages) state.page = pages;
+
+    if (total === 0) {
+      $('result-count').textContent = 'No matches';
+    } else {
+      const start = (state.page - 1) * PER_PAGE + 1;
+      const end = Math.min(state.page * PER_PAGE, total);
+      $('result-count').textContent = `${start.toLocaleString()}–${end.toLocaleString()} of ${total.toLocaleString()}`;
+    }
+
+    if (total > PER_PAGE) {
+      $('pagination').style.display = 'inline-flex';
+      $('page-indicator').textContent = `${state.page} / ${pages}`;
+      $('prev').disabled = state.page <= 1;
+      $('next').disabled = state.page >= pages;
+    } else {
+      $('pagination').style.display = 'none';
+    }
+
+    const tbody = $('tbody');
+    if (total === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" class="empty">No failures match the current filter.</td></tr>';
+      return;
+    }
+    const slice = items.slice((state.page - 1) * PER_PAGE, state.page * PER_PAGE);
+    tbody.innerHTML = slice.map(rowHtml).join('');
+    tbody.querySelectorAll('tr.row').forEach(tr => {
+      tr.addEventListener('click', () => {
+        const id = tr.getAttribute('data-id');
+        const detail = document.getElementById('detail-' + id);
+        if (detail) detail.style.display = detail.style.display === 'none' ? 'table-row' : 'none';
+      });
+    });
+  }
+
+  // NOAA region IDs prior to the 14000 cycle had to be offset by +10000 to
+  // match the canonical external_id used in /api/v1/regions/NOAA/<id>.
+  function noaaExternalId(id) {
+    const n = parseInt(id, 10);
+    if (!Number.isFinite(n) || n <= 0) return String(id);
+    return n < 9000 ? String(n + 10000) : String(n);
+  }
+
+  function sourceCellHtml(item) {
+    const noaa = item.raw_record && item.raw_record.NOAARegionId;
+    if (noaa !== undefined && noaa !== null && noaa !== '') {
+      const ext = noaaExternalId(noaa);
+      return `<a class="region-link" href="/api/v1/regions/NOAA/${esc(ext)}" target="_blank" title="NOAA Region ${esc(noaa)}">NOAA ${esc(noaa)}</a>`;
+    }
+    return `<code class="source-path">${esc(item.display_source || (item.source_family + '>>' + item.source))}</code>`;
+  }
+
+  function rowHtml(item) {
+    return `
+      <tr class="row" data-id="${esc(item.id)}">
+        <td class="datetime">${esc(item.datetime || '')}</td>
+        <td><span class="exc-tag" title="${esc(item.exception_class || '')}">${esc(item.exception_short || '—')}</span></td>
+        <td>${sourceCellHtml(item)}</td>
+        <td class="error-cell">${esc(item.error)}</td>
+      </tr>
+      <tr class="detail-row" id="detail-${esc(item.id)}" style="display:none;">
+        <td colspan="4">
+          <div class="field">
+            <div class="label">Exception</div>
+            <div><code>${esc(item.exception_class || '')}</code></div>
+          </div>
+          <div class="field">
+            <div class="label">Stored at</div>
+            <div>
+              <code>/u/apps/data/failures/${esc(item.type)}/${esc(item.source)}/${esc(item.filename)}</code>
+              &nbsp;·&nbsp;
+              <a class="static-link" href="${esc(item.static_url)}" target="_blank">open raw JSON ↗</a>
+            </div>
+          </div>
+          <div class="field">
+            <div class="label">Error message</div>
+            <pre>${esc(item.error)}</pre>
+          </div>
+          <div class="field">
+            <div class="label">Raw record</div>
+            <pre>${esc(JSON.stringify(item.raw_record, null, 2))}</pre>
+          </div>
+        </td>
+      </tr>
+    `;
+  }
+
+  // Wire one <select> -> push the chosen value into a filter set
+  function wireSelect(selectId, groupKey) {
+    const sel = $(selectId);
+    sel.addEventListener('change', () => {
+      const v = sel.value;
+      if (v) {
+        filters[groupKey].add(v);
+        state.page = 1;
+        rerender();
+      }
+      sel.value = '';  // reset to placeholder so they can pick another
+    });
+  }
+
+  async function load() {
+    let res;
+    try {
+      res = await fetch(REPORT_URL);
+    } catch (err) {
+      $('tbody').innerHTML = `<tr><td colspan="4" class="empty">Network error loading report: ${esc(err.message)}</td></tr>`;
+      return;
+    }
+    if (res.status === 503) {
+      const data = await res.json().catch(() => ({}));
+      $('tbody').innerHTML = `<tr><td colspan="4" class="empty">${esc(data.error || 'Report not yet built.')}</td></tr>`;
+      $('meta-line').textContent = 'Report not yet built — run `make build-failure-report` or wait for the scheduled rebuild (every 2 hours).';
+      return;
+    }
+    if (!res.ok) {
+      $('tbody').innerHTML = `<tr><td colspan="4" class="empty">HTTP ${res.status}</td></tr>`;
+      return;
+    }
+    state.report = await res.json();
+    state.page = 1;
+    const gen = state.report.generated_at ? new Date(state.report.generated_at).toUTCString() : 'unknown';
+    $('meta-line').textContent =
+      `${(state.report.total ?? 0).toLocaleString()} total failures · report generated ${gen}`;
+    renderSelects();
+    rerender();
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    wireSelect('select-exception', 'exception');
+    wireSelect('select-source',    'source');
+    wireSelect('select-error',     'error');
+
+    $('prev').addEventListener('click', () => { if (state.page > 1) { state.page--; rerender(); } });
+    $('next').addEventListener('click', () => { state.page++; rerender(); });
+
+    load();
+  });
+})();
+</script>
+</body>
+</html>

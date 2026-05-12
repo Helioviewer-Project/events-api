@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Helioviewer\EventsApi\Events\Processors\HEK;
 
 use Psr\Log\LoggerInterface;
+use Helioviewer\EventsApi\Sentry\ClientInterface as SentryClientInterface;
 
 /**
  * HEK Active Region (AR) Event Processor
@@ -18,9 +19,9 @@ use Psr\Log\LoggerInterface;
  */
 class ARProcessor extends EventTypeProcessor
 {
-    public function __construct(?LoggerInterface $logger = null)
+    public function __construct(?LoggerInterface $logger = null, ?SentryClientInterface $sentry = null)
     {
-        parent::__construct('AR', $logger);
+        parent::__construct('AR', $logger, $sentry);
     }
 
     /**

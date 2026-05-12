@@ -46,8 +46,7 @@ class JsocClient
             'key' => 'RegionNumber,ObservationTime,LatitudeHG,LongitudeHG,LongitudeCM'
         ]);
         
-        $this->logger->debug("Querying JSOC NOAA Active Regions for NOAA AR {$noaaNumber}");
-        $this->logger->debug("JSOC URL: " . urldecode($url));
+        $this->logger->info("JSOC NOAA AR {$noaaNumber} query: " . urldecode($url));
         
         try {
             $response = $this->client->request('GET', $url);
