@@ -54,6 +54,7 @@ class RegionController extends Controller
 
         } catch (\Exception $e) {
             $this->logger->error("Failed to get regions: " . $e->getMessage());
+            $this->sentry->capture($e);
             return $this->error($response, 'Failed to retrieve regions');
         }
     }
@@ -141,6 +142,7 @@ class RegionController extends Controller
 
         } catch (\Exception $e) {
             $this->logger->error("Failed to get region events: " . $e->getMessage());
+            $this->sentry->capture($e);
             return $this->error($response, 'Failed to retrieve region events');
         }
     }

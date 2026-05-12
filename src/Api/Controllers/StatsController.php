@@ -207,6 +207,7 @@ class StatsController extends Controller
 
         } catch (\Exception $e) {
             $this->logger->error("Failed to generate statistics: " . $e->getMessage());
+            $this->sentry->capture($e);
             return $this->error($response, 'Failed to generate statistics: ' . $e->getMessage());
         }
     }

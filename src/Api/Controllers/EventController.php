@@ -66,6 +66,7 @@ class EventController extends Controller
 
         } catch (\Exception $e) {
             $this->logger->error("Failed to get recent events: " . $e->getMessage());
+            $this->sentry->capture($e);
             return $this->error($response, 'Failed to retrieve recent events');
         }
     }
@@ -125,6 +126,7 @@ class EventController extends Controller
 
         } catch (\Exception $e) {
             $this->logger->error("Failed to get event by UUID: " . $e->getMessage());
+            $this->sentry->capture($e);
             return $this->error($response, 'Failed to retrieve event');
         }
     }
@@ -154,6 +156,7 @@ class EventController extends Controller
 
         } catch (\Exception $e) {
             $this->logger->error("Failed to get event source: " . $e->getMessage());
+            $this->sentry->capture($e);
             return $this->error($response, 'Failed to retrieve source data');
         }
     }

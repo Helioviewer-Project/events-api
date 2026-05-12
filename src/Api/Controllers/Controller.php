@@ -15,6 +15,7 @@ use Psr\SimpleCache\CacheInterface;
 use Psr\Http\Client\ClientInterface;
 use Helioviewer\EventsApi\Coordinator\CoordinateRotator;
 use Helioviewer\EventsApi\Events\Event;
+use Helioviewer\EventsApi\Sentry\ClientInterface as SentryClientInterface;
 
 /**
  * Abstract base controller with all dependencies
@@ -43,6 +44,7 @@ abstract class Controller
     protected CacheInterface $cache;
     protected LoggerInterface $logger;
     protected ClientInterface $httpClient;
+    protected SentryClientInterface $sentry;
 
     public function __construct(ContainerInterface $container)
     {
@@ -64,6 +66,7 @@ abstract class Controller
         $this->cache = $container->get('cache');
         $this->logger = $container->get('logger');
         $this->httpClient = $container->get('httpClient');
+        $this->sentry = $container->get('sentry');
     }
 
     /**

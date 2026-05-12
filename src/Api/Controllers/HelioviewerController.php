@@ -113,6 +113,13 @@ class HelioviewerController extends Controller
             $allEvents = $this->eventRepository->findActiveInWindow($validatedSources, $minTime, $maxTime);
         } catch (\Exception $e) {
             $this->logger->error("Batch observations DB query failed: " . $e->getMessage());
+            $this->sentry->setContext('BatchObservations', [
+                'sources'     => $validatedSources,
+                'timestamps'  => count($timestamps),
+                'window_min'  => $minTime,
+                'window_max'  => $maxTime,
+            ]);
+            $this->sentry->capture($e);
             return $this->error($response, 'Failed to query events', 500);
         }
 
@@ -137,6 +144,8 @@ class HelioviewerController extends Controller
                 $eventsDict = array_merge($eventsDict, $formatted['events']);
             } catch (\Exception $e) {
                 $this->logger->error("Batch observations format failed for {$source}: " . $e->getMessage());
+                $this->sentry->setContext('BatchObservationsFormat', ['source' => $source]);
+                $this->sentry->capture($e);
                 $errors[$source] = $e->getMessage();
             }
         }
@@ -264,6 +273,7 @@ class HelioviewerController extends Controller
             $distributions = $this->distributionRepository->queryMultiple($paths, $size, $from, $to);
         } catch (\Exception $e) {
             $this->logger->error("Distribution query failed: " . $e->getMessage());
+            $this->sentry->capture($e);
             return $this->error($response, 'Failed to query distributions', 500);
         }
 
@@ -371,6 +381,7 @@ class HelioviewerController extends Controller
             ]);
         } catch (\Exception $e) {
             $this->logger->error("getEventsByPaths failed: " . $e->getMessage());
+            $this->sentry->capture($e);
             return $this->error($response, 'Failed to query events', 500);
         }
     }
