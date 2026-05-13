@@ -105,19 +105,18 @@ class HelioviewerController extends Controller
             }
         }
 
-        $minTime = min($parsedTimestamps);
-        $maxTime = max($parsedTimestamps);
-
-        // Single DB query for all sources and the full time window
+        // Single DB query that only returns events active at ANY of the requested
+        // timestamps (ORed range conditions), avoiding the memory blow-up that
+        // findActiveInWindow($min,$max) produces when timestamps are sparse.
         try {
-            $allEvents = $this->eventRepository->findActiveInWindow($validatedSources, $minTime, $maxTime);
+            $allEvents = $this->eventRepository->findActiveAtAnyTimestamp($validatedSources, $parsedTimestamps);
         } catch (\Exception $e) {
             $this->logger->error("Batch observations DB query failed: " . $e->getMessage());
             $this->sentry->setContext('BatchObservations', [
-                'sources'     => $validatedSources,
-                'timestamps'  => count($timestamps),
-                'window_min'  => $minTime,
-                'window_max'  => $maxTime,
+                'sources'    => $validatedSources,
+                'timestamps' => count($timestamps),
+                'window_min' => min($parsedTimestamps),
+                'window_max' => max($parsedTimestamps),
             ]);
             $this->sentry->capture($e);
             return $this->error($response, 'Failed to query events', 500);

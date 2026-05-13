@@ -152,6 +152,42 @@ class Postgres implements RepositoryInterface
     }
 
     /**
+     * Return events active at ANY of the given timestamps.
+     *
+     * Compiles into a single SQL with N ORed (start <= t AND end >= t)
+     * conditions. For sparse timestamps this returns ~(N × concurrent-at-each-t)
+     * rows instead of every event in the spanning window — orders of magnitude
+     * smaller than findActiveInWindow() when the movie covers a long span.
+     * For dense timestamps it costs about the same as the window query because
+     * the ORed ranges overlap heavily and Postgres dedups internally.
+     *
+     * @param array<string> $sources    Source names
+     * @param array<int>    $timestamps Unix timestamps to consider
+     * @return Collection<int, Event>
+     */
+    public function findActiveAtAnyTimestamp(array $sources, array $timestamps): Collection
+    {
+        if (empty($sources) || empty($timestamps)) {
+            return new Collection();
+        }
+
+        $sourceIds = array_map(fn($s) => $this->getSourceId($s), $sources);
+        // Dedup so the SQL stays compact if frames coincide on the same instant
+        $timestamps = array_values(array_unique($timestamps));
+
+        return Event::whereIn('source_id', $sourceIds)
+            ->where(function ($q) use ($timestamps) {
+                foreach ($timestamps as $t) {
+                    $q->orWhere(function ($sub) use ($t) {
+                        $sub->where('start', '<=', $t)
+                            ->where('end', '>=', $t);
+                    });
+                }
+            })
+            ->get();
+    }
+
+    /**
      * Retrieve events within a specified time range.
      *
      * Returns solar events that have any temporal overlap with the given
