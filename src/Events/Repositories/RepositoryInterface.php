@@ -95,6 +95,27 @@ interface RepositoryInterface
     public function findActiveAtAnyTimestamp(array $sources, array $timestamps): Collection;
 
     /**
+     * Retrieve events matching path-prefix and/or UUID selections, active at ANY of the timestamps.
+     *
+     * Selection branch (OR-grouped):
+     *   - path-prefix entry "HEK>>Flare" matches `path = 'HEK>>Flare'` OR `path LIKE 'HEK>>Flare>>%'`
+     *   - uuid entry includes the event by exact UUID
+     *
+     * Timestamp branch: events whose [start, end] contains at least one requested timestamp.
+     *
+     * @param array<string> $pathPrefixes
+     * @param array<string> $uuids
+     * @param array<int>    $timestamps
+     *
+     * @return Collection<int, Event>
+     */
+    public function findActiveAtAnyTimestampForSelections(
+        array $pathPrefixes,
+        array $uuids,
+        array $timestamps
+    ): Collection;
+
+    /**
      * Retrieve events within a specified time range.
      *
      * Returns events that overlap with the given time range, including

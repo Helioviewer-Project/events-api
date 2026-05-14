@@ -340,176 +340,6 @@ class PageController extends Controller
                 </div>
             </details>
 
-            <h2>Helioviewer.org Integration</h2>
-
-            <details>
-                <summary>
-                    <span class="method-badge method-get">GET</span>
-                    <span class="endpoint-path">/helioviewer/events/{source}/observation/{timestamp}</span>
-                    <span class="endpoint-desc">Legacy observation format</span>
-                </summary>
-                <div class="endpoint-detail">
-                    <p>Get events active at a specific observation time, grouped by event type with nested detection method groups.</p>
-                    <table class="param-table">
-                        <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
-                        <tr><td><code>source</code></td><td>path</td><td>Event source (CCMC, HEK, RHESSI)</td></tr>
-                        <tr><td><code>timestamp</code></td><td>path</td><td>Observation time (any supported format)</td></tr>
-                    </table>
-                    <pre><code><span class="kw">import</span> requests
-
-response = requests.<span class="fn">get</span>(
-    <span class="str">"https://events.helioviewer.org/helioviewer/events/HEK/observation/2025-03-15T12:00:00Z"</span>
-)
-data = response.<span class="fn">json</span>()</code></pre>
-                    <p><strong>Example response:</strong></p>
-                    <pre><code>[
-  {
-    "name": "Active Region",
-    "pin": "AR",
-    "groups": [{
-      "name": "HMI SHARP",
-      "contact": "turmon@jpl.nasa.gov",
-      "data": [{
-        "id": "019c3d8f-0932-...",
-        "path": "HEK&gt;&gt;Active Region&gt;&gt;HMI SHARP",
-        "start": "2025-03-15T08:00:00",
-        "end": "2025-03-15T12:00:00",
-        "hv_hpc_x": -806.97,
-        "hv_hpc_y": 440.01,
-        "label": "HMI SHARP 12923",
-        ...
-      }, ...]
-    }]
-  },
-  ... <span class="cmt">// 31 event type groups</span>
-]</code></pre>
-                </div>
-            </details>
-
-            <details>
-                <summary>
-                    <span class="method-badge method-post">POST</span>
-                    <span class="endpoint-path">/helioviewer/events/from/{from}/to/{to}</span>
-                    <span class="endpoint-desc">Events by path prefixes</span>
-                </summary>
-                <div class="endpoint-detail">
-                    <p>Get events matching path prefixes within a time range. Returns flat list with Helioviewer-specific fields.</p>
-                    <table class="param-table">
-                        <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
-                        <tr><td><code>from</code></td><td>path</td><td>Start time (Unix timestamp)</td></tr>
-                        <tr><td><code>to</code></td><td>path</td><td>End time (Unix timestamp)</td></tr>
-                        <tr><td><code>paths</code></td><td>body (JSON)</td><td>Array of event path prefixes</td></tr>
-                    </table>
-                    <pre><code><span class="kw">import</span> requests
-
-response = requests.<span class="fn">post</span>(
-    <span class="str">"https://events.helioviewer.org/helioviewer/events/from/1741996800/to/1742083200"</span>,
-    json={<span class="str">"paths"</span>: [<span class="str">"HEK&gt;&gt;Flare"</span>]}
-)
-data = response.<span class="fn">json</span>()</code></pre>
-                    <p><strong>Example response:</strong></p>
-                    <pre><code>{
-  "paths": ["HEK&gt;&gt;Flare"],
-  "from": 1741996800,
-  "to": 1742083200,
-  "count": 33,
-  "events": [{
-    "x": 1741999352000,
-    "x2": 1741999592000,
-    "y": 1,
-    "event_starttime": "2025-03-15 00:42:32",
-    "event_endtime": "2025-03-15 00:46:32",
-    "event_peaktime": "2025-03-15 00:44:20",
-    "hv_hpc_x": 345.6,
-    "hv_hpc_y": 192,
-    "event_type": "FL",
-    "frm_name": "Flare Detective - Trigger Module",
-    "concept": "Flare",
-    "hv_labels_formatted": {"Peak Flux": "37.4 DN/sec/pixel"},
-    ...
-  }, ...]
-}</code></pre>
-                </div>
-            </details>
-
-            <details>
-                <summary>
-                    <span class="method-badge method-post">POST</span>
-                    <span class="endpoint-path">/helioviewer/distributions/size/{size}/from/{from}/to/{to}</span>
-                    <span class="endpoint-desc">Event count distributions</span>
-                </summary>
-                <div class="endpoint-detail">
-                    <p>Get event count distributions aggregated into time buckets.</p>
-                    <table class="param-table">
-                        <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
-                        <tr><td><code>size</code></td><td>path</td><td>Bucket size: <code>30m</code>, <code>h</code>, <code>D</code>, <code>W</code>, <code>M</code>, <code>Y</code></td></tr>
-                        <tr><td><code>from</code></td><td>path</td><td>Start time (Unix timestamp)</td></tr>
-                        <tr><td><code>to</code></td><td>path</td><td>End time (Unix timestamp)</td></tr>
-                        <tr><td><code>paths</code></td><td>body (JSON)</td><td>Array of event path prefixes</td></tr>
-                    </table>
-                    <pre><code><span class="kw">import</span> requests
-
-response = requests.<span class="fn">post</span>(
-    <span class="str">"https://events.helioviewer.org/helioviewer/distributions/size/D/from/1741996800/to/1742256000"</span>,
-    json={<span class="str">"paths"</span>: [<span class="str">"HEK&gt;&gt;Flare"</span>, <span class="str">"CCMC&gt;&gt;DONKI&gt;&gt;CME"</span>]}
-)
-data = response.<span class="fn">json</span>()</code></pre>
-                    <p><strong>Example response:</strong></p>
-                    <pre><code>{
-  "paths": ["HEK&gt;&gt;Flare", "CCMC&gt;&gt;DONKI&gt;&gt;CME"],
-  "size": "D",
-  "from": 1741996800,
-  "to": 1742256000,
-  "event_types": ["CE", "FL"],
-  "buckets": [
-    {"start": 1741996800, "counts": {"CE": 9, "FL": 33}},
-    {"start": 1742083200, "counts": {"CE": 13, "FL": 73}},
-    {"start": 1742169600, "counts": {"CE": 16, "FL": 79}},
-    {"start": 1742256000, "counts": {"CE": 16, "FL": 49}}
-  ]
-}</code></pre>
-                </div>
-            </details>
-
-            <details>
-                <summary>
-                    <span class="method-badge method-post">POST</span>
-                    <span class="endpoint-path">/helioviewer/events/{sources}/observations</span>
-                    <span class="endpoint-desc">Batch observations (movie frames)</span>
-                </summary>
-                <div class="endpoint-detail">
-                    <p>Get deduplicated events + rotated coordinates for multiple timestamps in one request. Designed for movie rendering.</p>
-                    <table class="param-table">
-                        <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
-                        <tr><td><code>sources</code></td><td>path</td><td>Sources joined by <code>::</code> (e.g., <code>HEK::CCMC</code>)</td></tr>
-                        <tr><td><code>timestamps</code></td><td>body (JSON)</td><td>Array of datetime strings (max 150)</td></tr>
-                    </table>
-                    <pre><code><span class="kw">import</span> requests
-
-response = requests.<span class="fn">post</span>(
-    <span class="str">"https://events.helioviewer.org/helioviewer/events/HEK::CCMC/observations"</span>,
-    json={<span class="str">"timestamps"</span>: [<span class="str">"2025-03-15 11:00:00"</span>, <span class="str">"2025-03-15 12:00:00"</span>]}
-)
-data = response.<span class="fn">json</span>()</code></pre>
-                    <p><strong>Example response:</strong></p>
-                    <pre><code>{
-  <span class="str">"event_types"</span>: [{<span class="str">"name"</span>: <span class="str">"Active Region"</span>, <span class="str">"pin"</span>: <span class="str">"AR"</span>, <span class="str">"groups"</span>: [{<span class="str">"name"</span>: <span class="str">"HMI SHARP"</span>, <span class="str">"event_ids"</span>: [...]}]}, ...],
-  <span class="str">"events"</span>: {
-    <span class="str">"019c3d8f-0932-..."</span>: {
-      <span class="str">"label"</span>: <span class="str">"HMI SHARP 12923"</span>, <span class="str">"start"</span>: <span class="str">"2025-03-15T08:00:00"</span>, <span class="str">"end"</span>: <span class="str">"2025-03-15T12:00:00"</span>,
-      <span class="str">"hv_hpc_x"</span>: <span class="num">-806.97</span>, <span class="str">"hv_hpc_y"</span>: <span class="num">440.01</span>, <span class="str">"footprint"</span>: [...], ...
-    }, ...
-  },
-  <span class="str">"observations"</span>: {
-    <span class="str">"2025-03-15 11:00:00"</span>: {<span class="str">"019c3d8f-0932-..."</span>: {<span class="str">"hv_hpc_x"</span>: <span class="num">-800.12</span>, <span class="str">"hv_hpc_y"</span>: <span class="num">439.88</span>}, ...},
-    <span class="str">"2025-03-15 12:00:00"</span>: { ... }
-  },
-  <span class="str">"errors"</span>: {}
-}</code></pre>
-                    <p>Static event data sent once in <code>events</code>. Per-timestamp rotated coords in <code>observations</code>. Client shifts footprints by center offset. Max 150 timestamps per request.</p>
-                </div>
-            </details>
-
             <h2>Event Data</h2>
 
             <details>
@@ -725,6 +555,218 @@ events = data[<span class="str">"events"</span>]</code></pre>
     ...
   }, ... <span class="cmt">// 100 events total</span>]
 }</code></pre>
+                </div>
+            </details>
+
+            <h2>Helioviewer.org Integration</h2>
+
+            <details>
+                <summary>
+                    <span class="method-badge method-get">GET</span>
+                    <span class="endpoint-path">/helioviewer/events/{source}/observation/{timestamp}</span>
+                    <span class="endpoint-desc">Legacy observation format</span>
+                </summary>
+                <div class="endpoint-detail">
+                    <p>Get events active at a specific observation time, grouped by event type with nested detection method groups.</p>
+                    <table class="param-table">
+                        <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
+                        <tr><td><code>source</code></td><td>path</td><td>Event source (CCMC, HEK, RHESSI)</td></tr>
+                        <tr><td><code>timestamp</code></td><td>path</td><td>Observation time (any supported format)</td></tr>
+                    </table>
+                    <pre><code><span class="kw">import</span> requests
+
+response = requests.<span class="fn">get</span>(
+    <span class="str">"https://events.helioviewer.org/helioviewer/events/HEK/observation/2025-03-15T12:00:00Z"</span>
+)
+data = response.<span class="fn">json</span>()</code></pre>
+                    <p><strong>Example response:</strong></p>
+                    <pre><code>[
+  {
+    "name": "Active Region",
+    "pin": "AR",
+    "groups": [{
+      "name": "HMI SHARP",
+      "contact": "turmon@jpl.nasa.gov",
+      "data": [{
+        "id": "019c3d8f-0932-...",
+        "path": "HEK&gt;&gt;Active Region&gt;&gt;HMI SHARP",
+        "start": "2025-03-15T08:00:00",
+        "end": "2025-03-15T12:00:00",
+        "hv_hpc_x": -806.97,
+        "hv_hpc_y": 440.01,
+        "label": "HMI SHARP 12923",
+        ...
+      }, ...]
+    }]
+  },
+  ... <span class="cmt">// 31 event type groups</span>
+]</code></pre>
+                </div>
+            </details>
+
+            <details>
+                <summary>
+                    <span class="method-badge method-post">POST</span>
+                    <span class="endpoint-path">/helioviewer/events/from/{from}/to/{to}</span>
+                    <span class="endpoint-desc">Events by path prefixes</span>
+                </summary>
+                <div class="endpoint-detail">
+                    <p>Get events matching path prefixes within a time range. Returns flat list with Helioviewer-specific fields.</p>
+                    <table class="param-table">
+                        <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
+                        <tr><td><code>from</code></td><td>path</td><td>Start time (Unix timestamp)</td></tr>
+                        <tr><td><code>to</code></td><td>path</td><td>End time (Unix timestamp)</td></tr>
+                        <tr><td><code>paths</code></td><td>body (JSON)</td><td>Array of event path prefixes</td></tr>
+                    </table>
+                    <pre><code><span class="kw">import</span> requests
+
+response = requests.<span class="fn">post</span>(
+    <span class="str">"https://events.helioviewer.org/helioviewer/events/from/1741996800/to/1742083200"</span>,
+    json={<span class="str">"paths"</span>: [<span class="str">"HEK&gt;&gt;Flare"</span>]}
+)
+data = response.<span class="fn">json</span>()</code></pre>
+                    <p><strong>Example response:</strong></p>
+                    <pre><code>{
+  "paths": ["HEK&gt;&gt;Flare"],
+  "from": 1741996800,
+  "to": 1742083200,
+  "count": 33,
+  "events": [{
+    "x": 1741999352000,
+    "x2": 1741999592000,
+    "y": 1,
+    "event_starttime": "2025-03-15 00:42:32",
+    "event_endtime": "2025-03-15 00:46:32",
+    "event_peaktime": "2025-03-15 00:44:20",
+    "hv_hpc_x": 345.6,
+    "hv_hpc_y": 192,
+    "event_type": "FL",
+    "frm_name": "Flare Detective - Trigger Module",
+    "concept": "Flare",
+    "hv_labels_formatted": {"Peak Flux": "37.4 DN/sec/pixel"},
+    ...
+  }, ...]
+}</code></pre>
+                </div>
+            </details>
+
+            <details>
+                <summary>
+                    <span class="method-badge method-post">POST</span>
+                    <span class="endpoint-path">/helioviewer/distributions/size/{size}/from/{from}/to/{to}</span>
+                    <span class="endpoint-desc">Event count distributions</span>
+                </summary>
+                <div class="endpoint-detail">
+                    <p>Get event count distributions aggregated into time buckets.</p>
+                    <table class="param-table">
+                        <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
+                        <tr><td><code>size</code></td><td>path</td><td>Bucket size: <code>30m</code>, <code>h</code>, <code>D</code>, <code>W</code>, <code>M</code>, <code>Y</code></td></tr>
+                        <tr><td><code>from</code></td><td>path</td><td>Start time (Unix timestamp)</td></tr>
+                        <tr><td><code>to</code></td><td>path</td><td>End time (Unix timestamp)</td></tr>
+                        <tr><td><code>paths</code></td><td>body (JSON)</td><td>Array of event path prefixes</td></tr>
+                    </table>
+                    <pre><code><span class="kw">import</span> requests
+
+response = requests.<span class="fn">post</span>(
+    <span class="str">"https://events.helioviewer.org/helioviewer/distributions/size/D/from/1741996800/to/1742256000"</span>,
+    json={<span class="str">"paths"</span>: [<span class="str">"HEK&gt;&gt;Flare"</span>, <span class="str">"CCMC&gt;&gt;DONKI&gt;&gt;CME"</span>]}
+)
+data = response.<span class="fn">json</span>()</code></pre>
+                    <p><strong>Example response:</strong></p>
+                    <pre><code>{
+  "paths": ["HEK&gt;&gt;Flare", "CCMC&gt;&gt;DONKI&gt;&gt;CME"],
+  "size": "D",
+  "from": 1741996800,
+  "to": 1742256000,
+  "event_types": ["CE", "FL"],
+  "buckets": [
+    {"start": 1741996800, "counts": {"CE": 9, "FL": 33}},
+    {"start": 1742083200, "counts": {"CE": 13, "FL": 73}},
+    {"start": 1742169600, "counts": {"CE": 16, "FL": 79}},
+    {"start": 1742256000, "counts": {"CE": 16, "FL": 49}}
+  ]
+}</code></pre>
+                </div>
+            </details>
+
+            <details>
+                <summary>
+                    <span class="method-badge method-post">POST</span>
+                    <span class="endpoint-path">/helioviewer/events/{sources}/observations</span>
+                    <span class="endpoint-desc">Batch observations (movie frames)</span>
+                </summary>
+                <div class="endpoint-detail">
+                    <p>Get deduplicated events + rotated coordinates for multiple timestamps in one request. Designed for movie rendering.</p>
+                    <table class="param-table">
+                        <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
+                        <tr><td><code>sources</code></td><td>path</td><td>Sources joined by <code>::</code> (e.g., <code>HEK::CCMC</code>)</td></tr>
+                        <tr><td><code>timestamps</code></td><td>body (JSON)</td><td>Array of datetime strings (max 150)</td></tr>
+                    </table>
+                    <pre><code><span class="kw">import</span> requests
+
+response = requests.<span class="fn">post</span>(
+    <span class="str">"https://events.helioviewer.org/helioviewer/events/HEK::CCMC/observations"</span>,
+    json={<span class="str">"timestamps"</span>: [<span class="str">"2025-03-15 11:00:00"</span>, <span class="str">"2025-03-15 12:00:00"</span>]}
+)
+data = response.<span class="fn">json</span>()</code></pre>
+                    <p><strong>Example response:</strong></p>
+                    <pre><code>{
+  <span class="str">"event_types"</span>: [{<span class="str">"name"</span>: <span class="str">"Active Region"</span>, <span class="str">"pin"</span>: <span class="str">"AR"</span>, <span class="str">"groups"</span>: [{<span class="str">"name"</span>: <span class="str">"HMI SHARP"</span>, <span class="str">"event_ids"</span>: [...]}]}, ...],
+  <span class="str">"events"</span>: {
+    <span class="str">"019c3d8f-0932-..."</span>: {
+      <span class="str">"label"</span>: <span class="str">"HMI SHARP 12923"</span>, <span class="str">"start"</span>: <span class="str">"2025-03-15T08:00:00"</span>, <span class="str">"end"</span>: <span class="str">"2025-03-15T12:00:00"</span>,
+      <span class="str">"hv_hpc_x"</span>: <span class="num">-806.97</span>, <span class="str">"hv_hpc_y"</span>: <span class="num">440.01</span>, <span class="str">"footprint"</span>: [...], ...
+    }, ...
+  },
+  <span class="str">"observations"</span>: {
+    <span class="str">"2025-03-15 11:00:00"</span>: {<span class="str">"019c3d8f-0932-..."</span>: {<span class="str">"hv_hpc_x"</span>: <span class="num">-800.12</span>, <span class="str">"hv_hpc_y"</span>: <span class="num">439.88</span>}, ...},
+    <span class="str">"2025-03-15 12:00:00"</span>: { ... }
+  },
+  <span class="str">"errors"</span>: {}
+}</code></pre>
+                    <p>Static event data sent once in <code>events</code>. Per-timestamp rotated coords in <code>observations</code>. Client shifts footprints by center offset. Max 150 timestamps per request.</p>
+                </div>
+            </details>
+
+            <details>
+                <summary>
+                    <span class="method-badge method-post">POST</span>
+                    <span class="endpoint-path">/helioviewer/events/frames_with_selections</span>
+                    <span class="endpoint-desc">Batch observations by selections</span>
+                </summary>
+                <div class="endpoint-detail">
+                    <p>Same shape as the previous endpoint, but the filter is a flexible selections array instead of a fixed sources segment.</p>
+                    <table class="param-table">
+                        <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
+                        <tr><td><code>timestamps</code></td><td>body (JSON)</td><td>Array of datetime strings (max 150)</td></tr>
+                        <tr><td><code>selections</code></td><td>body (JSON)</td><td>Array of path-prefix strings (max 200)</td></tr>
+                    </table>
+                    <pre><code><span class="kw">import</span> requests
+
+response = requests.<span class="fn">post</span>(
+    <span class="str">"https://events.helioviewer.org/helioviewer/events/frames_with_selections"</span>,
+    json={
+        <span class="str">"timestamps"</span>: [<span class="str">"2025-03-15 11:00:00"</span>, <span class="str">"2025-03-15 12:00:00"</span>],
+        <span class="str">"selections"</span>: [<span class="str">"HEK&gt;&gt;Flare"</span>, <span class="str">"CCMC&gt;&gt;DONKI&gt;&gt;CME"</span>]
+    }
+)
+data = response.<span class="fn">json</span>()</code></pre>
+                    <p><strong>Example response:</strong></p>
+                    <pre><code>{
+  <span class="str">"events"</span>: {
+    <span class="str">"019c3d8f-..."</span>: {
+      <span class="str">"path"</span>: <span class="str">"HEK&gt;&gt;Flare&gt;&gt;SSW Latest Events"</span>,
+      <span class="str">"label"</span>: <span class="str">"..."</span>, <span class="str">"start"</span>: <span class="str">"2025-03-15T11:50:00"</span>, <span class="str">"end"</span>: <span class="str">"2025-03-15T12:10:00"</span>,
+      <span class="str">"hv_hpc_x"</span>: <span class="num">-123.4</span>, <span class="str">"hv_hpc_y"</span>: <span class="num">567.8</span>, <span class="str">"footprint"</span>: [...],
+      <span class="str">"type"</span>: <span class="str">"FL"</span>, <span class="str">"pin"</span>: <span class="str">"FL"</span>
+    }, ...
+  },
+  <span class="str">"timestamps"</span>: {
+    <span class="str">"2025-03-15 11:00:00"</span>: {<span class="str">"019c3d8f-..."</span>: {<span class="str">"hv_hpc_x"</span>: <span class="num">-119.0</span>, <span class="str">"hv_hpc_y"</span>: <span class="num">570.2</span>}, ...},
+    <span class="str">"2025-03-15 12:00:00"</span>: { ... }
+  }
+}</code></pre>
+                    <p>A selection matches every event whose path equals the prefix or starts with that prefix. Max 150 timestamps and 200 selections per request.</p>
                 </div>
             </details>
 

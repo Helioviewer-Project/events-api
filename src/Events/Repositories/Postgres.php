@@ -188,6 +188,54 @@ class Postgres implements RepositoryInterface
     }
 
     /**
+     * Return events matching the given selections AND active at any of the timestamps.
+     *
+     * Selection logic (OR within the group):
+     *   - path-prefix entries match events where `path = prefix` or `path LIKE 'prefix>>%'`
+     *   - uuid entries match events where `id IN (...)`
+     *
+     * Timestamp logic (AND with selections, OR within timestamps):
+     *   - events whose [start, end] contains at least one requested timestamp
+     *
+     * @param array<string> $pathPrefixes Path-prefix selectors (e.g. "HEK", "HEK>>Flare")
+     * @param array<string> $uuids        Specific event UUIDs to include
+     * @param array<int>    $timestamps   Unix timestamps to consider
+     * @return Collection<int, Event>
+     */
+    public function findActiveAtAnyTimestampForSelections(
+        array $pathPrefixes,
+        array $uuids,
+        array $timestamps
+    ): Collection {
+        if ((empty($pathPrefixes) && empty($uuids)) || empty($timestamps)) {
+            return new Collection();
+        }
+
+        $pathPrefixes = array_values(array_unique(array_filter($pathPrefixes, fn($p) => $p !== '')));
+        $uuids        = array_values(array_unique(array_filter($uuids,        fn($u) => $u !== '')));
+        $timestamps   = array_values(array_unique($timestamps));
+
+        return Event::where(function ($q) use ($pathPrefixes, $uuids) {
+            foreach ($pathPrefixes as $prefix) {
+                $q->orWhere('path', '=', $prefix);
+                $q->orWhere('path', 'LIKE', $prefix . '>>%');
+            }
+            if (!empty($uuids)) {
+                $q->orWhereIn('id', $uuids);
+            }
+        })
+        ->where(function ($q) use ($timestamps) {
+            foreach ($timestamps as $t) {
+                $q->orWhere(function ($sub) use ($t) {
+                    $sub->where('start', '<=', $t)
+                        ->where('end', '>=', $t);
+                });
+            }
+        })
+        ->get();
+    }
+
+    /**
      * Retrieve events within a specified time range.
      *
      * Returns solar events that have any temporal overlap with the given

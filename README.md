@@ -302,6 +302,48 @@ Example response:
 
 For movies > 150 frames, split timestamps into chunks and merge `observations` across responses.
 
+#### POST `/helioviewer/events/frames_with_selections`
+
+Same shape as the previous endpoint, but the filter is a flexible selections array of path prefixes instead of a fixed sources segment. A selection matches every event whose path equals the prefix or starts with that prefix.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `timestamps` | body (JSON) | Array of datetime strings (max 150 per request) |
+| `selections` | body (JSON) | Array of path-prefix strings (max 200) |
+
+```python
+import requests
+
+response = requests.post(
+    "https://events.helioviewer.org/helioviewer/events/frames_with_selections",
+    json={
+        "timestamps": ["2025-03-15 11:00:00", "2025-03-15 12:00:00"],
+        "selections": ["HEK>>Flare", "CCMC>>DONKI>>CME"]
+    }
+)
+data = response.json()
+```
+
+Example response:
+```json
+{
+  "events": {
+    "019c3d8f-...": {
+      "path": "HEK>>Flare>>SSW Latest Events",
+      "label": "...", "start": "2025-03-15T11:50:00", "end": "2025-03-15T12:10:00",
+      "hv_hpc_x": -123.4, "hv_hpc_y": 567.8, "footprint": [...],
+      "type": "FL", "pin": "FL"
+    }
+  },
+  "timestamps": {
+    "2025-03-15 11:00:00": {"019c3d8f-...": {"hv_hpc_x": -119.0, "hv_hpc_y": 570.2}},
+    "2025-03-15 12:00:00": {"019c3d8f-...": {"hv_hpc_x": -113.7, "hv_hpc_y": 572.9}}
+  }
+}
+```
+
+`timestamps[ts]` is `{}` (object) if no event in the selection is active at that moment.
+
 ---
 
 ### Event Data (API v1)

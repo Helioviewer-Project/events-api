@@ -200,6 +200,153 @@ class HelioviewerController extends Controller
     }
 
     /**
+     * Get batch observations for multiple timestamps, filtered by an explicit
+     * selections list (mix of path prefixes and individual event UUIDs).
+     *
+     * Path-prefix selector matches events whose path equals the prefix OR starts
+     * with "prefix>>". UUID selector (last >>-segment matches the UUID pattern)
+     * matches that event by id; the breadcrumb prefix is ignored.
+     *
+     * Route: POST /helioviewer/events/frames_with_selections
+     * Body:  { "timestamps": [...], "selections": [...] }
+     *
+     * Response:
+     *   {
+     *     "events":     { "<uuid>": { static fields } },
+     *     "timestamps": { "<ts>":   { "<uuid>": { "hv_hpc_x": ..., "hv_hpc_y": ... } } }
+     *   }
+     */
+    public function getObservationsBySelection(Request $request, Response $response): Response
+    {
+        // Parse JSON body
+        $body = $request->getBody()->getContents();
+        $json = json_decode($body, true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            return $this->error($response, 'Invalid JSON body', 400);
+        }
+
+        // === Validate timestamps ===
+        $timestamps = $json['timestamps'] ?? [];
+        if (!is_array($timestamps) || empty($timestamps)) {
+            return $this->error($response, 'timestamps must be a non-empty array', 400);
+        }
+        if (count($timestamps) > 150) {
+            return $this->error($response, 'timestamps array exceeds maximum of 150 entries. Split into multiple requests.', 400);
+        }
+        $parsedTimestamps = [];
+        foreach ($timestamps as $i => $ts) {
+            try {
+                $parsedTimestamps[] = TimestampParser::parseTimestamp($ts);
+            } catch (\InvalidArgumentException $e) {
+                return $this->error($response, "Invalid timestamp at index {$i}: " . $e->getMessage(), 400);
+            }
+        }
+
+        // === Validate selections ===
+        $selections = $json['selections'] ?? [];
+        if (!is_array($selections) || empty($selections)) {
+            return $this->error($response, 'selections must be a non-empty array', 400);
+        }
+        if (count($selections) > 200) {
+            return $this->error($response, 'selections array exceeds maximum of 200 entries', 400);
+        }
+
+        // Classify each selection: trailing UUID-like segment → uuid, else path prefix
+        $uuidPattern = '/^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$/';
+        $pathPrefixes = [];
+        $uuids = [];
+        foreach ($selections as $sel) {
+            if (!is_string($sel) || $sel === '') continue;
+            $parts = explode('>>', $sel);
+            $last  = end($parts);
+            if (preg_match($uuidPattern, $last)) {
+                $uuids[] = $last;
+            } else {
+                $pathPrefixes[] = $sel;
+            }
+        }
+        $pathPrefixes = array_values(array_unique($pathPrefixes));
+        $uuids        = array_values(array_unique($uuids));
+
+        if (empty($pathPrefixes) && empty($uuids)) {
+            return $this->error($response, 'no usable path prefixes or UUIDs in selections', 400);
+        }
+
+        // === Single DB query: events matching selections AND active at any timestamp ===
+        try {
+            $allEvents = $this->eventRepository->findActiveAtAnyTimestampForSelections(
+                $pathPrefixes,
+                $uuids,
+                $parsedTimestamps
+            );
+        } catch (\Exception $e) {
+            $this->logger->error("Selection observations DB query failed: " . $e->getMessage());
+            $this->sentry->setContext('SelectionObservations', [
+                'path_prefixes' => count($pathPrefixes),
+                'uuids'         => count($uuids),
+                'timestamps'    => count($timestamps),
+            ]);
+            $this->sentry->capture($e);
+            return $this->error($response, 'Failed to query events', 500);
+        }
+
+        // === Build events dict (static fields, same shape as formatEventsBatched) ===
+        $eventsDict = [];
+        foreach ($allEvents as $event) {
+            $arr  = $event->toArray();
+            $uuid = $arr['id'];
+            $eventsDict[$uuid] = [
+                'remote_id'         => $arr['remote_id']     ?? null,
+                'path'              => $arr['path']          ?? null,
+                'label'             => $arr['label']         ?? null,
+                'short_label'       => $arr['short_label']   ?? null,
+                'start'             => isset($arr['start']) ? date('Y-m-d\TH:i:s', $arr['start']) : null,
+                'peak'              => isset($arr['peak'])  ? date('Y-m-d\TH:i:s', $arr['peak'])  : null,
+                'end'               => isset($arr['end'])   ? date('Y-m-d\TH:i:s', $arr['end'])   : null,
+                'hv_hpc_x'          => $arr['hv_hpc_x']      ?? null,
+                'hv_hpc_y'          => $arr['hv_hpc_y']      ?? null,
+                'footprint'         => $arr['footprint']     ?? [],
+                'coordinate_system' => $arr['coordinate_system'] ?? null,
+                'coordinate_time'   => isset($arr['coordinate_time']) ? date('Y-m-d\TH:i:s', $arr['coordinate_time']) : null,
+                'type'              => $arr['legacy_type']    ?? null,
+                'pin'               => $arr['legacy_pin']     ?? null,
+                'version'           => $arr['legacy_version'] ?? null,
+            ];
+        }
+
+        // === Per-timestamp rotated coordinates ===
+        $timestampsOut = [];
+        foreach ($parsedTimestamps as $idx => $t) {
+            $tsKey = $timestamps[$idx]; // original string used as key
+
+            $activeEvents = $allEvents
+                ->filter(fn($e) => $e->start <= $t && $e->end >= $t)
+                ->map(fn($e) => clone $e);
+
+            if ($activeEvents->isEmpty()) {
+                $timestampsOut[$tsKey] = (object) [];
+                continue;
+            }
+
+            $rotated = $this->coordinateRotator->rotate($activeEvents, $t);
+
+            $obs = [];
+            foreach ($rotated as $event) {
+                $obs[$event->id] = [
+                    'hv_hpc_x' => $event->hv_hpc_x,
+                    'hv_hpc_y' => $event->hv_hpc_y,
+                ];
+            }
+            $timestampsOut[$tsKey] = $obs;
+        }
+
+        return $this->json($response, [
+            'events'     => $eventsDict,
+            'timestamps' => $timestampsOut,
+        ]);
+    }
+
+    /**
      * Get event distribution (aggregated counts by time buckets) for multiple paths.
      *
      * Route: POST /helioviewer/distributions/size/{size}/from/{from}/to/{to}
