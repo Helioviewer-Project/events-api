@@ -152,6 +152,90 @@ class Postgres implements RepositoryInterface
     }
 
     /**
+     * Return events active at ANY of the given timestamps.
+     *
+     * Compiles into a single SQL with N ORed (start <= t AND end >= t)
+     * conditions. For sparse timestamps this returns ~(N × concurrent-at-each-t)
+     * rows instead of every event in the spanning window — orders of magnitude
+     * smaller than findActiveInWindow() when the movie covers a long span.
+     * For dense timestamps it costs about the same as the window query because
+     * the ORed ranges overlap heavily and Postgres dedups internally.
+     *
+     * @param array<string> $sources    Source names
+     * @param array<int>    $timestamps Unix timestamps to consider
+     * @return Collection<int, Event>
+     */
+    public function findActiveAtAnyTimestamp(array $sources, array $timestamps): Collection
+    {
+        if (empty($sources) || empty($timestamps)) {
+            return new Collection();
+        }
+
+        $sourceIds = array_map(fn($s) => $this->getSourceId($s), $sources);
+        // Dedup so the SQL stays compact if frames coincide on the same instant
+        $timestamps = array_values(array_unique($timestamps));
+
+        return Event::whereIn('source_id', $sourceIds)
+            ->where(function ($q) use ($timestamps) {
+                foreach ($timestamps as $t) {
+                    $q->orWhere(function ($sub) use ($t) {
+                        $sub->where('start', '<=', $t)
+                            ->where('end', '>=', $t);
+                    });
+                }
+            })
+            ->get();
+    }
+
+    /**
+     * Return events matching the given selections AND active at any of the timestamps.
+     *
+     * Selection logic (OR within the group):
+     *   - path-prefix entries match events where `path = prefix` or `path LIKE 'prefix>>%'`
+     *   - uuid entries match events where `id IN (...)`
+     *
+     * Timestamp logic (AND with selections, OR within timestamps):
+     *   - events whose [start, end] contains at least one requested timestamp
+     *
+     * @param array<string> $pathPrefixes Path-prefix selectors (e.g. "HEK", "HEK>>Flare")
+     * @param array<string> $uuids        Specific event UUIDs to include
+     * @param array<int>    $timestamps   Unix timestamps to consider
+     * @return Collection<int, Event>
+     */
+    public function findActiveAtAnyTimestampForSelections(
+        array $pathPrefixes,
+        array $uuids,
+        array $timestamps
+    ): Collection {
+        if ((empty($pathPrefixes) && empty($uuids)) || empty($timestamps)) {
+            return new Collection();
+        }
+
+        $pathPrefixes = array_values(array_unique(array_filter($pathPrefixes, fn($p) => $p !== '')));
+        $uuids        = array_values(array_unique(array_filter($uuids,        fn($u) => $u !== '')));
+        $timestamps   = array_values(array_unique($timestamps));
+
+        return Event::where(function ($q) use ($pathPrefixes, $uuids) {
+            foreach ($pathPrefixes as $prefix) {
+                $q->orWhere('path', '=', $prefix);
+                $q->orWhere('path', 'LIKE', $prefix . '>>%');
+            }
+            if (!empty($uuids)) {
+                $q->orWhereIn('id', $uuids);
+            }
+        })
+        ->where(function ($q) use ($timestamps) {
+            foreach ($timestamps as $t) {
+                $q->orWhere(function ($sub) use ($t) {
+                    $sub->where('start', '<=', $t)
+                        ->where('end', '>=', $t);
+                });
+            }
+        })
+        ->get();
+    }
+
+    /**
      * Retrieve events within a specified time range.
      *
      * Returns solar events that have any temporal overlap with the given
