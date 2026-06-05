@@ -49,15 +49,17 @@ abstract class JsonSource implements SourceInterface
      */
     public const CCMC = 1;    // Community Coordinated Modeling Center
     public const HEK = 2;     // Heliophysics Event Knowledgebase
+    public const WSA = 3;     // Wang-Sheeley-Arge model (HelioAnalytics dashboard)
     public const RHESSI = 4;  // Reuven Ramaty High Energy Solar Spectroscopic Imager
 
     /** Currently active sources — single source of truth for validation */
-    public const VALID_SOURCES = ['CCMC', 'HEK', 'RHESSI'];
+    public const VALID_SOURCES = ['CCMC', 'HEK', 'WSA', 'RHESSI'];
 
     /** Map source name to source_id */
     private const SOURCE_MAP = [
         'CCMC' => self::CCMC,
         'HEK' => self::HEK,
+        'WSA' => self::WSA,
         'RHESSI' => self::RHESSI,
     ];
 
