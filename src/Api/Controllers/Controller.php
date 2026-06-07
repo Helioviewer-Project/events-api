@@ -15,6 +15,7 @@ use Psr\SimpleCache\CacheInterface;
 use Psr\Http\Client\ClientInterface;
 use Helioviewer\EventsApi\Coordinator\CoordinateRotator;
 use Helioviewer\EventsApi\Events\Event;
+use Helioviewer\EventsApi\Events\Sources\JsonSource;
 use Helioviewer\EventsApi\Sentry\ClientInterface as SentryClientInterface;
 
 /**
@@ -97,38 +98,83 @@ abstract class Controller
     }
 
     /**
-     * Helper method to enhance event with additional data
+     * Enhance an event with sidecar JSONs, legacy aliases, computed
+     * legacy_id, and API URL helpers. Accepts either an Event model or a
+     * plain array (matches what the repositories return for batch reads).
+     *
+     * Per-event shape mirrors `Legacy::normalizeEvent` (used by the
+     * `/helioviewer/events/...` endpoints) so consumers get a consistent
+     * record across both APIs. Additively keeps the legacy `url` and
+     * `source_url` helpers from the v1 contract.
      */
-    protected function enhanceEvent(Event $event): array
+    protected function enhanceEvent(Event|array $event): array
     {
-        $eventArray = $event->toArray();
-        $uuid = $event->id;
+        $eventArray = is_array($event) ? $event : $event->toArray();
+        $uuid       = $eventArray['id'] ?? null;
 
-        // Format timestamps
+        // Format timestamps (existing v1 contract: space-separated)
         foreach (['start', 'end', 'peak', 'coordinate_time'] as $field) {
-            if (!empty($eventArray[$field])) {
-                $eventArray[$field] = $this->formatTimestamp($eventArray[$field]);
+            if (!empty($eventArray[$field]) && is_numeric($eventArray[$field])) {
+                $eventArray[$field] = $this->formatTimestamp((int) $eventArray[$field]);
             }
         }
 
-        // Add source, views, and links from JSON storage
-        $eventArray['source'] = $this->jsonStorage->load("/u/apps/data/sources/{$uuid}.json") ?: null;
-        $eventArray['views'] = $this->jsonStorage->load("/u/apps/data/views/{$uuid}.json") ?: [];
-        $eventArray['link'] = $this->jsonStorage->load("/u/apps/data/links/{$uuid}.json");
+        // Legacy aliases (parity with Helioviewer endpoint shape)
+        $eventArray['type']       = $eventArray['legacy_type']    ?? null;
+        $eventArray['event_type'] = $eventArray['legacy_type']    ?? null;
+        $eventArray['version']    = $eventArray['legacy_version'] ?? null;
+        $eventArray['pin']        = $eventArray['legacy_pin']     ?? null;
 
-        // Add API URLs - replace id with url, source with source_url
-        $apiUrl = rtrim($_ENV['APIURL'] ?? 'https://events.helioviewer.org/', '/');
-        $reorderedArray = [];
-        foreach ($eventArray as $key => $value) {
-            if ($key === 'id') {
-                $reorderedArray['url'] = "{$apiUrl}/api/v1/events/{$uuid}";
-            } elseif ($key === 'source') {
-                $reorderedArray['source_url'] = "{$apiUrl}/api/v1/events/{$uuid}/source";
+        // Sidecar JSONs (source/views/link)
+        if ($uuid !== null) {
+            $sourceData = $this->jsonStorage->load("/u/apps/data/sources/{$uuid}.json");
+            $eventArray['source'] = $sourceData ?: null;
+
+            $viewsData = $this->jsonStorage->load("/u/apps/data/views/{$uuid}.json");
+            $eventArray['views'] = $viewsData ?: [];
+
+            $linksData = $this->jsonStorage->load("/u/apps/data/links/{$uuid}.json");
+            if (empty($linksData)) {
+                $linksData = [
+                    'url'  => Event::getUrlById($uuid),
+                    'text' => 'Helioviewer Event URL',
+                ];
+            }
+            $eventArray['link'] = $linksData;
+
+            if (($eventArray['source_id'] ?? null) === JsonSource::HEK) {
+                $eventArray['concept'] = $eventArray['source']['concept'] ?? null;
+            }
+        }
+
+        // legacy_id per source (mirrors Legacy::normalizeEvent)
+        if (isset($eventArray['path'])) {
+            $path      = $eventArray['path'];
+            $pathParts = explode('>>', $path);
+            $source    = $eventArray['source'] ?? [];
+
+            if ($path === 'CCMC>>DONKI>>CME') {
+                $eventArray['legacy_id'] = $source['activityID'] ?? $eventArray['id'];
+            } elseif ($path === 'CCMC>>DONKI>>Solar Flares') {
+                $eventArray['legacy_id'] = $source['flrID'] ?? $eventArray['id'];
+            } elseif (str_starts_with($path, 'CCMC>>Solar Flare Predictions>>') && count($pathParts) === 3) {
+                $eventArray['legacy_id'] = hash('sha256', json_encode($source));
+            } elseif (str_starts_with($path, 'RHESSI>>Solar Flares>>Flare') && count($pathParts) === 3) {
+                $eventArray['legacy_id'] = $source['id'] ?? $eventArray['id'];
+            } elseif (str_starts_with($path, 'HEK>>')) {
+                $eventArray['legacy_id'] = $source['kb_archivid'] ?? $eventArray['id'];
             } else {
-                $reorderedArray[$key] = $value;
+                $eventArray['legacy_id'] = $eventArray['id'];
             }
         }
 
-        return $reorderedArray;
+        // v1 contract: include API URL helpers alongside id/source (additive)
+        if ($uuid !== null) {
+            $apiUrl = rtrim($_ENV['APIURL'] ?? 'https://events.helioviewer.org/', '/');
+            $eventArray['url']        = "{$apiUrl}/api/v1/events/{$uuid}";
+            $eventArray['source_url'] = "{$apiUrl}/api/v1/events/{$uuid}/source";
+        }
+
+        return $eventArray;
     }
 }
