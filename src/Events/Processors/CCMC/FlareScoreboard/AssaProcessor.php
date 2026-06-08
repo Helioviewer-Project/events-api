@@ -40,12 +40,21 @@ class AssaProcessor extends Processor
      */
     protected function readCoordinates(array $rawRecord): ?array
     {
+        // CCMC bug: upstream sends -1 as the default value for a missing NOAA
+        // response (LocationTime and both coordinates all -1). Skip NOAA in that
+        // case and fall through to Catania/Model.
+        $invalidNoaaResponseDueMinusOneDefaultValueCCMCbug =
+            ($rawRecord['NOAALocationTime'] ?? null) == -1
+            && ($rawRecord['NOAALatitude'] ?? null) == -1
+            && ($rawRecord['NOAALongitude'] ?? null) == -1;
+
         // ASSA-specific: Try NOAA first, but don't require NOAARegionId
-        if (isset($rawRecord['NOAALatitude']) && 
+        if (!$invalidNoaaResponseDueMinusOneDefaultValueCCMCbug &&
+            isset($rawRecord['NOAALatitude']) &&
             isset($rawRecord['NOAALongitude']) &&
             $rawRecord['NOAALatitude'] !== '' &&
             $rawRecord['NOAALongitude'] !== '') {
-            
+
             // Handle 0 values correctly - use isset instead of !empty
             $regionId = (isset($rawRecord['NOAARegionId']) && $rawRecord['NOAARegionId'] !== '') ? $rawRecord['NOAARegionId'] : 'Unknown';
             $this->logger->info("ASSA: Using NOAA coordinates for region {$regionId}");
@@ -76,42 +85,10 @@ class AssaProcessor extends Processor
         return null;
     }
     
-    /**
-     * Collect all region information from raw record for ASSA
-     * 
-     * @param array $rawRecord The raw event data
-     * @return array Array of region info arrays
-     */
-    protected function collectRegions(array $rawRecord): array
-    {
-        // First get all regions from parent implementation
-        $regions = parent::collectRegions($rawRecord);
-        
-        // Use array_filter to check if NOAA region exists
-        $noaaRegions = array_filter($regions, function($region) {
-            return $region['organization'] === 'NOAA';
-        });
-        
-        // If NOAA region already exists, return as-is
-        if (!empty($noaaRegions)) {
-            return $regions;
-        }
-        
-        // No NOAA region found - check if NOAA coordinates exist
-        if (isset($rawRecord['NOAALatitude']) && 
-            isset($rawRecord['NOAALongitude']) &&
-            $rawRecord['NOAALatitude'] !== '' &&
-            $rawRecord['NOAALongitude'] !== '') {
-            
-            // Add NOAA with 'UNK' id
-            $regions[] = [
-                'organization' => 'NOAA',
-                'external_id' => 'UNK'
-            ];
-            
-            $this->logger->debug("ASSA: Added NOAA region with ID: UNK (coordinates exist but no RegionId)");
-        }
-        
-        return $regions;
-    }
+    // collectRegions() is intentionally NOT overridden: ASSA links NOAA/Catania/
+    // Model regions only when their RegionId is present (the base behavior). We
+    // no longer attach a placeholder NOAA:UNK region for records that carry NOAA
+    // coordinates but no NOAARegionId — coordinates still come from those values
+    // in readCoordinates(), but the event is not grouped under a NOAA region it
+    // doesn't actually have.
 }
