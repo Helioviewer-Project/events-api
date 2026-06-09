@@ -523,6 +523,56 @@ class Postgres implements RepositoryInterface
     }
 
     /**
+     * Page over events matching any of the given path prefixes, ordered by
+     * start time — same semantics as getWithPage() but path-restricted.
+     *
+     * @param array<string> $pathPrefixes
+     * @return array<Event>
+     */
+    public function getByPathPrefixesWithPage(array $pathPrefixes, int $page, int $pageSize): array
+    {
+        $pathPrefixes = array_values(array_filter($pathPrefixes, fn($p) => $p !== ''));
+        if (empty($pathPrefixes)) {
+            return [];
+        }
+
+        $offset = $page * $pageSize;
+
+        return Event::where(function (Builder $query) use ($pathPrefixes) {
+                foreach ($pathPrefixes as $prefix) {
+                    $query->orWhere('path', '=', $prefix);
+                    $query->orWhere('path', 'LIKE', $prefix . '>>%');
+                }
+            })
+            ->orderBy('start')
+            ->offset($offset)
+            ->limit($pageSize)
+            ->get()
+            ->all();
+    }
+
+    /**
+     * Count events matching any of the given path prefixes
+     * (path = prefix OR path LIKE 'prefix>>%').
+     *
+     * @param array<string> $pathPrefixes
+     */
+    public function countByPathPrefixes(array $pathPrefixes): int
+    {
+        $pathPrefixes = array_values(array_filter($pathPrefixes, fn($p) => $p !== ''));
+        if (empty($pathPrefixes)) {
+            return 0;
+        }
+
+        return Event::where(function (Builder $query) use ($pathPrefixes) {
+            foreach ($pathPrefixes as $prefix) {
+                $query->orWhere('path', '=', $prefix);
+                $query->orWhere('path', 'LIKE', $prefix . '>>%');
+            }
+        })->count();
+    }
+
+    /**
      * Find events matching any of the given path prefixes that overlap with time range.
      *
      * An event overlaps with [start, end] if: event.start < end AND event.end > start

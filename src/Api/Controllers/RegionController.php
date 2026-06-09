@@ -87,47 +87,8 @@ class RegionController extends Controller
                 ->limit(2000)
                 ->get();
 
-            // Format events
-            $enhancedEvents = $events->map(function ($event) {
-                $eventArray = (array)$event;
-                $uuid = $eventArray['id'];
-
-                // Format timestamps
-                foreach (['start', 'end', 'peak', 'coordinate_time'] as $field) {
-                    if (!empty($eventArray[$field])) {
-                        $eventArray[$field] = $this->formatTimestamp($eventArray[$field]);
-                    }
-                }
-
-                // Load source JSON data
-                $sourceData = $this->jsonStorage->load("/u/apps/data/sources/{$uuid}.json");
-                $eventArray['source'] = $sourceData ?: null;
-
-                // Load views JSON data
-                $viewsData = $this->jsonStorage->load("/u/apps/data/views/{$uuid}.json");
-                $eventArray['views'] = $viewsData ?: [];
-
-                // Load links JSON data
-                $linksData = $this->jsonStorage->load("/u/apps/data/links/{$uuid}.json");
-                $eventArray['link'] = $linksData;
-
-                // Add API links
-                $apiUrl = rtrim($_ENV['APIURL'] ?? 'https://events.helioviewer.org/', '/');
-
-                // Replace id with url and source with source_url
-                $reorderedArray = [];
-                foreach ($eventArray as $key => $value) {
-                    if ($key === 'id') {
-                        $reorderedArray['url'] = "{$apiUrl}/api/v1/events/{$uuid}";
-                    } elseif ($key === 'source') {
-                        $reorderedArray['source_url'] = "{$apiUrl}/api/v1/events/{$uuid}/source";
-                    } else {
-                        $reorderedArray[$key] = $value;
-                    }
-                }
-
-                return $reorderedArray;
-            })->toArray();
+            // Format events (mirrors EventController shape; events come back as stdClass from the JOIN query)
+            $enhancedEvents = $events->map(fn($event) => $this->enhanceEvent((array) $event))->toArray();
 
             $result = [
                 'region' => [

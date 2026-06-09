@@ -75,7 +75,14 @@ if (!$apply) {
 }
 
 $pageSize = 1000;
-$totalEvents = $eventRepository->count();
+// When a path filter is given, page over only the matching events (SQL-filtered)
+// instead of scanning the whole table. Same set is reprocessed — the in-loop
+// eventMatchesFilter() check below still applies. Unfiltered runs (no PATHS) keep
+// the original full-table scan.
+$filtered = !empty($pathPrefixes);
+$totalEvents = $filtered
+    ? $eventRepository->countByPathPrefixes($pathPrefixes)
+    : $eventRepository->count();
 $totalPages = (int) ceil($totalEvents / $pageSize);
 $logger->info("Scanning {$totalEvents} events in {$totalPages} pages of {$pageSize}");
 
@@ -89,7 +96,9 @@ $startTime = microtime(true);
 
 try {
     for ($page = 0; $page < $totalPages; $page++) {
-        $events = $eventRepository->getWithPage($page, $pageSize);
+        $events = $filtered
+            ? $eventRepository->getByPathPrefixesWithPage($pathPrefixes, $page, $pageSize)
+            : $eventRepository->getWithPage($page, $pageSize);
 
 
 

@@ -16,52 +16,7 @@ class EventController extends Controller
     {
         try {
             $events = $this->eventRepository->getRecent(100);
-
-            // Enhance events with source, views, links, and regions data
-            $enhancedEvents = array_map(function ($event) {
-                // Convert Event object to array (includes regions from eager loading)
-                $eventArray = is_array($event) ? $event : $event->toArray();
-                $uuid = $eventArray['id'];
-
-                // Format timestamps (replace raw values)
-                foreach (['start', 'end', 'peak', 'coordinate_time'] as $field) {
-                    if (!empty($eventArray[$field])) {
-                        $eventArray[$field] = $this->formatTimestamp($eventArray[$field]);
-                    }
-                }
-                // created_at and updated_at are already formatted by Eloquent
-
-                // Load source JSON data
-                $sourceData = $this->jsonStorage->load("/u/apps/data/sources/{$uuid}.json");
-                $eventArray['source'] = $sourceData ?: null;
-
-                // Load views JSON data
-                $viewsData = $this->jsonStorage->load("/u/apps/data/views/{$uuid}.json");
-                $eventArray['views'] = $viewsData ?: [];
-
-                // Load links JSON data
-                $linksData = $this->jsonStorage->load("/u/apps/data/links/{$uuid}.json");
-                // Links can be either an array or object, preserve what's loaded
-                $eventArray['link'] = $linksData;
-
-                // Add API links - replace id with url, replace source with source_url
-                $apiUrl = rtrim($_ENV['APIURL'] ?? 'https://events.helioviewer.org/', '/');
-
-                // Replace id with url and source with source_url
-                $reorderedArray = [];
-                foreach ($eventArray as $key => $value) {
-                    if ($key === 'id') {
-                        $reorderedArray['url'] = "{$apiUrl}/api/v1/events/{$uuid}";
-                    } elseif ($key === 'source') {
-                        $reorderedArray['source_url'] = "{$apiUrl}/api/v1/events/{$uuid}/source";
-                    } else {
-                        $reorderedArray[$key] = $value;
-                    }
-                }
-
-                return $reorderedArray;
-            }, $events);
-
+            $enhancedEvents = array_map(fn($e) => $this->enhanceEvent($e), $events);
             return $this->json($response, $enhancedEvents);
 
         } catch (\Exception $e) {
