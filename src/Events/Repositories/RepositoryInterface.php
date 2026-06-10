@@ -168,6 +168,32 @@ interface RepositoryInterface
     public function getWithPage(int $page, int $pageSize): array;
 
     /**
+     * Retrieve a page of events whose path matches any of the given prefixes,
+     * ordered by start time (oldest first). Same ordering/semantics as
+     * {@see getWithPage()} but restricted to matching paths so batch jobs can
+     * walk only the relevant subset instead of the whole table.
+     *
+     * A path matches a prefix when `path = prefix` OR `path LIKE 'prefix>>%'`.
+     *
+     * @param array<string> $pathPrefixes Path-prefix selectors (e.g. "HEK", "HEK>>Flare")
+     * @param int           $page         Page number (0-indexed)
+     * @param int           $pageSize     Number of events per page
+     *
+     * @return array<Event>
+     */
+    public function getByPathPrefixesWithPage(array $pathPrefixes, int $page, int $pageSize): array;
+
+    /**
+     * Count events whose path matches any of the given prefixes
+     * (`path = prefix` OR `path LIKE 'prefix>>%'`).
+     *
+     * @param array<string> $pathPrefixes Path-prefix selectors
+     *
+     * @return int Number of matching events
+     */
+    public function countByPathPrefixes(array $pathPrefixes): int;
+
+    /**
      * Find an event by its remote ID.
      *
      * @param string $remoteId The unique identifier from the source system
