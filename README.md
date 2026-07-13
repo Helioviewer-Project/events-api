@@ -259,52 +259,9 @@ Example response:
 }
 ```
 
-#### POST `/helioviewer/events/{sources}/observations`
-
-Get deduplicated events + rotated coordinates for multiple timestamps. Designed for movie rendering — static event data sent once, per-timestamp rotated coordinates sent separately.
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `sources` | path | Sources joined by `::` (e.g., `HEK::CCMC`) |
-| `timestamps` | body (JSON) | Array of datetime strings (max 150 per request) |
-
-```python
-import requests
-
-response = requests.post(
-    "https://events.helioviewer.org/helioviewer/events/HEK::CCMC/observations",
-    json={"timestamps": ["2025-03-15 11:00:00", "2025-03-15 12:00:00"]}
-)
-data = response.json()
-```
-
-Example response:
-```json
-{
-  "event_types": [{"name": "Active Region", "pin": "AR", "groups": [{"name": "HMI SHARP", "event_ids": ["019c3d8f-..."]}]}],
-  "events": {
-    "019c3d8f-...": {
-      "label": "HMI SHARP 12923",
-      "start": "2025-03-15T08:00:00",
-      "end": "2025-03-15T12:00:00",
-      "hv_hpc_x": -806.97, "hv_hpc_y": 440.01,
-      "footprint": [{"x": -810.2, "y": 438.5}, "..."],
-      "type": "AR", "concept": "Active Region"
-    }
-  },
-  "observations": {
-    "2025-03-15 11:00:00": {"019c3d8f-...": {"hv_hpc_x": -800.12, "hv_hpc_y": 439.88}, "..."},
-    "2025-03-15 12:00:00": {"..."}
-  },
-  "errors": {}
-}
-```
-
-For movies > 150 frames, split timestamps into chunks and merge `observations` across responses.
-
 #### POST `/helioviewer/events/frames_with_selections`
 
-Same shape as the previous endpoint, but the filter is a flexible selections array of path prefixes instead of a fixed sources segment. A selection matches every event whose path equals the prefix or starts with that prefix.
+Get deduplicated events + rotated coordinates for multiple timestamps, filtered by a flexible `selections` array of path prefixes — designed for movie rendering (static event data sent once, per-timestamp rotated coordinates sent separately). A selection matches every event whose path equals the prefix or starts with that prefix.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -343,6 +300,8 @@ Example response:
 ```
 
 `timestamps[ts]` is `{}` (object) if no event in the selection is active at that moment.
+
+For movies > 150 frames, split timestamps into chunks and merge `timestamps` across responses.
 
 ---
 
