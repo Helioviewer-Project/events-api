@@ -10,8 +10,8 @@ use Helioviewer\EventsApi\Events\Sources\JsonSource;
 use Helioviewer\EventsApi\Events\Sources\SourceInterface;
 use Helioviewer\EventsApi\Exception\CoordinateResolutionException;
 use Helioviewer\EventsApi\Sentry\ClientInterface as SentryClientInterface;
+use GuzzleHttp\Exception\GuzzleException;
 use HelioviewerEventInterface\Translator\DonkiCme as EventInterfaceDonkiCme;
-use HelioviewerEventInterface\Translator\IgnoreCme;
 use HelioviewerEventInterface\Util\LocationParser;
 use Psr\Log\LoggerInterface;
 
@@ -258,7 +258,26 @@ class DonkiCmeProcessor extends BaseProcessor
         
         // Use existing event interface translator to transform raw DONKI data
         // This handles labeling and view generation
-        $translatedEvent = EventInterfaceDonkiCme::buildTranslatedCME($rawRecord);
+        try {
+            $translatedEvent = EventInterfaceDonkiCme::buildTranslatedCME($rawRecord);
+        } catch (GuzzleException $e) {
+            // The translator scrapes each WSA-ENLIL model's DONKI page for gif
+            // links; a dead/500ing model page must not kill this record (nor the
+            // whole collect chunk it is part of). Retry without the model runs —
+            // the event survives with its CME/analysis views, just without model
+            // tabs until the page recovers.
+            $this->logger->warning("DonkiCmeProcessor | model-page scrape failed for {$rawRecord['activityID']}: {$e->getMessage()} | retrying without model runs");
+            $sanitized = $rawRecord;
+            if (isset($sanitized['cmeAnalyses']) && is_array($sanitized['cmeAnalyses'])) {
+                // Iterate the array itself — a by-reference foreach over the
+                // `?? []` temporary would mutate a copy and strip nothing.
+                foreach ($sanitized['cmeAnalyses'] as &$analysis) {
+                    unset($analysis['enlilList']);
+                }
+                unset($analysis);
+            }
+            $translatedEvent = EventInterfaceDonkiCme::buildTranslatedCME($sanitized);
+        }
 
         // Default values
         $endTime = strtotime($translatedEvent['end']); // Default end time from translatedEvent
@@ -338,7 +357,7 @@ class DonkiCmeProcessor extends BaseProcessor
         
         // Add views and links data to be processed by Collector
         if (isset($translatedEvent['views'])) {
-            $event->legacy_views = $translatedEvent['views'];
+            $event->legacy_views = $this->fixIswaGifLinks($translatedEvent['views']);
         }
         
         if (isset($translatedEvent['link'])) {
@@ -349,7 +368,37 @@ class DonkiCmeProcessor extends BaseProcessor
         if ($regionInfo) {
             $event->region_info = $regionInfo;
         }
-        
+
         return $event;
+    }
+
+    /**
+     * Rewrite ISWA gif links in the translated views to the redirect API.
+     *
+     * The WSA-ENLIL model gifs scraped off DONKI model pages point at ISWA's
+     * old direct-download form (https://iswa.gsfc.nasa.gov/downloads/<file>.gif),
+     * which no longer serves the files. They must go through the redirect API:
+     * https://iswa.gsfc.nasa.gov/api/redirect?filename=<file>.gif
+     *
+     * @param array $views Translated views (list of ['name','content',…] tabs)
+     * @return array Views with rewritten gif URLs
+     */
+    private function fixIswaGifLinks(array $views): array
+    {
+        foreach ($views as &$view) {
+            if (!isset($view['content']) || !is_array($view['content'])) {
+                continue;
+            }
+            foreach ($view['content'] as &$value) {
+                if (is_string($value)
+                    && preg_match('#^https?://(iswa(?:\.ccmc)?\.gsfc\.nasa\.gov)/downloads/([^/?\s]+\.gif)$#i', $value, $match)) {
+                    $value = "https://{$match[1]}/api/redirect?filename=" . $match[2];
+                }
+            }
+            unset($value);
+        }
+        unset($view);
+
+        return $views;
     }
 }
