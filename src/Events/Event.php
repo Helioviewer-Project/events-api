@@ -35,7 +35,8 @@ use Illuminate\Database\Eloquent\Builder;
  * @property int $coordinate_time Time when coordinates were observed as Unix timestamp
  * @property float|null $hv_hpc_x Helioviewer HPC X coordinate
  * @property float|null $hv_hpc_y Helioviewer HPC Y coordinate
- * @property string|null $coordinate_system Coordinate system (stonyhurst, helioprojective)
+ * @property string|null $coordinate_system Coordinate system (stonyhurst, helioprojective, carrington)
+ * @property array $footprint Footprint as a LIST of polygons: [[{x,y},…],…] (single-polygon events hold one entry)
  * @property string|null $label Human-readable event label
  * @property string $short_label Shorter event label
  * @property string|null $legacy_version Legacy version identifier
