@@ -288,7 +288,7 @@ Example response:
     "019c3d8f-...": {
       "path": "HEK>>Flare>>SSW Latest Events",
       "label": "...", "start": "2025-03-15T11:50:00", "end": "2025-03-15T12:10:00",
-      "hv_hpc_x": -123.4, "hv_hpc_y": 567.8, "footprint": [...],
+      "hv_hpc_x": -123.4, "hv_hpc_y": 567.8, "footprint": [[...]],
       "type": "FL", "pin": "FL"
     }
   },
@@ -302,6 +302,8 @@ Example response:
 `timestamps[ts]` is `{}` (object) if no event in the selection is active at that moment.
 
 For movies > 150 frames, split timestamps into chunks and merge `timestamps` across responses.
+
+`footprint` is a **list of polygons** (`[[{x,y},…],…]` — multi-contour events like WSA coronal-hole maps carry several). To render a frame, shift every polygon's points by the per-timestamp center offset.
 
 ---
 

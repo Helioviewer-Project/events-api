@@ -696,7 +696,7 @@ data = response.<span class="fn">json</span>()</code></pre>
                     <span class="endpoint-desc">Batch observations by selections</span>
                 </summary>
                 <div class="endpoint-detail">
-                    <p>Batch observations filtered by a flexible selections array of path prefixes. Static event data sent once in <code>events</code>; per-timestamp rotated coords in <code>timestamps</code>. Client shifts footprints by center offset.</p>
+                    <p>Batch observations filtered by a flexible selections array of path prefixes. Static event data sent once in <code>events</code>; per-timestamp rotated coords in <code>timestamps</code>. <code>footprint</code> is a list of polygons; the client shifts every polygon's points by the center offset.</p>
                     <table class="param-table">
                         <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
                         <tr><td><code>timestamps</code></td><td>body (JSON)</td><td>Array of datetime strings (max 150)</td></tr>
@@ -718,7 +718,7 @@ data = response.<span class="fn">json</span>()</code></pre>
     <span class="str">"019c3d8f-..."</span>: {
       <span class="str">"path"</span>: <span class="str">"HEK&gt;&gt;Flare&gt;&gt;SSW Latest Events"</span>,
       <span class="str">"label"</span>: <span class="str">"..."</span>, <span class="str">"start"</span>: <span class="str">"2025-03-15T11:50:00"</span>, <span class="str">"end"</span>: <span class="str">"2025-03-15T12:10:00"</span>,
-      <span class="str">"hv_hpc_x"</span>: <span class="num">-123.4</span>, <span class="str">"hv_hpc_y"</span>: <span class="num">567.8</span>, <span class="str">"footprint"</span>: [...],
+      <span class="str">"hv_hpc_x"</span>: <span class="num">-123.4</span>, <span class="str">"hv_hpc_y"</span>: <span class="num">567.8</span>, <span class="str">"footprint"</span>: [[...]],
       <span class="str">"type"</span>: <span class="str">"FL"</span>, <span class="str">"pin"</span>: <span class="str">"FL"</span>
     }, ...
   },
