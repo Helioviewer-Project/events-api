@@ -32,6 +32,23 @@ interface CoordinatorInterface
     public function stonyhurstToHelioprojectiveBatch(array $coordinateArray, $targetTimestamp): array;
 
     /**
+     * Batch transform multiple Heliographic Carrington coordinates to Helioprojective Cartesian
+     *
+     * @param array $coordinateArray Array of coordinate data with 'lat', 'lon', 'coordinate_time' keys
+     * Example: [
+     *     ['lat' => 15.0, 'lon' => 120.0, 'coordinate_time' => 1715428800],
+     *     ['lat' => -10.0, 'lon' => 245.0, 'coordinate_time' => 1715432400]
+     * ]
+     * @param int|string $targetTimestamp Target time for coordinate rotation
+     * @return array Array of rotated coordinates in same order as input
+     * Example: [
+     *     ['hpc_x' => 123.45, 'hpc_y' => -67.89],
+     *     ['hpc_x' => -234.56, 'hpc_y' => 78.90]
+     * ]
+     */
+    public function carringtonToHelioprojectiveBatch(array $coordinateArray, $targetTimestamp): array;
+
+    /**
      * Batch transform HPC coordinates to HPC at a different observation time
      *
      * Transforms Helioprojective coordinates from their original observation time
