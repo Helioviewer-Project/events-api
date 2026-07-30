@@ -91,6 +91,16 @@ class HttpCoordinator implements CoordinatorInterface
                 throw new CoordinatorException("Invalid response format from coordinator service");
             }
 
+            // Results are matched to events by POSITION, so a short reply would
+            // silently leave the tail of the batch on its old coordinates and a
+            // long one would index past $originalKeys. Fail loudly instead.
+            $returned = count($responseData['coordinates']);
+            if ($returned !== $coordCount) {
+                throw new CoordinatorException(
+                    "Coordinator returned {$returned} coordinates for {$coordCount} sent"
+                );
+            }
+
             // Format the results, restoring original keys
             $rotatedCoordinates = [];
             foreach ($responseData['coordinates'] as $index => $result) {
@@ -174,6 +184,16 @@ class HttpCoordinator implements CoordinatorInterface
 
             if (!isset($responseData['coordinates']) || !is_array($responseData['coordinates'])) {
                 throw new CoordinatorException("Invalid response format from coordinator service");
+            }
+
+            // Results are matched to events by POSITION, so a short reply would
+            // silently leave the tail of the batch on its old coordinates and a
+            // long one would index past $originalKeys. Fail loudly instead.
+            $returned = count($responseData['coordinates']);
+            if ($returned !== $coordCount) {
+                throw new CoordinatorException(
+                    "Coordinator returned {$returned} coordinates for {$coordCount} sent"
+                );
             }
 
             // Format the results, restoring original keys
@@ -263,6 +283,16 @@ class HttpCoordinator implements CoordinatorInterface
 
             if (!isset($responseData['coordinates']) || !is_array($responseData['coordinates'])) {
                 throw new CoordinatorException("Invalid response format from coordinator service");
+            }
+
+            // Results are matched to events by POSITION, so a short reply would
+            // silently leave the tail of the batch on its old coordinates and a
+            // long one would index past $originalKeys. Fail loudly instead.
+            $returned = count($responseData['coordinates']);
+            if ($returned !== $coordCount) {
+                throw new CoordinatorException(
+                    "Coordinator returned {$returned} coordinates for {$coordCount} sent"
+                );
             }
 
             // Format the results, restoring original keys
