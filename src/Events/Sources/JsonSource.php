@@ -311,7 +311,7 @@ abstract class JsonSource implements SourceInterface
      * - Multiple response formats (preferring JSON)
      *
      * Configuration details:
-     * - 60-second timeout to handle slow scientific computing endpoints
+     * - 180-second timeout to handle slow scientific computing endpoints
      * - HTTP error exceptions enabled for proper PSR-18 compliance
      * - User-Agent header for API provider identification and rate limiting
      * - Accept header specifying JSON preference for APIs supporting multiple formats
@@ -323,7 +323,8 @@ abstract class JsonSource implements SourceInterface
     {
         return new Client([
             // Extended timeout for scientific APIs that may process large datasets
-            'timeout' => 60.0,
+            // (HEK JSON transfers can stall for minutes on the AWS→LMSAL path)
+            'timeout' => 180.0,
             // Enable HTTP error exceptions for proper PSR-18 error handling
             'http_errors' => true,
             'headers' => [
