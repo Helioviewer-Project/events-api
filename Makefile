@@ -1,4 +1,4 @@
-.PHONY: composer-install composer-require composer-dump up down build shell shell-root nginx-reload migrate-status migrate-create migrate-run migrate-rollback seed-run collect recents reset stats logs db-shell db-backup cache-flush fix-regions distribution-build reprocess reprocess-uuid build-failure-report retry-failures help
+.PHONY: composer-install composer-require composer-dump up down build shell shell-root nginx-reload migrate-status migrate-create migrate-run migrate-rollback seed-run collect recents reset stats logs db-shell db-backup cache-flush fix-regions distribution-build reprocess reprocess-uuid backfill-hpc build-failure-report retry-failures help
 .DEFAULT_GOAL := help
 
 # Set compose file based on ENV
@@ -84,6 +84,9 @@ reprocess:
 reprocess-uuid:
 	UUID='$(UUID)' APPLY='$(APPLY)' $(DOCKER_COMPOSE) run --rm --user $(shell id -u):$(shell id -g) -e UUID -e APPLY phpfpm php bin/reprocess-uuid.php
 
+backfill-hpc:
+	PATHS='$(PATHS)' APPLY='$(APPLY)' FORCE='$(FORCE)' CHUNK='$(CHUNK)' $(DOCKER_COMPOSE) run --rm --user $(shell id -u):$(shell id -g) -e PATHS -e APPLY -e FORCE -e CHUNK phpfpm php bin/backfill-hpc.php
+
 build-failure-report:
 	$(DOCKER_COMPOSE) run --rm --user $(shell id -u):$(shell id -g) phpfpm php bin/build-failure-report.php
 
@@ -160,6 +163,8 @@ help:
 	@echo "                          Optional: PATHS=\"HEK,HEK>>Flare\" APPLY=1"
 	@echo "  reprocess-uuid        - Reprocess specific event(s) by UUID (dry run by default)"
 	@echo "                          Usage: UUID=\"uuid1,uuid2\" APPLY=1"
+	@echo "  backfill-hpc          - Fill x_hpc/y_hpc/footprint_hpc on existing events (dry run by default)"
+	@echo "                          Optional: PATHS=\"HEK,CCMC>>Solar Flare Predictions\" APPLY=1 FORCE=1 CHUNK=200"
 	@echo "  build-failure-report  - Rebuild aggregated failure report (powers /exceptions page)"
 	@echo "  retry-failures        - Retry stored failure JSONs through processors (dry run by default)"
 	@echo "                          Optional: TYPES=\"coordinate_errors\" SOURCES=\"name1,name2\" HASHES=\"sha,sha\" LIMIT=50 APPLY=1"

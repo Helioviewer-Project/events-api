@@ -43,7 +43,8 @@ $eventCollector = EventCollector::createStandard(
     $container['harp'],
     $container['noaa'],
     $logger,
-    $sentry
+    $sentry,
+    $container['hpcResolver']
 );
 
 // Create scheduler with lock directory

@@ -76,7 +76,8 @@ $collector = EventCollector::createStandard(
     $harpService,
     $noaaService,
     $logger,
-    $sentry
+    $sentry,
+    $container['hpcResolver']
 );
 
 // Log registered sources

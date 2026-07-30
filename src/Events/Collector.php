@@ -40,6 +40,8 @@ use Helioviewer\EventsApi\Events\Processors\CCMC\DonkiCmeProcessor;
 use Helioviewer\EventsApi\Events\Processors\CCMC\FlareScoreboard\Processor as FlareScoreboardProcessor;
 use Helioviewer\EventsApi\Events\Processors\CCMC\FlareScoreboard\DaffProcessor;
 use Helioviewer\EventsApi\Events\Processors\CCMC\FlareScoreboard\AssaProcessor;
+use Helioviewer\EventsApi\Coordinator\HPC\HPCResolver;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 
 /**
  * Event Collection Service
@@ -85,6 +87,8 @@ class Collector
      * @param JsonStorageInterface $json_storage Storage service for raw JSON data
      * @param JsonStorageInterface $failure_storage Storage service for failure data (non-sharded)
      * @param LoggerInterface|null $logger Logger for recording collection activities
+     * @param SentryClientInterface|null $sentry Sentry client
+     * @param HPCResolver|null $hpcResolver Fills x_hpc/y_hpc/footprint_hpc on new/changed events (no-op when null)
      */
     public function __construct(
         private RepositoryInterface $repository,
@@ -93,7 +97,8 @@ class Collector
         private JsonStorageInterface $json_storage,
         private JsonStorageInterface $failure_storage,
         private ?LoggerInterface $logger = null,
-        private ?SentryClientInterface $sentry = null
+        private ?SentryClientInterface $sentry = null,
+        private ?HPCResolver $hpcResolver = null
     ) {
         $this->logger = $logger ?? new \Psr\Log\NullLogger();
         $this->sentry = $sentry ?? new SentryVoidClient([]);
@@ -126,10 +131,11 @@ class Collector
         \Helioviewer\EventsApi\Jsoc\HarpService $harpService,
         \Helioviewer\EventsApi\Jsoc\NoaaService $noaaService,
         ?LoggerInterface $logger = null,
-        ?SentryClientInterface $sentry = null
+        ?SentryClientInterface $sentry = null,
+        ?HPCResolver $hpcResolver = null
     ): self {
         // Create collector instance
-        $collector = new self($repository, $regionRepository, $distributionRepository, $json_storage, $failure_storage, $logger, $sentry);
+        $collector = new self($repository, $regionRepository, $distributionRepository, $json_storage, $failure_storage, $logger, $sentry, $hpcResolver);
         
         // === SOURCES ===
         $collector->addSource('HEK', new HEKSource($httpClient));
@@ -220,10 +226,10 @@ class Collector
         // FlareScoreboard processor reads coordinates directly from fields (no resolvers needed)
         $flareScoreboardProcessor = new FlareScoreboardProcessor($logger, $sentryForProcessors);
         $collector->addProcessor($flareScoreboardProcessor);
-        
+
         return $collector;
     }
-    
+
     /**
      * Register a data source for event collection with a specific path.
      *
@@ -333,6 +339,19 @@ class Collector
 
         // Handle upsert logic: find existing event or create new one
         $existingEvent = $this->repository->findByRemoteId($event->remote_id);
+
+        // Fill the native-HPC snapshot when the coordinates changed, or when the stored
+        // row was never resolved (predates the migration, or an earlier resolve failed
+        // while the coordinator was down) — the regular sync self-heals those rows.
+        // Fields are nulled first so a resolver failure lands the row back on the
+        // backfill worklist instead of keeping a stale snapshot.
+        if ($this->hpcResolver !== null
+            && ($event->coordinatesDifferFrom($existingEvent) || $existingEvent->footprint_hpc === null)) {
+            $event->x_hpc = null;
+            $event->y_hpc = null;
+            $event->footprint_hpc = null;
+            $this->hpcResolver->resolve(new EloquentCollection([$event]));
+        }
 
         if ($existingEvent) {
             // Check if time/path changed for distribution update
