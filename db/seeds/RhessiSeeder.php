@@ -178,6 +178,10 @@ class RhessiSeeder extends AbstractSeed
             'hv_hpc_x' => (float) $rawEvent['xloc'], // HPC X in arcseconds
             'hv_hpc_y' => (float) $rawEvent['yloc'], // HPC Y in arcseconds
             'coordinate_system' => 'helioprojective',
+            // Already HPC — the native snapshot is a straight copy (no footprints)
+            'x_hpc' => (float) $rawEvent['xloc'],
+            'y_hpc' => (float) $rawEvent['yloc'],
+            'footprint_hpc' => [],
             'label' => 'RHESSI ' . $rawEvent['id'],
             'short_label' => $rawEvent['id'] . ': ' . date('Y-m-d H:i:s', $startTime),
             'legacy_version' => '',
