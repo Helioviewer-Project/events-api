@@ -4,260 +4,164 @@ declare(strict_types=1);
 
 namespace Helioviewer\EventsApi\Coordinator;
 
+use Helioviewer\EventsApi\Coordinator\HPC\HPCResolver;
 use Psr\SimpleCache\CacheInterface;
 use Psr\Log\LoggerInterface;
 use Illuminate\Database\Eloquent\Collection;
-use Helioviewer\EventsApi\Sentry\ClientInterface as SentryClientInterface;
-use Helioviewer\EventsApi\Sentry\VoidClient as SentryVoidClient;
 
 /**
- * Coordinate Rotator
+ * Rotates event coordinates to a target observation time.
  *
- * Rotates event coordinates to a target observation time using primary
- * and backup coordinators with automatic failover.
+ * Single path for every coordinate system: the stored native-HPC snapshot
+ * (x_hpc, y_hpc at the event's own coordinate_time) is rotated with one
+ * hpc-to-hpc batch call, and footprint_hpc is rigidly shifted by the center's
+ * delta. Events missing their snapshot (backfill not run / earlier resolve
+ * failure) are resolved in-memory first via HPCResolver — that branch goes
+ * quiet once backfill coverage is complete.
+ *
+ * Failover and Sentry reporting live in the injected coordinator
+ * (FailoverCoordinator); a failed batch leaves events serving their stored
+ * values, as before.
  *
  * @package    Helioviewer\EventsApi\Coordinator
+ * @author  Kasim Necdet Percinel <kasim.n.percinel@nasa.gov>
  * @since      1.0.0
  */
 class CoordinateRotator
 {
     private CoordinatorInterface $coordinator;
-    private CoordinatorInterface $backupCoordinator;
+    private HPCResolver $hpcResolver;
     private LoggerInterface $logger;
     private ?CacheInterface $cache;
-    private SentryClientInterface $sentry;
-    private bool $primaryFailed = false;
 
     /**
-     * Constructor
-     *
-     * @param CoordinatorInterface $coordinator Primary coordinator for transformations
-     * @param CoordinatorInterface $backupCoordinator Backup coordinator for failover
-     * @param LoggerInterface $logger Logger for debug/error messages
+     * @param CoordinatorInterface $coordinator Coordinator (failover-wrapped)
+     * @param HPCResolver $hpcResolver Fills missing native-HPC snapshots in-memory
+     * @param LoggerInterface $logger Logger
      * @param CacheInterface|null $cache Optional cache for rotation results
-     * @param SentryClientInterface|null $sentry Optional Sentry client for failure reporting
      */
     public function __construct(
         CoordinatorInterface $coordinator,
-        CoordinatorInterface $backupCoordinator,
+        HPCResolver $hpcResolver,
         LoggerInterface $logger,
-        ?CacheInterface $cache = null,
-        ?SentryClientInterface $sentry = null
+        ?CacheInterface $cache = null
     ) {
         $this->coordinator = $coordinator;
-        $this->backupCoordinator = $backupCoordinator;
+        $this->hpcResolver = $hpcResolver;
         $this->logger = $logger;
         $this->cache = $cache;
-        $this->sentry = $sentry ?? new SentryVoidClient([]);
     }
 
     /**
-     * Rotate all events to a target observation time
+     * Rotate all events to a target observation time.
      *
-     * Transforms event coordinates from their original observation times
-     * to a target observation time, handling both Stonyhurst (HGS) and
-     * Helioprojective (HPC) coordinate systems with automatic failover.
+     * Sets hv_hpc_x/hv_hpc_y to the rotated center and replaces footprint
+     * with footprint_hpc shifted by the center delta (a footprint is a LIST
+     * of polygons [[{x,y},…],…]). With $withFootprints false (batch/movie
+     * endpoints read centers only) footprints are left untouched.
      *
      * @param Collection $events Eloquent Collection of Event models
      * @param int $targetTimestamp Target observation time (Unix timestamp)
-     * @return Collection Events collection with updated hv_hpc_x and hv_hpc_y coordinates
+     * @param bool $withFootprints Shift footprints by the center delta (default true)
+     * @return Collection Events with rotated coordinates
      */
-    public function rotate(Collection $events, int $targetTimestamp): Collection
+    public function rotate(Collection $events, int $targetTimestamp, bool $withFootprints = true): Collection
     {
         if ($events->isEmpty()) {
             return $events;
         }
 
-        $grouped = $events->groupBy('coordinate_system');
+        // Transitional: resolve rows without a stored snapshot, in-memory only.
+        $unresolved = $events->filter(fn($event) => $event->footprint_hpc === null || $event->x_hpc === null);
+        if ($unresolved->isNotEmpty()) {
+            $this->logger->info("CoordinateRotator | Resolving {$unresolved->count()} events without native-HPC snapshot");
+            $this->hpcResolver->resolve($unresolved);
+        }
 
-        $stonyhurstRotated = $this->rotateStonyhurstCoordinates(
-            $grouped->get('stonyhurst', new Collection()),
+        $rotatedCoordinates = $this->rotateCenters(
+            $events->filter(fn($event) => $event->x_hpc !== null),
             $targetTimestamp
         );
 
-        $helioprojectiveRotated = $this->rotateHelioprojectiveCoordinates(
-            $grouped->get('helioprojective', new Collection()),
-            $targetTimestamp
-        );
-
-        $rotatedCoordinates = $stonyhurstRotated + $helioprojectiveRotated;
-
-        return $events->map(function ($event) use ($rotatedCoordinates) {
-            if (isset($rotatedCoordinates[$event->id])) {
-                $rotated = $rotatedCoordinates[$event->id];
-                $dx = $rotated['hpc_x'] - $event->hv_hpc_x;
-                $dy = $rotated['hpc_y'] - $event->hv_hpc_y;
-
-                $event->hv_hpc_x = $rotated['hpc_x'];
-                $event->hv_hpc_y = $rotated['hpc_y'];
-
-                // Shift footprint points by the center's rotation offset
-                if (!empty($event->footprint) && is_array($event->footprint)) {
-                    $fpCount = count($event->footprint);
-                    $this->logger->debug("CoordinateRotator | Event {$event->id} | Shifting {$fpCount} footprint points | dx: {$dx} | dy: {$dy}");
-                    $rotatedFootprint = [];
-                    foreach ($event->footprint as $point) {
-                        $rotatedFootprint[] = [
-                            'x' => (float) $point['x'] + $dx,
-                            'y' => (float) $point['y'] + $dy,
-                        ];
-                    }
-                    $event->footprint = $rotatedFootprint;
-                }
+        return $events->map(function ($event) use ($rotatedCoordinates, $withFootprints) {
+            if (!isset($rotatedCoordinates[$event->id])) {
+                return $event; // unresolved or failed batch: serve stored values
             }
+
+            $rotated = $rotatedCoordinates[$event->id];
+            $dx = $rotated['hpc_x'] - $event->x_hpc;
+            $dy = $rotated['hpc_y'] - $event->y_hpc;
+
+            $event->hv_hpc_x = $rotated['hpc_x'];
+            $event->hv_hpc_y = $rotated['hpc_y'];
+
+            if (!$withFootprints) {
+                return $event; // batch endpoints read centers only
+            }
+
+            $footprint = is_array($event->footprint_hpc) ? $event->footprint_hpc : [];
+            $shifted = [];
+            foreach ($footprint as $polygon) {
+                $shiftedPolygon = [];
+                foreach ($polygon as $point) {
+                    $shiftedPolygon[] = [
+                        'x' => (float) $point['x'] + $dx,
+                        'y' => (float) $point['y'] + $dy,
+                    ];
+                }
+                $shifted[] = $shiftedPolygon;
+            }
+            $event->footprint = $shifted;
 
             return $event;
         });
     }
 
     /**
-     * Filter and transform Stonyhurst coordinates
+     * Rotate native-HPC centers to the target time, cached 24h.
      *
-     * @param Collection $events Collection of stonyhurst events
+     * @param Collection $events Events with a resolved snapshot
      * @param int $targetTimestamp Target observation time
      * @return array Rotated coordinates keyed by event ID
      */
-    private function rotateStonyhurstCoordinates(Collection $events, int $targetTimestamp): array
-    {
-        $stonyhurstCoords = $events
-            ->filter(fn($event) => $event->hv_hpc_y >= -90 && $event->hv_hpc_y <= 90)
-            ->keyBy('id')
-            ->map(fn($event) => [
-                'lat' => $event->hv_hpc_y,
-                'lon' => $event->hv_hpc_x,
-                'coordinate_time' => $event->coordinate_time,
-            ])
-            ->toArray();
-
-        if (empty($stonyhurstCoords)) {
-            return [];
-        }
-
-        $coordCount = count($stonyhurstCoords);
-        $this->logger->debug("CoordinateRotator | Rotating {$coordCount} Stonyhurst coordinates");
-
-        if ($this->cache !== null) {
-            $cacheKey = 'coordinator:stonyhurst:' . md5(serialize($stonyhurstCoords) . $targetTimestamp);
-            $cached = $this->cache->get($cacheKey);
-            if ($cached !== null) {
-                $this->logger->info("CoordinateRotator | Stonyhurst | Cache HIT | {$coordCount} coordinates");
-                return $cached;
-            }
-        }
-
-        $result = $this->transformWithFallback(
-            fn() => $this->coordinator->stonyhurstToHelioprojectiveBatch($stonyhurstCoords, $targetTimestamp),
-            fn() => $this->backupCoordinator->stonyhurstToHelioprojectiveBatch($stonyhurstCoords, $targetTimestamp),
-            'Stonyhurst'
-        );
-
-        if ($this->cache !== null && !empty($result) && isset($cacheKey)) {
-            $this->cache->set($cacheKey, $result, 86400);
-        }
-
-        return $result;
-    }
-
-    /**
-     * Filter and transform Helioprojective center coordinates
-     *
-     * Only rotates event center points. Footprint polygon points are shifted
-     * by the center's rotation offset in rotate() to avoid expensive batch requests.
-     *
-     * @param Collection $events Collection of helioprojective events
-     * @param int $targetTimestamp Target observation time
-     * @return array Rotated coordinates keyed by event ID
-     */
-    private function rotateHelioprojectiveCoordinates(Collection $events, int $targetTimestamp): array
+    private function rotateCenters(Collection $events, int $targetTimestamp): array
     {
         if ($events->isEmpty()) {
             return [];
         }
 
-        $allCoords = [];
-
+        $coordinates = [];
         foreach ($events as $event) {
-            $allCoords[$event->id] = [
-                'x' => $event->hv_hpc_x,
-                'y' => $event->hv_hpc_y,
+            $coordinates[$event->id] = [
+                'x' => $event->x_hpc,
+                'y' => $event->y_hpc,
                 'coordinate_time' => $event->coordinate_time,
             ];
         }
 
-        $coordCount = count($allCoords);
-        $this->logger->debug("CoordinateRotator | Rotating {$coordCount} Helioprojective center coordinates");
+        $coordCount = count($coordinates);
+        $this->logger->debug("CoordinateRotator | Rotating {$coordCount} native-HPC centers");
 
         if ($this->cache !== null) {
-            $cacheKey = 'coordinator:hpc:' . md5(serialize($allCoords) . $targetTimestamp);
+            $cacheKey = 'coordinator:hpc:' . md5(serialize($coordinates) . $targetTimestamp);
             $cached = $this->cache->get($cacheKey);
             if ($cached !== null) {
-                $this->logger->info("CoordinateRotator | Helioprojective | Cache HIT | {$coordCount} coordinates");
+                $this->logger->info("CoordinateRotator | Cache HIT | {$coordCount} coordinates");
                 return $cached;
             }
         }
 
-        $result = $this->transformWithFallback(
-            fn() => $this->coordinator->helioprojectiveToHelioprojectiveBatch($allCoords, $targetTimestamp),
-            fn() => $this->backupCoordinator->helioprojectiveToHelioprojectiveBatch($allCoords, $targetTimestamp),
-            'Helioprojective'
-        );
+        try {
+            $result = $this->coordinator->helioprojectiveToHelioprojectiveBatch($coordinates, $targetTimestamp);
+        } catch (CoordinatorException $e) {
+            $this->logger->error("CoordinateRotator | Rotation failed for {$coordCount} coordinates | " . $e->getMessage());
+            return [];
+        }
 
         if ($this->cache !== null && !empty($result) && isset($cacheKey)) {
             $this->cache->set($cacheKey, $result, 86400);
         }
 
         return $result;
-    }
-
-    /**
-     * Try primary coordinator, fall back to backup on failure
-     *
-     * @param callable $primary Primary transformation callable
-     * @param callable $backup Backup transformation callable
-     * @param string $system Coordinate system name for logging
-     * @return array Rotated coordinates keyed by event ID
-     */
-    private function transformWithFallback(callable $primary, callable $backup, string $system): array
-    {
-        // Skip primary if it had a connection failure during this request
-        if (!$this->primaryFailed) {
-            try {
-                return $primary();
-            } catch (CoordinatorConnectionException $e) {
-                // Server unreachable (timeout, refused, DNS) — skip primary for remaining calls
-                $this->primaryFailed = true;
-                $this->logger->warning("CoordinateRotator | {$system} | Primary unreachable: " . $e->getMessage() . " | Skipping primary for remaining calls, falling back to backup");
-                $this->sentry->setContext('Coordinator', [
-                    'system' => $system,
-                    'tier' => 'primary',
-                    'reason' => 'unreachable',
-                ]);
-                $this->sentry->capture($e);
-            } catch (CoordinatorException $e) {
-                // Server reachable but returned error (400, 500, bad format) — treat primary as
-                // down for the rest of this request so Sentry fires at most once per request.
-                $this->primaryFailed = true;
-                $this->logger->warning("CoordinateRotator | {$system} | Primary returned error: " . $e->getMessage() . " | Skipping primary for remaining calls, falling back to backup");
-                $this->sentry->setContext('Coordinator', [
-                    'system' => $system,
-                    'tier' => 'primary',
-                    'reason' => 'error_response',
-                ]);
-                $this->sentry->capture($e);
-            }
-        }
-
-        try {
-            return $backup();
-        } catch (CoordinatorException $backupError) {
-            $this->logger->error("CoordinateRotator | {$system} | Backup LOCAL http coordinator also failed: " . $backupError->getMessage() . " | No coordinates rotated");
-            $this->sentry->setContext('Coordinator', [
-                'system' => $system,
-                'tier' => 'backup',
-                'primary_failed' => $this->primaryFailed,
-            ]);
-            $this->sentry->capture($backupError);
-            return [];
-        }
     }
 }
