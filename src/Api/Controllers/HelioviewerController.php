@@ -469,6 +469,21 @@ class HelioviewerController extends Controller
             $formatted['event_type'] = $source['event_type'] ?? $event->legacy_type;
         }
 
+        if ($event->source_id === JsonSource::WSA) {
+            // Path: WSA>>{product}>>{sat}>>{input_map} — product names the concept,
+            // sat + input map identify the "method" (mirrors the FRM role elsewhere).
+            $pathParts = explode('>>', $event->path);
+
+            $formatted['kb_archivid'] = $event->remote_id ?? $uuid;
+            $formatted['frm_name'] = implode(' ', array_slice($pathParts, 2)) ?: 'WSA';
+            $formatted['frm_specificid'] = '';
+            $formatted['concept'] = $pathParts[1] ?? $event->label;
+            $formatted['hv_labels_formatted'] = [];
+            // 'CH' (Coronal Hole) / 'MC' (Magnetic Connectivity) — without this the
+            // helioviewer API renders the series as event_type "UNK".
+            $formatted['event_type'] = $event->legacy_type;
+        }
+
         return $formatted;
     }
 
