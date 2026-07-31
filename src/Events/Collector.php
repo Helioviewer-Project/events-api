@@ -509,20 +509,14 @@ class Collector
     {
         $totalEventCount = 0;
 
-        // Process all registered sources
-        $sourcesToProcess = $this->sources;
+        // Every registered source, or just the named ones
+        $sourcesToProcess = $this->selectSources($sourceNames);
 
         if (!empty($sourceNames)) {
-            $wanted = array_map('strtolower', $sourceNames);
-            $sourcesToProcess = array_filter(
-                $this->sources,
-                fn(SourceInterface $source) => in_array(strtolower($source->getName()), $wanted, true)
-            );
-
             // A name matching nothing would otherwise look like a clean run
             // that simply found no events.
             $matched = array_map(fn(SourceInterface $source) => strtolower($source->getName()), $sourcesToProcess);
-            foreach (array_diff($wanted, $matched) as $unknown) {
+            foreach (array_diff(array_map('strtolower', $sourceNames), $matched) as $unknown) {
                 $this->logger->warning("Unknown source '{$unknown}' — run 'make sources' for the list");
             }
 
@@ -625,6 +619,31 @@ class Collector
         $this->logger->info("Collection finished | {$totalEventCount} events | {$totalDuration}s total | {$eventsPerSecond} events/s | {$avgPerEvent}ms/event");
 
         return $totalEventCount;
+    }
+
+    /**
+     * Registered sources whose name appears in the given list, matched
+     * case-insensitively against getName(). An empty list selects every source.
+     *
+     * Shared with callers that want to show what a filter will do before the
+     * run starts, so the report and the run cannot disagree.
+     *
+     * @param array<string> $sourceNames Source names
+     *
+     * @return array<string, SourceInterface> Registered path => source
+     */
+    public function selectSources(array $sourceNames): array
+    {
+        if (empty($sourceNames)) {
+            return $this->sources;
+        }
+
+        $wanted = array_map('strtolower', $sourceNames);
+
+        return array_filter(
+            $this->sources,
+            fn(SourceInterface $source) => in_array(strtolower($source->getName()), $wanted, true)
+        );
     }
 
     /**

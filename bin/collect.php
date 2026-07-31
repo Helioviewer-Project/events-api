@@ -88,10 +88,19 @@ $collector = EventCollector::createStandard(
     $container['cache']
 );
 
-// Log registered sources
+// Log registered sources, marking what the SOURCES filter will actually run.
+// Asks the collector rather than re-deriving the match, so this cannot drift
+// from what collect() does.
 $sources = $collector->getSources();
+$selected = $collector->selectSources($sourceNames);
+
 foreach ($sources as $path => $source) {
-    $logger->debug("Source: {$path} => {$source->getName()}");
+    $mark = isset($selected[$path]) ? 'FETCH' : 'SKIP ';
+    $logger->debug("[{$mark}] {$path} => {$source->getName()}");
+}
+
+if (!empty($sourceNames)) {
+    $logger->info('SOURCES filter active: ' . count($selected) . ' of ' . count($sources) . ' sources will be fetched');
 }
 
 $startTime = microtime(true);
