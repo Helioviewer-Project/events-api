@@ -109,12 +109,34 @@ cache-flush:
 	@$(DOCKER_COMPOSE) exec redis redis-cli FLUSHALL
 	@echo "Redis cache flushed!"
 
+# Rollback every migration, re-migrate, re-seed. This DROPS ALL TABLES — every
+# source goes, not one path — so it is a dry run unless APPLY=1.
+# Sidecar JSONs under storage/ are left behind; use purge-path for scoped work.
 reset:
-	@echo "Resetting database (rollback all + migrate + seed)..."
-	$(DOCKER_COMPOSE) run --rm --user $(shell id -u):$(shell id -g) phpfpm vendor/bin/phinx rollback -t 0
-	$(DOCKER_COMPOSE) run --rm --user $(shell id -u):$(shell id -g) phpfpm vendor/bin/phinx migrate
-	$(DOCKER_COMPOSE) run --rm --user $(shell id -u):$(shell id -g) phpfpm vendor/bin/phinx seed:run
-	@echo "Database reset complete!"
+	@if [ "$(APPLY)" != "1" ]; then \
+	  echo ""; \
+	  echo "make reset drops EVERY table (phinx rollback -t 0), then re-migrates and re-seeds."; \
+	  echo "It is not scoped to a source or a path — all of this goes:"; \
+	  echo ""; \
+	  counts=`$(DOCKER_COMPOSE) exec -T postgres sh -c 'psql -U $$POSTGRES_USER -d $$POSTGRES_DB -tA -F" " -c "SELECT (SELECT count(*) FROM events), (SELECT count(*) FROM regions), (SELECT count(*) FROM distributions)"' 2>/dev/null`; \
+	  set -- $$counts; \
+	  echo "  events:        $${1:-unreadable (is postgres up?)}"; \
+	  echo "  regions:       $${2:-?}"; \
+	  echo "  distributions: $${3:-?}"; \
+	  echo ""; \
+	  echo "Only the re-seeded sources come back. Everything collected from an API"; \
+	  echo "has to be re-collected, and sidecar JSONs under storage/ are NOT removed,"; \
+	  echo "so they are left orphaned."; \
+	  echo ""; \
+	  echo "Nothing done. To go ahead: make reset APPLY=1"; \
+	  echo ""; \
+	else \
+	  echo "Resetting database (rollback all + migrate + seed)..."; \
+	  $(DOCKER_COMPOSE) run --rm --user $(shell id -u):$(shell id -g) phpfpm vendor/bin/phinx rollback -t 0 && \
+	  $(DOCKER_COMPOSE) run --rm --user $(shell id -u):$(shell id -g) phpfpm vendor/bin/phinx migrate && \
+	  $(DOCKER_COMPOSE) run --rm --user $(shell id -u):$(shell id -g) phpfpm vendor/bin/phinx seed:run && \
+	  echo "Database reset complete!"; \
+	fi
 
 
 # Handle extra arguments for collect command
@@ -151,7 +173,9 @@ help:
 	@echo "  migrate-run           - Run pending migrations"
 	@echo "  migrate-rollback      - Rollback the last migration"
 	@echo "  seed-run              - Run database seeders"
-	@echo "  reset                 - Reset database (rollback all + migrate + seed)"
+	@echo "  reset                 - Drop ALL tables, re-migrate, re-seed (every source, not scoped)"
+	@echo "                          Dry run: make reset"
+	@echo "                          Apply:   make reset APPLY=1"
 	@echo ""
 	@echo "Event Collection:"
 	@echo "  collect               - Collect events from all sources"
