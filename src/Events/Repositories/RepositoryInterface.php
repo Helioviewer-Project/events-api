@@ -262,4 +262,35 @@ interface RepositoryInterface
      */
     public function findByPathPrefixesAndTimeRange(array $pathPrefixes, int $start, int $end, array $uuids = []): array;
 
+    /**
+     * Count the events sitting under each given path tree.
+     *
+     * A path matches itself and everything nested beneath it: 'HEK>>Flare'
+     * covers 'HEK>>Flare' and 'HEK>>Flare>>SWPC', but never the sibling
+     * 'HEK>>Flare Detective'.
+     *
+     * @param array<string> $paths Event paths
+     * @return array<string,int> Requested path => number of events under it
+     */
+    public function countByPathTree(array $paths): array;
+
+    /**
+     * Hand the ids of every event under the given path trees to a callback,
+     * one batch at a time, so callers can work through large sets without
+     * loading them all.
+     *
+     * @param array<string> $paths Event paths
+     * @param int $chunkSize Ids per batch
+     * @param callable $callback Receives array<string> of event UUIDs
+     */
+    public function eachIdInPathTree(array $paths, int $chunkSize, callable $callback): void;
+
+    /**
+     * Delete events by id. Region links go with them (FK cascade).
+     *
+     * @param array<string> $ids Event UUIDs
+     * @return int Number of events deleted
+     */
+    public function deleteByIds(array $ids): int;
+
 }

@@ -604,6 +604,80 @@ class Postgres implements RepositoryInterface
     }
 
     /**
+     * Count the events sitting under each given path tree.
+     *
+     * @param array<string> $paths Event paths
+     * @return array<string,int> Requested path => number of events under it
+     */
+    public function countByPathTree(array $paths): array
+    {
+        $counts = [];
+        foreach ($paths as $path) {
+            $counts[$path] = $this->inPathTree(Event::query()->without('regions'), $path)->count();
+        }
+
+        return $counts;
+    }
+
+    /**
+     * Hand the ids of every event under the given path trees to a callback,
+     * one batch at a time.
+     *
+     * Batches walk forward by id, so a callback that deletes what it receives
+     * does not make the walk skip rows.
+     *
+     * @param array<string> $paths Event paths
+     * @param int $chunkSize Ids per batch
+     * @param callable $callback Receives array<string> of event UUIDs
+     */
+    public function eachIdInPathTree(array $paths, int $chunkSize, callable $callback): void
+    {
+        foreach ($paths as $path) {
+            $this->inPathTree(Event::query()->without('regions'), $path)
+                ->select('id')
+                ->orderBy('id')
+                ->chunkById($chunkSize, function (Collection $events) use ($callback) {
+                    $callback($events->pluck('id')->all());
+                });
+        }
+    }
+
+    /**
+     * Delete events by id. Region links go with them (FK cascade).
+     *
+     * @param array<string> $ids Event UUIDs
+     * @return int Number of events deleted
+     */
+    public function deleteByIds(array $ids): int
+    {
+        if (empty($ids)) {
+            return 0;
+        }
+
+        return Event::whereIn('id', $ids)->delete();
+    }
+
+    /**
+     * Restrict a query to one path and everything nested under it.
+     *
+     * Matches the path exactly or as a '<path>>>' prefix, so a sibling that
+     * merely starts with the same characters is left alone.
+     *
+     * @param Builder $query Query to constrain
+     * @param string $path Event path
+     * @return Builder The constrained query
+     */
+    private function inPathTree(Builder $query, string $path): Builder
+    {
+        $nested = str_replace(['\\', '%', '_'], ['\\\\', '\%', '\_'], $path) . '>>%';
+
+        return $query->where(function (Builder $inner) use ($path, $nested) {
+            $inner->where('path', $path)
+                  ->orWhere('path', 'LIKE', $nested);
+        });
+    }
+
+    /**
      * Convert source name to normalized source ID.
      *
      * Maps human-readable source names to their corresponding integer

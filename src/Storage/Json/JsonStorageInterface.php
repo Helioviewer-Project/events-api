@@ -42,4 +42,13 @@ interface JsonStorageInterface
      * @return string The full path where the file was stored
      */
     public function storeById(string $id, string $type, mixed $data): string;
+
+    /**
+     * Delete a stored JSON file. Missing files are not an error.
+     *
+     * @param string $path File path to delete
+     *
+     * @return void
+     */
+    public function delete(string $path): void;
 }
