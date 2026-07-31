@@ -1,4 +1,4 @@
-.PHONY: composer-install composer-require composer-dump up down build shell shell-root nginx-reload migrate-status migrate-create migrate-run migrate-rollback seed-run collect purge-path recents reset stats logs db-shell db-backup cache-flush fix-regions distribution-build reprocess reprocess-uuid backfill-hpc build-failure-report retry-failures help
+.PHONY: composer-install composer-require composer-dump up down build shell shell-root nginx-reload migrate-status migrate-create migrate-run migrate-rollback seed-run collect sources purge-path recents reset stats logs db-shell db-backup cache-flush fix-regions distribution-build reprocess reprocess-uuid backfill-hpc build-failure-report retry-failures help
 .DEFAULT_GOAL := help
 
 # Set compose file based on ENV
@@ -63,8 +63,14 @@ migrate-rollback:
 seed-run:
 	$(DOCKER_COMPOSE) run --rm --user $(shell id -u):$(shell id -g) phpfpm vendor/bin/phinx seed:run
 
+# SOURCES restricts collection to named sources (see: make sources).
+#   make collect                                   (today, every source)
+#   make collect SOURCES="FLARE_SCOREBOARD_ASSA_1_REGIONS" 2024-01-01 2024-01-31
 collect:
-	$(DOCKER_COMPOSE) run --rm --user $(shell id -u):$(shell id -g) phpfpm php bin/collect.php $(filter-out $@,$(MAKECMDGOALS))
+	SOURCES='$(SOURCES)' $(DOCKER_COMPOSE) run --rm --user $(shell id -u):$(shell id -g) -e SOURCES phpfpm php bin/collect.php $(filter-out $@,$(MAKECMDGOALS))
+
+sources:
+	$(DOCKER_COMPOSE) run --rm --user $(shell id -u):$(shell id -g) phpfpm php bin/sources.php
 
 # Wipe an event path and everything attached to it: sidecar JSONs, event rows,
 # region links, distribution buckets, regions left with no events, and the
@@ -183,6 +189,8 @@ help:
 	@echo "                                   make collect 2024-01-01              (single day)"
 	@echo "                                   make collect 2024-01-01 2024-01-31   (date range)"
 	@echo "                                   make collect 2024-01-01 2024-01-31 5 (5-day chunks)"
+	@echo "                          Optional: SOURCES=\"NAME1,NAME2\" to collect only those sources"
+	@echo "  sources               - List every registered source and the path it writes to"
 	@echo ""
 	@echo "Data Analysis & Maintenance:"
 	@echo "  purge-path            - Delete an event path and everything attached to it: sidecar"

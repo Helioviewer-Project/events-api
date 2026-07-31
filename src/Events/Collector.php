@@ -499,15 +499,41 @@ class Collector
      *
      * @param TimeRange $range Time range for data collection
      * @param int $chunkInterval Number of days per processing chunk (default: 1)
+     * @param array<string> $sourceNames Collect only from these sources, matched
+     *                                   case-insensitively against getName();
+     *                                   empty means every registered source
      *
      * @return int Total number of events collected (not the events themselves to save memory)
      */
-    public function collect(TimeRange $range, int $chunkInterval = 1): int
+    public function collect(TimeRange $range, int $chunkInterval = 1, array $sourceNames = []): int
     {
         $totalEventCount = 0;
 
         // Process all registered sources
         $sourcesToProcess = $this->sources;
+
+        if (!empty($sourceNames)) {
+            $wanted = array_map('strtolower', $sourceNames);
+            $sourcesToProcess = array_filter(
+                $this->sources,
+                fn(SourceInterface $source) => in_array(strtolower($source->getName()), $wanted, true)
+            );
+
+            // A name matching nothing would otherwise look like a clean run
+            // that simply found no events.
+            $matched = array_map(fn(SourceInterface $source) => strtolower($source->getName()), $sourcesToProcess);
+            foreach (array_diff($wanted, $matched) as $unknown) {
+                $this->logger->warning("Unknown source '{$unknown}' — run 'make sources' for the list");
+            }
+
+            if (empty($sourcesToProcess)) {
+                $this->logger->warning("No source selected, nothing to collect");
+                return 0;
+            }
+
+            $this->logger->info("Collecting from " . count($sourcesToProcess) . " of " .
+                                count($this->sources) . " sources");
+        }
 
         // Process in chunks based on interval
         $chunks = $range->splitByInterval($chunkInterval);

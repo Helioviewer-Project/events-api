@@ -84,6 +84,8 @@ make
 - `make collect 2024-01-01` - Collect events for single day
 - `make collect 2024-01-01 2024-01-31` - Collect events for date range (daily chunks)
 - `make collect 2024-01-01 2024-01-31 5` - Collect date range in 5-day chunks
+- `make collect SOURCES="NAME1,NAME2" 2024-01-01` - Collect only from the named sources
+- `make sources` - List every registered source and the path it writes to
 - `make recents` - Show the most recent events from the database
 - `make recents 10` - Show last 10 events
 - `make stats` - Show database statistics grouped by source and path
