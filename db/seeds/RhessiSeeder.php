@@ -8,6 +8,7 @@ use Phinx\Seed\AbstractSeed;
 use Helioviewer\EventsApi\Events\Event;
 use Helioviewer\EventsApi\Events\Sources\JsonSource;
 use Helioviewer\EventsApi\Events\Repositories\RepositoryInterface;
+use Helioviewer\EventsApi\Distributions\Repositories\RepositoryInterface as DistributionRepositoryInterface;
 use Helioviewer\EventsApi\Regions\Repositories\RepositoryInterface as RegionRepositoryInterface;
 use Helioviewer\EventsApi\Regions\Region;
 use Helioviewer\EventsApi\Storage\Json\JsonStorageInterface;
@@ -15,8 +16,20 @@ use Helioviewer\EventsApi\Utils\Container;
 
 class RhessiSeeder extends AbstractSeed
 {
+    /**
+     * Path tree every seeded event lands under; also the scope of the
+     * distribution rebuild.
+     */
+    private const PATH = 'RHESSI';
+
+    /**
+     * Events per distribution batch.
+     */
+    private const DISTRIBUTION_BATCH = 500;
+
     private RepositoryInterface $event_repository;
     private RegionRepositoryInterface $region_repository;
+    private DistributionRepositoryInterface $distribution_repository;
     private JsonStorageInterface $json_storage;
     private static bool $interrupted = false;
 
@@ -28,6 +41,7 @@ class RhessiSeeder extends AbstractSeed
         $container = Container::getInstance();
         $this->event_repository = $container->get('eventRepository');
         $this->region_repository = $container->get('regionRepository');
+        $this->distribution_repository = $container->get('distributionRepository');
         $this->json_storage = $container->get('jsonStorage');
     }
 
@@ -62,6 +76,16 @@ class RhessiSeeder extends AbstractSeed
         $updatedCount = 0;
         $createdCount = 0;
         $regionsCreatedCount = 0;
+
+        // Distribution buckets are rebuilt rather than adjusted per event: the
+        // seed is a full re-import, and incrementing existing buckets would
+        // double-count every re-run. Dropping them first also repairs a path
+        // whose buckets went missing (purge, or a seed that predates this).
+        $bucketsDropped = $this->distribution_repository->deleteByPathTree([self::PATH]);
+        echo "Dropped {$bucketsDropped} distribution buckets under " . self::PATH . "; rebuilding as we go.\n";
+
+        $distributionBatch = [];
+        $bucketsBuilt = 0;
 
         // Iterate through all events
         foreach ($rawEvents as $rawEvent) {
@@ -136,7 +160,18 @@ class RhessiSeeder extends AbstractSeed
                 $rhessiEvent->regions()->sync([]);
             }
 
+            $distributionBatch[] = $rhessiEvent;
+            if (count($distributionBatch) >= self::DISTRIBUTION_BATCH) {
+                $bucketsBuilt += $this->distribution_repository->addEventsBatch($distributionBatch);
+                $distributionBatch = [];
+            }
+
             $processedCount++;
+        }
+
+        // Whatever the last batch did not fill, including on interrupt.
+        if (!empty($distributionBatch)) {
+            $bucketsBuilt += $this->distribution_repository->addEventsBatch($distributionBatch);
         }
 
         echo "\n=== Summary ===\n";
@@ -148,6 +183,7 @@ class RhessiSeeder extends AbstractSeed
         echo "Created: {$createdCount}\n";
         echo "Updated: {$updatedCount}\n";
         echo "Regions created: {$regionsCreatedCount}\n";
+        echo "Distribution buckets touched: {$bucketsBuilt}\n";
         if (self::$interrupted) {
             echo "Remaining: " . (count($rawEvents) - $processedCount) . " events not processed\n";
         }
