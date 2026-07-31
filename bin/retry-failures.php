@@ -70,7 +70,8 @@ $collector = EventCollector::createStandard(
     $container['noaa'],
     $container['logger'],
     $container['sentry'],
-    $container['hpcResolver']
+    $container['hpcResolver'],
+    $container['cache']
 );
 $logger = $container['logger'];
 

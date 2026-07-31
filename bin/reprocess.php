@@ -61,7 +61,7 @@ $logger = $container['logger'];
 $collector = EventCollector::createStandard(
     $eventRepository, $regionRepository, $distributionRepository,
     $jsonStorage, $failureStorage, $httpClient, $harpService, $noaaService,
-    $logger, hpcResolver: $container['hpcResolver']
+    $logger, hpcResolver: $container['hpcResolver'], cache: $container['cache']
 );
 
 $sources = $collector->getSources();

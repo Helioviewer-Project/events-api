@@ -77,7 +77,8 @@ $collector = EventCollector::createStandard(
     $noaaService,
     $logger,
     $sentry,
-    $container['hpcResolver']
+    $container['hpcResolver'],
+    $container['cache']
 );
 
 // Log registered sources

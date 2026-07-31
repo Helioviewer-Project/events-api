@@ -40,8 +40,17 @@ use Helioviewer\EventsApi\Events\Processors\CCMC\DonkiCmeProcessor;
 use Helioviewer\EventsApi\Events\Processors\CCMC\FlareScoreboard\Processor as FlareScoreboardProcessor;
 use Helioviewer\EventsApi\Events\Processors\CCMC\FlareScoreboard\DaffProcessor;
 use Helioviewer\EventsApi\Events\Processors\CCMC\FlareScoreboard\AssaProcessor;
+// WSA sources + processors
+use Helioviewer\EventsApi\Events\Sources\WSA\Source as WsaSource;
+use Helioviewer\EventsApi\Events\Sources\WSA\CoronalHole as WsaCoronalHole;
+use Helioviewer\EventsApi\Events\Sources\WSA\Footpoint as WsaFootpoint;
+use Helioviewer\EventsApi\Events\Processors\WSA\CoronalHoleProcessor as WsaCoronalHoleProcessor;
+use Helioviewer\EventsApi\Events\Processors\WSA\FootpointProcessor as WsaFootpointProcessor;
+use Helioviewer\EventsApi\Utils\CachedHttpClient;
 use Helioviewer\EventsApi\Coordinator\HPC\HPCResolver;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Psr\SimpleCache\CacheInterface;
+use GuzzleHttp\Client as GuzzleClient;
 
 /**
  * Event Collection Service
@@ -132,7 +141,8 @@ class Collector
         \Helioviewer\EventsApi\Jsoc\NoaaService $noaaService,
         ?LoggerInterface $logger = null,
         ?SentryClientInterface $sentry = null,
-        ?HPCResolver $hpcResolver = null
+        ?HPCResolver $hpcResolver = null,
+        ?CacheInterface $cache = null
     ): self {
         // Create collector instance
         $collector = new self($repository, $regionRepository, $distributionRepository, $json_storage, $failure_storage, $logger, $sentry, $hpcResolver);
@@ -226,6 +236,28 @@ class Collector
         // FlareScoreboard processor reads coordinates directly from fields (no resolvers needed)
         $flareScoreboardProcessor = new FlareScoreboardProcessor($logger, $sentryForProcessors);
         $collector->addProcessor($flareScoreboardProcessor);
+
+        // === WSA ===
+        // Needs its own HTTP client: CCMC answers 403 to the default user agent, so the
+        // browser headers are baked into the inner Guzzle (they apply because Guzzle merges
+        // client-default headers into header-less PSR-18 requests). The cache also carries
+        // the ~1-day capabilities cache the sources keep.
+        $wsaClient = new CachedHttpClient(
+            new GuzzleClient([
+                'timeout'         => 60.0,
+                'connect_timeout' => 5.0,
+                'headers'         => WsaSource::HEADERS,
+            ]),
+            $cache,
+            3600,
+            'wsa_http:',
+            $logger
+        );
+
+        $collector->addSource('WSA>>Coronal Hole', new WsaCoronalHole($wsaClient, $cache));
+        $collector->addSource('WSA>>Magnetic Connectivity', new WsaFootpoint($wsaClient, $cache));
+        $collector->addProcessor(new WsaCoronalHoleProcessor($logger, $sentryForProcessors));
+        $collector->addProcessor(new WsaFootpointProcessor($logger, $sentryForProcessors));
 
         return $collector;
     }

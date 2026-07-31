@@ -52,7 +52,8 @@ $collector = EventCollector::createStandard(
     $container['harp'],
     $container['noaa'],
     $logger,
-    hpcResolver: $container['hpcResolver']
+    hpcResolver: $container['hpcResolver'],
+    cache: $container['cache']
 );
 
 $sources = $collector->getSources();
