@@ -582,15 +582,18 @@ class Postgres implements RepositoryInterface
      * @param int $end End timestamp (Unix)
      * @return array<Event> Array of matching Event objects ordered by start time
      */
-    public function findByPathPrefixesAndTimeRange(array $pathPrefixes, int $start, int $end): array
+    public function findByPathPrefixesAndTimeRange(array $pathPrefixes, int $start, int $end, array $uuids = []): array
     {
-        if (empty($pathPrefixes)) {
+        if (empty($pathPrefixes) && empty($uuids)) {
             return [];
         }
 
-        return Event::where(function (Builder $query) use ($pathPrefixes) {
+        return Event::where(function (Builder $query) use ($pathPrefixes, $uuids) {
                 foreach ($pathPrefixes as $prefix) {
                     $query->orWhere('path', 'LIKE', $prefix . '%');
+                }
+                if (!empty($uuids)) {
+                    $query->orWhereIn('id', $uuids);
                 }
             })
             ->where('start', '<', $end)

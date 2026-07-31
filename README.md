@@ -181,7 +181,7 @@ Get events matching path prefixes within a time range. Returns a flat list with 
 |-----------|------|-------------|
 | `from` | path | Start time (Unix timestamp) |
 | `to` | path | End time (Unix timestamp) |
-| `paths` | body (JSON) | Array of event path prefixes |
+| `paths` | body (JSON) | Array of event path prefixes; an entry ending in `>><uuid>` selects that single event by id |
 
 ```python
 import requests

@@ -109,22 +109,7 @@ class HelioviewerController extends Controller
             return $this->error($response, 'selections array exceeds maximum of 200 entries', 400);
         }
 
-        // Classify each selection: trailing UUID-like segment → uuid, else path prefix
-        $uuidPattern = '/^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$/';
-        $pathPrefixes = [];
-        $uuids = [];
-        foreach ($selections as $sel) {
-            if (!is_string($sel) || $sel === '') continue;
-            $parts = explode('>>', $sel);
-            $last  = end($parts);
-            if (preg_match($uuidPattern, $last)) {
-                $uuids[] = $last;
-            } else {
-                $pathPrefixes[] = $sel;
-            }
-        }
-        $pathPrefixes = array_values(array_unique($pathPrefixes));
-        $uuids        = array_values(array_unique($uuids));
+        [$pathPrefixes, $uuids] = $this->classifySelections($selections);
 
         if (empty($pathPrefixes) && empty($uuids)) {
             return $this->error($response, 'no usable path prefixes or UUIDs in selections', 400);
@@ -241,6 +226,32 @@ class HelioviewerController extends Controller
     }
 
     /**
+     * Split selection strings into path prefixes and UUID selectors: a
+     * selection whose last >>-segment is a UUID picks that single event by id
+     * (the breadcrumb before it is ignored), anything else is a path prefix.
+     *
+     * @param array $selections Raw selection strings
+     * @return array{0: string[], 1: string[]} [pathPrefixes, uuids], deduplicated
+     */
+    private function classifySelections(array $selections): array
+    {
+        $uuidPattern = '/^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$/';
+        $pathPrefixes = [];
+        $uuids = [];
+        foreach ($selections as $sel) {
+            if (!is_string($sel) || $sel === '') continue;
+            $parts = explode('>>', $sel);
+            $last  = end($parts);
+            if (preg_match($uuidPattern, $last)) {
+                $uuids[] = $last;
+            } else {
+                $pathPrefixes[] = $sel;
+            }
+        }
+        return [array_values(array_unique($pathPrefixes)), array_values(array_unique($uuids))];
+    }
+
+    /**
      * Get event distribution (aggregated counts by time buckets) for multiple paths.
      *
      * Route: POST /helioviewer/distributions/size/{size}/from/{from}/to/{to}
@@ -346,6 +357,10 @@ class HelioviewerController extends Controller
      * Route: POST /helioviewer/events/from/{from}/to/{to}
      * Body: { "paths": ["HEK>>Flare", "CCMC>>DONKI>>CME"] }
      *
+     * A path whose last >>-segment is a UUID (frontend selections carry these,
+     * e.g. "HEK>>Flare>><uuid>") selects that single event by id; it still has
+     * to overlap the time range.
+     *
      * @param Request  $request  PSR-7 request
      * @param Response $response PSR-7 response
      * @param array    $args     Route arguments: from, to
@@ -390,30 +405,34 @@ class HelioviewerController extends Controller
             return $this->error($response, 'Invalid JSON body', 400);
         }
 
-        $pathPrefixes = $json['paths'] ?? [];
+        $paths = $json['paths'] ?? [];
 
-        if (!is_array($pathPrefixes)) {
+        if (!is_array($paths)) {
             return $this->error($response, 'paths must be an array', 400);
         }
 
         // Filter empty paths
-        $pathPrefixes = array_filter(
-            array_map('trim', $pathPrefixes),
+        $paths = array_filter(
+            array_map('trim', $paths),
             fn($p) => $p !== ''
         );
 
-        if (empty($pathPrefixes)) {
+        if (empty($paths)) {
             return $this->error($response, 'At least one path prefix is required', 400);
         }
 
+        // Frontend selections may carry "path>>uuid" entries — split those off
+        // as id selectors.
+        [$pathPrefixes, $uuids] = $this->classifySelections($paths);
+
         try {
-            $events = $this->eventRepository->findByPathPrefixesAndTimeRange($pathPrefixes, $from, $to);
+            $events = $this->eventRepository->findByPathPrefixesAndTimeRange($pathPrefixes, $from, $to, $uuids);
 
             // Format events for Helioviewer (custom format per source)
             $formattedEvents = array_map(fn($e) => $this->formatEventForHelioviewerEventTimeline($e), $events);
 
             return $this->json($response, [
-                'paths' => $pathPrefixes,
+                'paths' => array_values($paths),
                 'from' => $from,
                 'to' => $to,
                 'count' => count($formattedEvents),

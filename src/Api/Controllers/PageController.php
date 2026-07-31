@@ -616,7 +616,7 @@ data = response.<span class="fn">json</span>()</code></pre>
                         <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
                         <tr><td><code>from</code></td><td>path</td><td>Start time (Unix timestamp)</td></tr>
                         <tr><td><code>to</code></td><td>path</td><td>End time (Unix timestamp)</td></tr>
-                        <tr><td><code>paths</code></td><td>body (JSON)</td><td>Array of event path prefixes</td></tr>
+                        <tr><td><code>paths</code></td><td>body (JSON)</td><td>Array of event path prefixes; an entry ending in <code>&gt;&gt;&lt;uuid&gt;</code> selects that single event by id</td></tr>
                     </table>
                     <pre><code><span class="kw">import</span> requests
 
