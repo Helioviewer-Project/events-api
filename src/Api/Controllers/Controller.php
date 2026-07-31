@@ -14,6 +14,7 @@ use Psr\Log\LoggerInterface;
 use Psr\SimpleCache\CacheInterface;
 use Psr\Http\Client\ClientInterface;
 use Helioviewer\EventsApi\Coordinator\CoordinateRotator;
+use Helioviewer\EventsApi\Coordinator\HPC\HPCResolver;
 use Helioviewer\EventsApi\Events\Event;
 use Helioviewer\EventsApi\Events\Sources\JsonSource;
 use Helioviewer\EventsApi\Sentry\ClientInterface as SentryClientInterface;
@@ -36,6 +37,7 @@ abstract class Controller
 
     // Coordinator services
     protected CoordinateRotator $coordinateRotator;
+    protected HPCResolver $hpcResolver;
 
     // External services
     protected HarpService $harpService;
@@ -60,6 +62,7 @@ abstract class Controller
         $this->failureStorage = $container->get('failureStorage');
 
         $this->coordinateRotator = $container->get('coordinateRotator');
+        $this->hpcResolver = $container->get('hpcResolver');
 
         $this->harpService = $container->get('harp');
         $this->noaaService = $container->get('noaa');

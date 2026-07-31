@@ -55,14 +55,20 @@ class HelioviewerController extends Controller
      * with "prefix>>". UUID selector (last >>-segment matches the UUID pattern)
      * matches that event by id; the breadcrumb prefix is ignored.
      *
-     * Route: POST /helioviewer/events/frames_with_selections
+     * Route: POST /helioviewer/events/frames_with_selections[?withDelta]
      * Body:  { "timestamps": [...], "selections": [...] }
      *
-     * Response:
+     * Default response — each timestamp carries the rotated position outright:
      *   {
-     *     "events":     { "<uuid>": { static fields } },
+     *     "events":     { "<uuid>": { static fields, arcsec snapshot base } },
      *     "timestamps": { "<ts>":   { "<uuid>": { "hv_hpc_x": ..., "hv_hpc_y": ... } } }
      *   }
+     *
+     * With ?withDelta, each timestamp carries arcsec offsets from the event's
+     * static center instead: clients render pin = center + (dx,dy) and shift
+     * every footprint vertex by the same delta. Smaller payload, but the client
+     * has to do the addition.
+     *   "timestamps": { "<ts>": { "<uuid>": { "dx": ..., "dy": ... } } }
      */
     public function getObservationsBySelection(Request $request, Response $response): Response
     {
@@ -72,6 +78,10 @@ class HelioviewerController extends Controller
         if (json_last_error() !== JSON_ERROR_NONE) {
             return $this->error($response, 'Invalid JSON body', 400);
         }
+
+        // ?withDelta → per-timestamp arcsec offsets from the base in `events`.
+        // Without it, each timestamp carries absolute rotated hv_hpc_x/hv_hpc_y.
+        $withDelta = array_key_exists('withDelta', $request->getQueryParams());
 
         // === Validate timestamps ===
         $timestamps = $json['timestamps'] ?? [];
@@ -138,7 +148,19 @@ class HelioviewerController extends Controller
             return $this->error($response, 'Failed to query events', 500);
         }
 
+        // Ensure every event carries its native-HPC snapshot (in-memory only, for
+        // rows the backfill has not covered yet). The static dict below serves the
+        // arcsec base, and resolving once here also spares the per-timestamp clones.
+        $needsSnapshot = $allEvents->filter(fn($e) => $e->footprint_hpc === null || $e->x_hpc === null);
+        if ($needsSnapshot->isNotEmpty()) {
+            $this->hpcResolver->resolve($needsSnapshot);
+        }
+
         // === Build events dict (static fields, same shape as formatEventsBatched) ===
+        // Center and footprint are the native-HPC (arcsec) snapshot at the event's
+        // own coordinate_time — same units as the per-timestamp centers, so the
+        // client's delta shift is valid for every coordinate system (WSA included).
+        // Fallback to stored values when a snapshot could not be resolved.
         $eventsDict = [];
         foreach ($allEvents as $event) {
             $arr  = $event->toArray();
@@ -151,9 +173,9 @@ class HelioviewerController extends Controller
                 'start'             => isset($arr['start']) ? date('Y-m-d\TH:i:s', $arr['start']) : null,
                 'peak'              => isset($arr['peak'])  ? date('Y-m-d\TH:i:s', $arr['peak'])  : null,
                 'end'               => isset($arr['end'])   ? date('Y-m-d\TH:i:s', $arr['end'])   : null,
-                'hv_hpc_x'          => $arr['hv_hpc_x']      ?? null,
-                'hv_hpc_y'          => $arr['hv_hpc_y']      ?? null,
-                'footprint'         => $arr['footprint']     ?? [],
+                'hv_hpc_x'          => $arr['x_hpc']         ?? $arr['hv_hpc_x'] ?? null,
+                'hv_hpc_y'          => $arr['y_hpc']         ?? $arr['hv_hpc_y'] ?? null,
+                'footprint'         => $arr['footprint_hpc'] ?? $arr['footprint'] ?? [],
                 'coordinate_system' => $arr['coordinate_system'] ?? null,
                 'coordinate_time'   => isset($arr['coordinate_time']) ? date('Y-m-d\TH:i:s', $arr['coordinate_time']) : null,
                 'type'              => $arr['legacy_type']    ?? null,
@@ -176,14 +198,38 @@ class HelioviewerController extends Controller
                 continue;
             }
 
-            $rotated = $this->coordinateRotator->rotate($activeEvents, $t);
+            // Remember each center before rotation, to detect rotation failures.
+            $centersBeforeRotate = [];
+            foreach ($activeEvents as $e) {
+                $centersBeforeRotate[$e->id] = [$e->hv_hpc_x, $e->hv_hpc_y];
+            }
+
+            // Centers only — footprints were sent once in `events`; the client
+            // moves them per frame.
+            $rotated = $this->coordinateRotator->rotate($activeEvents, $t, false);
 
             $obs = [];
             foreach ($rotated as $event) {
-                $obs[$event->id] = [
-                    'hv_hpc_x' => $event->hv_hpc_x,
-                    'hv_hpc_y' => $event->hv_hpc_y,
-                ];
+                // Center unchanged = rotation did not happen (no snapshot, or
+                // coordinator failed): the event stays at its base position.
+                $unrotated = [$event->hv_hpc_x, $event->hv_hpc_y] === $centersBeforeRotate[$event->id];
+
+                if (!$withDelta) {
+                    $obs[$event->id] = [
+                        'hv_hpc_x' => $event->hv_hpc_x,
+                        'hv_hpc_y' => $event->hv_hpc_y,
+                    ];
+                    continue;
+                }
+
+                // dx/dy = rotated center minus the base center (x_hpc/y_hpc —
+                // the same values served in `events`).
+                $obs[$event->id] = $unrotated
+                    ? ['dx' => 0, 'dy' => 0]
+                    : [
+                        'dx' => $event->hv_hpc_x - $event->x_hpc,
+                        'dy' => $event->hv_hpc_y - $event->y_hpc,
+                    ];
             }
             $timestampsOut[$tsKey] = $obs;
         }

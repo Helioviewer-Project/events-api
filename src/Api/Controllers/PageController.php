@@ -696,7 +696,7 @@ data = response.<span class="fn">json</span>()</code></pre>
                     <span class="endpoint-desc">Batch observations by selections</span>
                 </summary>
                 <div class="endpoint-detail">
-                    <p>Batch observations filtered by a flexible selections array of path prefixes. Static event data sent once in <code>events</code>; per-timestamp rotated coords in <code>timestamps</code>. <code>footprint</code> is a list of polygons; the client shifts every polygon's points by the center offset.</p>
+                    <p>Batch observations filtered by a flexible selections array of path prefixes. Static event data (arcsec snapshot base) sent once in <code>events</code>; each timestamp carries that frame's rotated <code>hv_hpc_x/hv_hpc_y</code>. <code>footprint</code> is a list of polygons, shifted by the frame's offset from the base. Add <code>?withDelta</code> to receive <code>dx/dy</code> offsets instead of absolute positions — smaller payload, client renders pin = center + (dx,dy).</p>
                     <table class="param-table">
                         <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
                         <tr><td><code>timestamps</code></td><td>body (JSON)</td><td>Array of datetime strings (max 150)</td></tr>
@@ -723,7 +723,7 @@ data = response.<span class="fn">json</span>()</code></pre>
     }, ...
   },
   <span class="str">"timestamps"</span>: {
-    <span class="str">"2025-03-15 11:00:00"</span>: {<span class="str">"019c3d8f-..."</span>: {<span class="str">"hv_hpc_x"</span>: <span class="num">-119.0</span>, <span class="str">"hv_hpc_y"</span>: <span class="num">570.2</span>}, ...},
+    <span class="str">"2025-03-15 11:00:00"</span>: {<span class="str">"019c3d8f-..."</span>: {<span class="str">"hv_hpc_x"</span>: <span class="num">-119.0</span>, <span class="str">"hv_hpc_y"</span>: <span class="num">570.2</span>}, ...},   <span class="cmt">// ?withDelta → {"dx": 4.4, "dy": 2.4}</span>
     <span class="str">"2025-03-15 12:00:00"</span>: { ... }
   }
 }</code></pre>

@@ -303,7 +303,9 @@ Example response:
 
 For movies > 150 frames, split timestamps into chunks and merge `timestamps` across responses.
 
-`footprint` is a **list of polygons** (`[[{x,y},…],…]` — multi-contour events like WSA coronal-hole maps carry several). To render a frame, shift every polygon's points by the per-timestamp center offset.
+`hv_hpc_x/y` and `footprint` in `events` are the arcsec base at the event's own coordinate time, and each timestamp carries that frame's rotated position. `footprint` is a **list of polygons** (`[[{x,y},…],…]` — multi-contour events like WSA coronal-hole maps carry several); shift every polygon point by the frame's offset from the base.
+
+Add **`?withDelta`** to get offsets instead of absolute positions — each timestamp then carries `{"dx": 4.4, "dy": 2.4}`, the arcsec offset from the base in `events`. Smaller payload; render pin = `center + (dx, dy)` and shift every polygon point by the same delta.
 
 ---
 
