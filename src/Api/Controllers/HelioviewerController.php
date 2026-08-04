@@ -146,26 +146,27 @@ class HelioviewerController extends Controller
         // own coordinate_time — same units as the per-timestamp centers, so the
         // client's delta shift is valid for every coordinate system (WSA included).
         // Fallback to stored values when a snapshot could not be resolved.
+        // Read straight off the model: toArray() would decode every cast attribute
+        // for all events, including the stored `footprint` this endpoint only needs
+        // when a snapshot is missing.
         $eventsDict = [];
         foreach ($allEvents as $event) {
-            $arr  = $event->toArray();
-            $uuid = $arr['id'];
-            $eventsDict[$uuid] = [
-                'remote_id'         => $arr['remote_id']     ?? null,
-                'path'              => $arr['path']          ?? null,
-                'label'             => $arr['label']         ?? null,
-                'short_label'       => $arr['short_label']   ?? null,
-                'start'             => isset($arr['start']) ? date('Y-m-d\TH:i:s', $arr['start']) : null,
-                'peak'              => isset($arr['peak'])  ? date('Y-m-d\TH:i:s', $arr['peak'])  : null,
-                'end'               => isset($arr['end'])   ? date('Y-m-d\TH:i:s', $arr['end'])   : null,
-                'hv_hpc_x'          => $arr['x_hpc']         ?? $arr['hv_hpc_x'] ?? null,
-                'hv_hpc_y'          => $arr['y_hpc']         ?? $arr['hv_hpc_y'] ?? null,
-                'footprint'         => $arr['footprint_hpc'] ?? $arr['footprint'] ?? [],
-                'coordinate_system' => $arr['coordinate_system'] ?? null,
-                'coordinate_time'   => isset($arr['coordinate_time']) ? date('Y-m-d\TH:i:s', $arr['coordinate_time']) : null,
-                'type'              => $arr['legacy_type']    ?? null,
-                'pin'               => $arr['legacy_pin']     ?? null,
-                'version'           => $arr['legacy_version'] ?? null,
+            $eventsDict[$event->id] = [
+                'remote_id'         => $event->remote_id,
+                'path'              => $event->path,
+                'label'             => $event->label,
+                'short_label'       => $event->short_label,
+                'start'             => $event->start !== null ? date('Y-m-d\TH:i:s', $event->start) : null,
+                'peak'              => $event->peak  !== null ? date('Y-m-d\TH:i:s', $event->peak)  : null,
+                'end'               => $event->end   !== null ? date('Y-m-d\TH:i:s', $event->end)   : null,
+                'hv_hpc_x'          => $event->x_hpc         ?? $event->hv_hpc_x ?? null,
+                'hv_hpc_y'          => $event->y_hpc         ?? $event->hv_hpc_y ?? null,
+                'footprint'         => $event->footprint_hpc ?? $event->footprint ?? [],
+                'coordinate_system' => $event->coordinate_system,
+                'coordinate_time'   => $event->coordinate_time !== null ? date('Y-m-d\TH:i:s', $event->coordinate_time) : null,
+                'type'              => $event->legacy_type,
+                'pin'               => $event->legacy_pin,
+                'version'           => $event->legacy_version,
             ];
         }
 

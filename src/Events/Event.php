@@ -140,7 +140,15 @@ class Event extends Model
      *
      * @var array<string>
      */
-    protected $hidden = [];
+    protected $hidden = [
+        // Native-HPC snapshot: internal input to rotation, never part of a
+        // response. Serializing it would duplicate the rotated hv_hpc_*/footprint
+        // and decode a second copy of every vertex into PHP arrays. Attribute
+        // access ($event->footprint_hpc) is unaffected by $hidden.
+        'x_hpc',
+        'y_hpc',
+        'footprint_hpc',
+    ];
 
     /**
      * The relationships that should always be loaded.
