@@ -295,8 +295,8 @@ Example response:
     }
   },
   "timestamps": {
-    "2025-03-15 11:00:00": {"019c3d8f-...": {"hv_hpc_x": -119.0, "hv_hpc_y": 570.2}},
-    "2025-03-15 12:00:00": {"019c3d8f-...": {"hv_hpc_x": -113.7, "hv_hpc_y": 572.9}}
+    "2025-03-15 11:00:00": {"019c3d8f-...": {"dx": 4.4, "dy": 2.4}},
+    "2025-03-15 12:00:00": {"019c3d8f-...": {"dx": 9.7, "dy": 5.1}}
   }
 }
 ```
@@ -305,9 +305,7 @@ Example response:
 
 For movies > 150 frames, split timestamps into chunks and merge `timestamps` across responses.
 
-`hv_hpc_x/y` and `footprint` in `events` are the arcsec base at the event's own coordinate time, and each timestamp carries that frame's rotated position. `footprint` is a **list of polygons** (`[[{x,y},…],…]` — multi-contour events like WSA coronal-hole maps carry several); shift every polygon point by the frame's offset from the base.
-
-Add **`?withDelta`** to get offsets instead of absolute positions — each timestamp then carries `{"dx": 4.4, "dy": 2.4}`, the arcsec offset from the base in `events`. Smaller payload; render pin = `center + (dx, dy)` and shift every polygon point by the same delta.
+`hv_hpc_x/y` and `footprint` in `events` are the arcsec base at the event's own coordinate time; each timestamp carries only `{"dx", "dy"}`, that frame's arcsec offset from the base. Render pin = `center + (dx, dy)`, and shift every polygon point by the same delta. `footprint` is a **list of polygons** (`[[{x,y},…],…]` — multi-contour events like WSA coronal-hole maps carry several).
 
 ---
 

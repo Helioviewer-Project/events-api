@@ -55,20 +55,16 @@ class HelioviewerController extends Controller
      * with "prefix>>". UUID selector (last >>-segment matches the UUID pattern)
      * matches that event by id; the breadcrumb prefix is ignored.
      *
-     * Route: POST /helioviewer/events/frames_with_selections[?withDelta]
+     * Route: POST /helioviewer/events/frames_with_selections
      * Body:  { "timestamps": [...], "selections": [...] }
      *
-     * Default response — each timestamp carries the rotated position outright:
+     * Static data is sent once; each timestamp carries only that frame's arcsec
+     * offset from it. Clients render pin = center + (dx,dy) and shift every
+     * footprint vertex by the same delta.
      *   {
      *     "events":     { "<uuid>": { static fields, arcsec snapshot base } },
-     *     "timestamps": { "<ts>":   { "<uuid>": { "hv_hpc_x": ..., "hv_hpc_y": ... } } }
+     *     "timestamps": { "<ts>":   { "<uuid>": { "dx": ..., "dy": ... } } }
      *   }
-     *
-     * With ?withDelta, each timestamp carries arcsec offsets from the event's
-     * static center instead: clients render pin = center + (dx,dy) and shift
-     * every footprint vertex by the same delta. Smaller payload, but the client
-     * has to do the addition.
-     *   "timestamps": { "<ts>": { "<uuid>": { "dx": ..., "dy": ... } } }
      */
     public function getObservationsBySelection(Request $request, Response $response): Response
     {
@@ -78,10 +74,6 @@ class HelioviewerController extends Controller
         if (json_last_error() !== JSON_ERROR_NONE) {
             return $this->error($response, 'Invalid JSON body', 400);
         }
-
-        // ?withDelta → per-timestamp arcsec offsets from the base in `events`.
-        // Without it, each timestamp carries absolute rotated hv_hpc_x/hv_hpc_y.
-        $withDelta = array_key_exists('withDelta', $request->getQueryParams());
 
         // === Validate timestamps ===
         $timestamps = $json['timestamps'] ?? [];
@@ -199,14 +191,6 @@ class HelioviewerController extends Controller
                 // Center unchanged = rotation did not happen (no snapshot, or
                 // coordinator failed): the event stays at its base position.
                 $unrotated = [$event->hv_hpc_x, $event->hv_hpc_y] === $centersBeforeRotate[$event->id];
-
-                if (!$withDelta) {
-                    $obs[$event->id] = [
-                        'hv_hpc_x' => $event->hv_hpc_x,
-                        'hv_hpc_y' => $event->hv_hpc_y,
-                    ];
-                    continue;
-                }
 
                 // dx/dy = rotated center minus the base center (x_hpc/y_hpc —
                 // the same values served in `events`).
