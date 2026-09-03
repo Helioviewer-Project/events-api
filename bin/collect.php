@@ -94,6 +94,35 @@ $collector = EventCollector::createStandard(
 $sources = $collector->getSources();
 $selected = $collector->selectSources($sourceNames);
 
+// A SOURCES name matching no registered source is almost always a typo, and
+// selectSources() just returns fewer sources for it — so the run would report
+// success having collected nothing. Fail before any fetching instead.
+if (!empty($sourceNames)) {
+    $known = [];
+    foreach ($sources as $source) {
+        $known[strtolower($source->getName())] = $source->getName();
+    }
+
+    $unknown = array_values(array_filter(
+        $sourceNames,
+        fn($name) => !isset($known[strtolower($name)])
+    ));
+
+    if (!empty($unknown)) {
+        $names = array_values($known);
+        sort($names);
+
+        echo "Unknown source name(s): " . implode(', ', $unknown) . "\n";
+        echo "Nothing was collected.\n\n";
+        echo "Known sources:\n";
+        foreach ($names as $name) {
+            echo "  {$name}\n";
+        }
+        echo "\nSee 'make sources' for the path each one writes to.\n";
+        exit(1);
+    }
+}
+
 foreach ($sources as $path => $source) {
     $mark = isset($selected[$path]) ? 'FETCH' : 'SKIP ';
     $logger->debug("[{$mark}] {$path} => {$source->getName()}");
