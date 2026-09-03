@@ -16,7 +16,9 @@ use Helioviewer\EventsApi\Events\Sources\SourceInterface;
  * contours:[{lat[],lon[]},…]}`). All contours become the event footprint — a LIST of
  * polygons `[[{x,y},…],…]` — and the pin is the largest contour's centroid. Coordinates
  * stay in Carrington degrees and are rotated to HPC at query time by CoordinateRotator
- * (coordinate_system='carrington'). See docs/WSA_PLAN.md.
+ * (coordinate_system='carrington'). Path is the input map alone — no satellite
+ * level (see CoronalHole::SAT) and no realization level; the 12 AGONG members
+ * sit under the one node and are told apart by their label. See docs/WSA_PLAN.md.
  *
  * @package Helioviewer\EventsApi\Events\Processors\WSA
  */
@@ -29,7 +31,6 @@ class CoronalHoleProcessor extends Processor
 
     public function process(array $rawRecord, SourceInterface $source): Event
     {
-        $sat      = (string) ($rawRecord['sat'] ?? '');
         $inputMap = (string) ($rawRecord['input_map'] ?? '');
         $real     = $rawRecord['real'] ?? 0;
 
@@ -67,18 +68,18 @@ class CoronalHoleProcessor extends Processor
 
         [$start, $peak, $end] = $this->timeline($rawRecord);
 
-        // Path: vantage + input map only — the realization is NOT a path level;
-        // it lives in the event label, so each forecast window lists as one
-        // event entry under its AGONG/GONGZ node.
-        $leaf = "{$sat}>>{$inputMap}";
+        // Path: input map only. No satellite level — the maps are identical
+        // whatever `sat` is requested — and no realization level either: all 12
+        // AGONG members list under the one node, told apart by their label.
+        $leaf = $inputMap;
 
-        // Labels — compact: "R{n}" realization tag (AGONG only; GONGZ has none),
-        // satellite only in the full label.
-        //   label:       "{sat}, R{n}, Forecast: {t}"
+        // Labels — the realization is not a path level, so it has to be legible
+        // here (GONGZ has a single member and carries none):
+        //   label:       "Real {n}, Forecast: {t}"
         //   short_label: "R{n}, Forecast: {t}"
         $forecastTag = $this->forecastTag($peak);
         $shortLabel  = $inputMap === 'AGONG' ? "R{$real}, {$forecastTag}" : $forecastTag;
-        $label       = "{$sat}, {$shortLabel}";
+        $label       = $inputMap === 'AGONG' ? "Real {$real}, {$forecastTag}" : $forecastTag;
 
         $event = new Event();
         $event->fill([
@@ -103,7 +104,6 @@ class CoronalHoleProcessor extends Processor
             'name'    => 'WSA Coronal Hole',
             'content' => [
                 'Product'           => 'Coronal Hole boundaries',
-                'Vantage (sat)'     => $sat,
                 'Input map'         => $inputMap,
                 'Realization'       => $inputMap === 'AGONG' ? $real : 'n/a',
                 'Forecast time'     => $rawRecord['forecast_time'] ?? null,

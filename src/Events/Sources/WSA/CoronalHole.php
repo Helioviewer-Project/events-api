@@ -18,6 +18,17 @@ use Helioviewer\EventsApi\Utils\TimeRange;
  */
 class CoronalHole extends Source
 {
+    /**
+     * Coronal-hole maps describe the Sun, not the observer, so the API returns
+     * the same contours whatever `sat` is passed — confirmed by CCMC's WSA
+     * developer 2026-08-31. `sat` stays a required parameter on their side (the
+     * API is already published), so we send one fixed value instead of looping
+     * all six: 78 requests a day become 13. It is still recorded in the raw
+     * record and the remote_id (a constant segment) so coronal-hole ids stay
+     * parallel to the footpoint ids and the sidecar keeps the provenance.
+     */
+    private const SAT = 'SWPC_REALTIME';
+
     public function getName(): string
     {
         return 'WSA_CORONAL_HOLES';
@@ -29,54 +40,51 @@ class CoronalHole extends Source
 
         $caps      = $this->capabilities(self::API_BASE . '/load_helioviewer_coronal_hole_capabilities');
         $inputMaps = $caps['input_maps'] ?? [];
-        $sats      = $caps['locations']  ?? [];
 
         $records = [];
 
         foreach ($inputMaps as $inputMap) {
             $reals = ($inputMap === 'AGONG') ? range(0, 11) : [0];
 
-            foreach ($sats as $sat) {
-                foreach ($reals as $real) {
-                    $url = self::API_BASE . '/load_helioviewer_coronal_holes?' . http_build_query(
-                        $dates + ['input_map' => $inputMap, 'sat' => $sat, 'real' => $real]
-                    );
+            foreach ($reals as $real) {
+                $url = self::API_BASE . '/load_helioviewer_coronal_holes?' . http_build_query(
+                    $dates + ['input_map' => $inputMap, 'sat' => self::SAT, 'real' => $real]
+                );
 
-                    $windows = $this->makeJsonRequest($url); // list of forecast windows
+                $windows = $this->makeJsonRequest($url); // list of forecast windows
 
-                    foreach ($windows as $window) {
-                        if (!is_array($window)) {
-                            continue;
-                        }
-
-                        // Group ALL of the window's contours into one raw record →
-                        // one Event with a multi-polygon footprint.
-                        $contours = [];
-                        foreach (($window['forecast'] ?? []) as $contour) {
-                            $lat = $contour['coords']['lat'] ?? [];
-                            $lon = $contour['coords']['lon'] ?? [];
-                            if (empty($lon) || empty($lat)) {
-                                continue;
-                            }
-                            $contours[] = ['lat' => $lat, 'lon' => $lon];
-                        }
-                        if (empty($contours)) {
-                            continue;
-                        }
-
-                        $records[] = [
-                            'product'        => 'coronal_hole',
-                            'sat'            => $sat,
-                            'input_map'      => $inputMap,
-                            'real'           => $real,
-                            'forecast_time'  => $window['forecast_time'] ?? null,
-                            'forecast_range' => $window['forecast_range'] ?? null,
-                            'contours'       => $contours,
-                        ];
+                foreach ($windows as $window) {
+                    if (!is_array($window)) {
+                        continue;
                     }
 
-                    usleep($this->sleepMicros);
+                    // Group ALL of the window's contours into one raw record →
+                    // one Event with a multi-polygon footprint.
+                    $contours = [];
+                    foreach (($window['forecast'] ?? []) as $contour) {
+                        $lat = $contour['coords']['lat'] ?? [];
+                        $lon = $contour['coords']['lon'] ?? [];
+                        if (empty($lon) || empty($lat)) {
+                            continue;
+                        }
+                        $contours[] = ['lat' => $lat, 'lon' => $lon];
+                    }
+                    if (empty($contours)) {
+                        continue;
+                    }
+
+                    $records[] = [
+                        'product'        => 'coronal_hole',
+                        'sat'            => self::SAT,
+                        'input_map'      => $inputMap,
+                        'real'           => $real,
+                        'forecast_time'  => $window['forecast_time'] ?? null,
+                        'forecast_range' => $window['forecast_range'] ?? null,
+                        'contours'       => $contours,
+                    ];
                 }
+
+                usleep($this->sleepMicros);
             }
         }
 
@@ -92,6 +100,10 @@ class CoronalHole extends Source
         $start = $range[0] ?? ($rawRecord['forecast_time'] ?? '');
         $end   = $range[1] ?? ($rawRecord['forecast_time'] ?? '');
 
-        return "{$rawRecord['sat']}:{$rawRecord['input_map']}:{$rawRecord['real']}:{$start}:{$end}";
+        // Records stored before `sat` was added back lack the key; it is a
+        // constant, so defaulting to SAT yields the same id either way.
+        $sat = $rawRecord['sat'] ?? self::SAT;
+
+        return "{$sat}:{$rawRecord['input_map']}:{$rawRecord['real']}:{$start}:{$end}";
     }
 }
