@@ -75,6 +75,7 @@ class StatsController extends Controller
             $sourceNames = [
                 JsonSource::CCMC => 'CCMC',
                 JsonSource::HEK => 'HEK',
+                JsonSource::WSA => 'WSA',
                 JsonSource::RHESSI => 'RHESSI',
             ];
 

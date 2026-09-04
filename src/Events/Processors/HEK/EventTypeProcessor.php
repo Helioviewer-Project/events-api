@@ -225,6 +225,9 @@ class EventTypeProcessor extends BaseProcessor
      *
      * HEK format: "POLYGON((x1 y1,x2 y2,x3 y3,...))"
      *
+     * Returns ONE polygon; process() wraps it into the canonical
+     * list-of-polygons footprint shape ([[{x,y},…]]).
+     *
      * @param string $boundcc The hpc_boundcc string from HEK
      * @return array Array of {x, y} points: [{x,y}, {x,y}, ...]
      */
@@ -286,7 +289,8 @@ class EventTypeProcessor extends BaseProcessor
             'hv_hpc_x'          => (float) ($rawRecord['hpc_x'] ?? 0),
             'hv_hpc_y'          => (float) ($rawRecord['hpc_y'] ?? 0),
             'coordinate_system' => 'helioprojective',
-            'footprint'         => $footprint,
+            // Canonical footprint shape: a LIST of polygons ([[{x,y},…]]) — HEK has one.
+            'footprint'         => empty($footprint) ? [] : [$footprint],
             'label'             => $this->getLabel($rawRecord),
             'short_label'       => $this->getLabel($rawRecord),
             'legacy_version'    => $rawRecord['frm_specificid'] ?? null,

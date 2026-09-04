@@ -109,8 +109,8 @@ class DonkiFlareProcessor extends BaseProcessor
      * the required activityID field that uniquely identifies flare events
      * in the DONKI database.
      *
-     * @param string $sourceName The name/identifier of the data source
-     * @param array  $rawRecord  The raw event data record from the source
+     * @param SourceInterface $source    The data source being processed
+     * @param array           $rawRecord The raw event data record from the source
      *
      * @return bool True if this processor can handle the data, false otherwise
      */
@@ -143,9 +143,8 @@ class DonkiFlareProcessor extends BaseProcessor
      * - Handles DateTime objects and string timestamps from translator
      * - Peak time represents the maximum intensity phase of the flare
      *
-     * @param array  $rawRecord  The raw flare event data from DONKI
-     * @param string $sourceName The source identifier (should be 'DONKI_FLARE')
-     * @param array  $context    Additional processing context (currently unused)
+     * @param array           $rawRecord The raw flare event data from DONKI
+     * @param SourceInterface $source    The source being processed (DONKI_FLARE)
      *
      * @return Event The processed (unpersisted) Event model instance
      *

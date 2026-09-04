@@ -35,7 +35,12 @@ use Illuminate\Database\Eloquent\Builder;
  * @property int $coordinate_time Time when coordinates were observed as Unix timestamp
  * @property float|null $hv_hpc_x Helioviewer HPC X coordinate
  * @property float|null $hv_hpc_y Helioviewer HPC Y coordinate
- * @property string|null $coordinate_system Coordinate system (stonyhurst, helioprojective)
+ * @property string|null $coordinate_system Coordinate system (stonyhurst, helioprojective, carrington)
+ * @property array $footprint Footprint as a LIST of polygons: [[{x,y},…],…] (single-polygon events hold one entry)
+ * @property float|null $x_hpc Native-HPC X (arcsec, from Earth at coordinate_time); NULL = not resolved yet
+ * @property float|null $y_hpc Native-HPC Y (arcsec, from Earth at coordinate_time); NULL = not resolved yet
+ * @property array|null $footprint_hpc Footprint in native HPC arcsec (same polygon-list shape); set LAST on resolution — NULL = not resolved yet
+ * @property bool $visible Whether the center faces the observer at the requested time — not a column, set by CoordinateRotator at query time only
  * @property string|null $label Human-readable event label
  * @property string $short_label Shorter event label
  * @property string|null $legacy_version Legacy version identifier
@@ -100,6 +105,9 @@ class Event extends Model
         'hv_hpc_y',
         'coordinate_system',
         'footprint',
+        'x_hpc',
+        'y_hpc',
+        'footprint_hpc',
         'label',
         'short_label',
         'legacy_version',
@@ -120,6 +128,9 @@ class Event extends Model
         'hv_hpc_x' => 'float',
         'hv_hpc_y' => 'float',
         'footprint' => 'array',
+        'x_hpc' => 'float',
+        'y_hpc' => 'float',
+        'footprint_hpc' => 'array',
         'source_id' => 'integer',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
@@ -130,7 +141,15 @@ class Event extends Model
      *
      * @var array<string>
      */
-    protected $hidden = [];
+    protected $hidden = [
+        // Native-HPC snapshot: internal input to rotation, never part of a
+        // response. Serializing it would duplicate the rotated hv_hpc_*/footprint
+        // and decode a second copy of every vertex into PHP arrays. Attribute
+        // access ($event->footprint_hpc) is unaffected by $hidden.
+        'x_hpc',
+        'y_hpc',
+        'footprint_hpc',
+    ];
 
     /**
      * The relationships that should always be loaded.
@@ -138,6 +157,25 @@ class Event extends Model
      * @var array<string>
      */
     protected $with = ['regions'];
+
+    /**
+     * Whether this freshly-processed event carries different coordinate data
+     * than its stored DB copy: coordinate_time, coordinate_system, the center
+     * coordinates, or the footprint. A missing copy (new event) counts as
+     * different. Pure comparison — no knowledge of the HPC snapshot fields.
+     *
+     * @param Event|null $existingEvent The stored DB copy (null when the event is new)
+     * @return bool
+     */
+    public function coordinatesDifferFrom(?Event $existingEvent): bool
+    {
+        return $existingEvent === null
+            || $existingEvent->coordinate_time !== $this->coordinate_time
+            || $existingEvent->coordinate_system !== $this->coordinate_system
+            || (float) $existingEvent->hv_hpc_x !== (float) $this->hv_hpc_x
+            || (float) $existingEvent->hv_hpc_y !== (float) $this->hv_hpc_y
+            || $existingEvent->footprint !== $this->footprint;
+    }
 
     /**
      * Scope a query to only include events from a specific source.

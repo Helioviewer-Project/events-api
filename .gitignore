@@ -30,7 +30,9 @@ Thumbs.db
 /build/
 /dist/
 
-# Storage directories - ignore all contents but keep directory structure
-storage/**
-!storage/**/
-!**/.gitkeep
+# Storage - fully ignored so git status can prune the (million-file) tree.
+# The structural .gitkeep files are already tracked and stay tracked.
+/storage/
+
+# Local DB dumps
+/backups/
