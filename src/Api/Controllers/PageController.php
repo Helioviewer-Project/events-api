@@ -401,11 +401,13 @@ events = response.<span class="fn">json</span>()</code></pre>
   "end": "2025-03-15 12:00:00",
   "hv_hpc_x": -806.97,
   "hv_hpc_y": 440.01,
+  "visible": true,
   "label": "HMI SHARP 12923",
   "coordinate_system": "helioprojective",
   "regions": [{"organization": "NOAA", "external_id": "14033", ...}],
   ...
 }, ... <span class="cmt">// 49 events</span>]</code></pre>
+                    <p><code>visible</code> says whether the event's center faces the observer at the requested time. An event that has rotated behind the limb is still returned, flagged <code>visible: false</code> — the client decides how to draw it. Far-side footprint vertices carry their own <code>"visible": false</code> beside <code>x</code>/<code>y</code>; front-side vertices have no such key, and a missing key always means visible.</p>
                 </div>
             </details>
 
@@ -594,6 +596,7 @@ data = response.<span class="fn">json</span>()</code></pre>
         "end": "2025-03-15T12:00:00",
         "hv_hpc_x": -806.97,
         "hv_hpc_y": 440.01,
+        "visible": true,
         "label": "HMI SHARP 12923",
         ...
       }, ...]
@@ -723,11 +726,12 @@ data = response.<span class="fn">json</span>()</code></pre>
     }, ...
   },
   <span class="str">"timestamps"</span>: {
-    <span class="str">"2025-03-15 11:00:00"</span>: {<span class="str">"019c3d8f-..."</span>: {<span class="str">"dx"</span>: <span class="num">4.4</span>, <span class="str">"dy"</span>: <span class="num">2.4</span>}, ...},
+    <span class="str">"2025-03-15 11:00:00"</span>: {<span class="str">"019c3d8f-..."</span>: {<span class="str">"dx"</span>: <span class="num">4.4</span>, <span class="str">"dy"</span>: <span class="num">2.4</span>, <span class="str">"visible"</span>: <span class="kw">true</span>}, ...},
     <span class="str">"2025-03-15 12:00:00"</span>: { ... }
   }
 }</code></pre>
                     <p>A selection matches every event whose path equals the prefix or starts with that prefix. Max 150 timestamps and 200 selections per request.</p>
+                    <p><code>visible</code> is per frame: whether the event's center faces the observer at that timestamp, so a movie can fade a region as it rotates over the limb without re-fetching its footprint. Far-side vertices in the <code>events</code> footprint base carry their own <code>"visible": false</code>.</p>
                 </div>
             </details>
 

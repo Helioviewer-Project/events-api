@@ -63,8 +63,12 @@ class HelioviewerController extends Controller
      * footprint vertex by the same delta.
      *   {
      *     "events":     { "<uuid>": { static fields, arcsec snapshot base } },
-     *     "timestamps": { "<ts>":   { "<uuid>": { "dx": ..., "dy": ... } } }
+     *     "timestamps": { "<ts>":   { "<uuid>": { "dx": ..., "dy": ..., "visible": ... } } }
      *   }
+     *
+     * `visible` is per frame: whether the event's center faces the observer at
+     * that timestamp. Far-side footprint vertices in the snapshot base carry
+     * their own "visible": false.
      */
     public function getObservationsBySelection(Request $request, Response $response): Response
     {
@@ -193,12 +197,14 @@ class HelioviewerController extends Controller
                 $unrotated = [$event->hv_hpc_x, $event->hv_hpc_y] === $centersBeforeRotate[$event->id];
 
                 // dx/dy = rotated center minus the base center (x_hpc/y_hpc —
-                // the same values served in `events`).
+                // the same values served in `events`). visible is this frame's
+                // own answer: a long-lived event rotates behind the limb mid-movie.
                 $obs[$event->id] = $unrotated
-                    ? ['dx' => 0, 'dy' => 0]
+                    ? ['dx' => 0, 'dy' => 0, 'visible' => $event->visible ?? true]
                     : [
                         'dx' => $event->hv_hpc_x - $event->x_hpc,
                         'dy' => $event->hv_hpc_y - $event->y_hpc,
+                        'visible' => $event->visible ?? true,
                     ];
             }
             $timestampsOut[$tsKey] = $obs;

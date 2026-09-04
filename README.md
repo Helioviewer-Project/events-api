@@ -163,6 +163,7 @@ Example response:
             "end": "2025-03-15T12:00:00",
             "hv_hpc_x": -806.97,
             "hv_hpc_y": 440.01,
+            "visible": true,
             "label": "HMI SHARP 12923",
             "..."
           },
@@ -295,8 +296,8 @@ Example response:
     }
   },
   "timestamps": {
-    "2025-03-15 11:00:00": {"019c3d8f-...": {"dx": 4.4, "dy": 2.4}},
-    "2025-03-15 12:00:00": {"019c3d8f-...": {"dx": 9.7, "dy": 5.1}}
+    "2025-03-15 11:00:00": {"019c3d8f-...": {"dx": 4.4, "dy": 2.4, "visible": true}},
+    "2025-03-15 12:00:00": {"019c3d8f-...": {"dx": 9.7, "dy": 5.1, "visible": true}}
   }
 }
 ```
@@ -305,7 +306,9 @@ Example response:
 
 For movies > 150 frames, split timestamps into chunks and merge `timestamps` across responses.
 
-`hv_hpc_x/y` and `footprint` in `events` are the arcsec base at the event's own coordinate time; each timestamp carries only `{"dx", "dy"}`, that frame's arcsec offset from the base. Render pin = `center + (dx, dy)`, and shift every polygon point by the same delta. `footprint` is a **list of polygons** (`[[{x,y},…],…]` — multi-contour events like WSA coronal-hole maps carry several).
+`hv_hpc_x/y` and `footprint` in `events` are the arcsec base at the event's own coordinate time; each timestamp carries `{"dx", "dy"}`, that frame's arcsec offset from the base. Render pin = `center + (dx, dy)`, and shift every polygon point by the same delta. `footprint` is a **list of polygons** (`[[{x,y},…],…]` — multi-contour events like WSA coronal-hole maps carry several).
+
+`visible` is per frame: whether the event's center faces the observer at that timestamp, so a movie can fade a region as it rotates over the limb without re-fetching its footprint. Far-side vertices in the `events` footprint base carry their own `"visible": false`.
 
 ---
 
@@ -373,6 +376,7 @@ Example response:
     "end": "2025-03-15 12:00:00",
     "hv_hpc_x": -806.97,
     "hv_hpc_y": 440.01,
+    "visible": true,
     "label": "HMI SHARP 12923",
     "coordinate_system": "helioprojective",
     "regions": [{"organization": "NOAA", "external_id": "14033", "..."}],
@@ -381,6 +385,8 @@ Example response:
   "... (49 events)"
 ]
 ```
+
+`visible` says whether the event's center faces the observer at the requested time — an event that has rotated behind the limb is still returned, with `visible: false`, and the client decides how to draw it. Far-side footprint vertices carry their own `"visible": false` next to `x`/`y`; front-side vertices have no such key. Both fields are additive, and a missing key always means visible.
 
 #### GET `/api/v1/events/{uuid}`
 

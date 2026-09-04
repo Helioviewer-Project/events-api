@@ -60,6 +60,10 @@ class CoordinateRotator
      * of polygons [[{x,y},…],…]). With $withFootprints false (batch/movie
      * endpoints read centers only) footprints are left untouched.
      *
+     * Also sets `visible` on every event: whether its center faces the observer
+     * at the target time, read from the same /hpc result. Far-side footprint
+     * vertices keep their snapshot-time visible=false key through the shift.
+     *
      * @param Collection $events Eloquent Collection of Event models
      * @param int $targetTimestamp Target observation time (Unix timestamp)
      * @param bool $withFootprints Shift footprints by the center delta (default true)
@@ -84,6 +88,10 @@ class CoordinateRotator
         );
 
         return $events->map(function ($event) use ($rotatedCoordinates, $withFootprints) {
+            // Fail-open: an unresolved event, a failed batch or a coordinator
+            // without the flag all serve visible.
+            $event->visible = true;
+
             if (!isset($rotatedCoordinates[$event->id])) {
                 return $event; // unresolved or failed batch: serve stored values
             }
@@ -94,6 +102,7 @@ class CoordinateRotator
 
             $event->hv_hpc_x = $rotated['hpc_x'];
             $event->hv_hpc_y = $rotated['hpc_y'];
+            $event->visible  = $rotated['visible'] ?? true;
 
             if (!$withFootprints) {
                 return $event; // batch endpoints read centers only
@@ -104,10 +113,15 @@ class CoordinateRotator
             foreach ($footprint as $polygon) {
                 $shiftedPolygon = [];
                 foreach ($polygon as $point) {
-                    $shiftedPolygon[] = [
+                    $shiftedPoint = [
                         'x' => (float) $point['x'] + $dx,
                         'y' => (float) $point['y'] + $dy,
                     ];
+                    // Snapshot-time flag, moved but not recomputed.
+                    if (isset($point['visible']) && $point['visible'] === false) {
+                        $shiftedPoint['visible'] = false;
+                    }
+                    $shiftedPolygon[] = $shiftedPoint;
                 }
                 $shifted[] = $shiftedPolygon;
             }

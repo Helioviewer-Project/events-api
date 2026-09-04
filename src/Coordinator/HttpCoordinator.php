@@ -105,10 +105,7 @@ class HttpCoordinator implements CoordinatorInterface
             $rotatedCoordinates = [];
             foreach ($responseData['coordinates'] as $index => $result) {
                 $originalKey = $originalKeys[$index];
-                $rotatedCoordinates[$originalKey] = [
-                    'hpc_x' => $result['x'],
-                    'hpc_y' => $result['y'],
-                ];
+                $rotatedCoordinates[$originalKey] = $this->formatResult($result);
             }
 
             $resultCount = count($rotatedCoordinates);
@@ -200,10 +197,7 @@ class HttpCoordinator implements CoordinatorInterface
             $rotatedCoordinates = [];
             foreach ($responseData['coordinates'] as $index => $result) {
                 $originalKey = $originalKeys[$index];
-                $rotatedCoordinates[$originalKey] = [
-                    'hpc_x' => $result['x'],
-                    'hpc_y' => $result['y'],
-                ];
+                $rotatedCoordinates[$originalKey] = $this->formatResult($result);
             }
 
             $resultCount = count($rotatedCoordinates);
@@ -299,10 +293,7 @@ class HttpCoordinator implements CoordinatorInterface
             $transformedCoordinates = [];
             foreach ($responseData['coordinates'] as $index => $result) {
                 $originalKey = $originalKeys[$index];
-                $transformedCoordinates[$originalKey] = [
-                    'hpc_x' => $result['x'],
-                    'hpc_y' => $result['y'],
-                ];
+                $transformedCoordinates[$originalKey] = $this->formatResult($result);
             }
 
             $resultCount = count($transformedCoordinates);
@@ -322,5 +313,27 @@ class HttpCoordinator implements CoordinatorInterface
             }
             throw new CoordinatorException("Failed to transform HPC coordinates: " . $e->getMessage(), 0, $e);
         }
+    }
+
+    /**
+     * One coordinator result as an hpc_x/hpc_y pair, carrying `visible` only
+     * when the service reported it — coordinator builds without the flag leave
+     * the key out, and every consumer reads a missing key as visible.
+     *
+     * @param array $result One entry of the coordinator's coordinates array
+     * @return array
+     */
+    private function formatResult(array $result): array
+    {
+        $formatted = [
+            'hpc_x' => $result['x'],
+            'hpc_y' => $result['y'],
+        ];
+
+        if (array_key_exists('visible', $result)) {
+            $formatted['visible'] = (bool) $result['visible'];
+        }
+
+        return $formatted;
     }
 }

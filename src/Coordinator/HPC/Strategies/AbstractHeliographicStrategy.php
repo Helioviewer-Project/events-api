@@ -150,7 +150,7 @@ abstract class AbstractHeliographicStrategy implements HPCStrategyInterface
      *
      * @param Collection $events Events whose centers resolved
      * @param int $time Their shared coordinate_time
-     * @return array<string, array>|null Event id => polygon list; null if any chunk failed
+     * @return array<string, array>|null Event id => polygon list, far-side vertices carrying visible=false; null if any chunk failed
      */
     private function convertFootprints(Collection $events, int $time): ?array
     {
@@ -178,10 +178,17 @@ abstract class AbstractHeliographicStrategy implements HPCStrategyInterface
                     continue;
                 }
                 [$eventId, $polygonIndex] = explode('|', $key);
-                $polygons[$eventId][$polygonIndex][] = [
+                $vertex = [
                     'x' => (float) $coords['hpc_x'],
                     'y' => (float) $coords['hpc_y'],
                 ];
+                // Only far-side vertices carry the key: absent means visible, and
+                // a key on all ~190k vertices of a hole map is memory this
+                // endpoint does not have.
+                if (($coords['visible'] ?? true) === false) {
+                    $vertex['visible'] = false;
+                }
+                $polygons[$eventId][$polygonIndex][] = $vertex;
             }
             $chunk = [];
             return true;

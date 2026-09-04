@@ -40,6 +40,7 @@ use Illuminate\Database\Eloquent\Builder;
  * @property float|null $x_hpc Native-HPC X (arcsec, from Earth at coordinate_time); NULL = not resolved yet
  * @property float|null $y_hpc Native-HPC Y (arcsec, from Earth at coordinate_time); NULL = not resolved yet
  * @property array|null $footprint_hpc Footprint in native HPC arcsec (same polygon-list shape); set LAST on resolution — NULL = not resolved yet
+ * @property bool $visible Whether the center faces the observer at the requested time — not a column, set by CoordinateRotator at query time only
  * @property string|null $label Human-readable event label
  * @property string $short_label Shorter event label
  * @property string|null $legacy_version Legacy version identifier
