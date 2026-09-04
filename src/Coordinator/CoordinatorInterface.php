@@ -23,10 +23,11 @@ interface CoordinatorInterface
      *     ['lat' => -10.0, 'lon' => 45.0, 'coordinate_time' => 1715432400]
      * ]
      * @param int|string $targetTimestamp Target time for coordinate rotation
-     * @return array Array of rotated coordinates in same order as input
+     * @return array Array of rotated coordinates in same order as input; each carries
+     * 'visible' only when the coordinator reported it (absent = visible)
      * Example: [
-     *     ['hpc_x' => 123.45, 'hpc_y' => -67.89],
-     *     ['hpc_x' => -234.56, 'hpc_y' => 78.90]
+     *     ['hpc_x' => 123.45, 'hpc_y' => -67.89, 'visible' => true],
+     *     ['hpc_x' => -234.56, 'hpc_y' => 78.90, 'visible' => false]
      * ]
      */
     public function stonyhurstToHelioprojectiveBatch(array $coordinateArray, $targetTimestamp): array;
@@ -40,10 +41,11 @@ interface CoordinatorInterface
      *     ['lat' => -10.0, 'lon' => 245.0, 'coordinate_time' => 1715432400]
      * ]
      * @param int|string $targetTimestamp Target time for coordinate rotation
-     * @return array Array of rotated coordinates in same order as input
+     * @return array Array of rotated coordinates in same order as input; each carries
+     * 'visible' only when the coordinator reported it (absent = visible)
      * Example: [
-     *     ['hpc_x' => 123.45, 'hpc_y' => -67.89],
-     *     ['hpc_x' => -234.56, 'hpc_y' => 78.90]
+     *     ['hpc_x' => 123.45, 'hpc_y' => -67.89, 'visible' => true],
+     *     ['hpc_x' => -234.56, 'hpc_y' => 78.90, 'visible' => false]
      * ]
      */
     public function carringtonToHelioprojectiveBatch(array $coordinateArray, $targetTimestamp): array;
@@ -60,10 +62,11 @@ interface CoordinatorInterface
      *     'event-id-2' => ['x' => -150.0, 'y' => 300.0, 'coordinate_time' => 1522394520]
      * ]
      * @param int|string $targetTimestamp Target observation time
-     * @return array Array of transformed coordinates with same keys as input
+     * @return array Array of transformed coordinates with same keys as input; each carries
+     * 'visible' only when the coordinator reported it (absent = visible)
      * Example: [
-     *     'event-id-1' => ['hpc_x' => 107.25, 'hpc_y' => 199.60],
-     *     'event-id-2' => ['hpc_x' => -142.30, 'hpc_y' => 298.50]
+     *     'event-id-1' => ['hpc_x' => 107.25, 'hpc_y' => 199.60, 'visible' => true],
+     *     'event-id-2' => ['hpc_x' => -142.30, 'hpc_y' => 298.50, 'visible' => false]
      * ]
      * @throws CoordinatorException If coordinate transformation fails
      */

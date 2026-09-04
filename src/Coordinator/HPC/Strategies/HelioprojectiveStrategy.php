@@ -12,6 +12,11 @@ use Psr\Log\LoggerInterface;
  * Events already stored in helioprojective arcsec (HEK, RHESSI): straight
  * copy, no coordinator calls.
  *
+ * No coordinator reply means no per-vertex `visible` flag, which is correct
+ * here: these are detections from Earth-facing imagery, so every vertex faces
+ * the observer at the event's own coordinate_time. Whether it has rotated away
+ * since is answered by CoordinateRotator at query time.
+ *
  * @package Helioviewer\EventsApi\Coordinator\HPC\Strategies
  * @author  Kasim Necdet Percinel <kasim.n.percinel@nasa.gov>
  * @since   1.0.0
