@@ -137,6 +137,16 @@ class HelioviewerController extends Controller
             $this->hpcResolver->resolve($needsSnapshot);
         }
 
+        // An event with no arcsec snapshot has nothing usable to serve: the dict
+        // below would fall back to hv_hpc_x, which is DEGREES for carrington and
+        // stonyhurst, and the client reads that field as arcsec. Better to leave
+        // the event out than to draw it in the wrong place.
+        $unusable = $allEvents->filter(fn($e) => $e->x_hpc === null);
+        if ($unusable->isNotEmpty()) {
+            $this->logger->warning("Selection observations | dropping {$unusable->count()} events with no arcsec snapshot");
+            $allEvents = $allEvents->reject(fn($e) => $e->x_hpc === null);
+        }
+
         // === Build events dict (static fields, same shape as formatEventsBatched) ===
         // Center and footprint are the native-HPC (arcsec) snapshot at the event's
         // own coordinate_time — same units as the per-timestamp centers, so the

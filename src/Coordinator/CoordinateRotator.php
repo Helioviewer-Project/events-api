@@ -24,8 +24,9 @@ use Illuminate\Database\Eloquent\Collection;
  * are resolved in-memory first via HPCResolver.
  *
  * Failover and Sentry reporting live in the injected coordinator
- * (FailoverCoordinator); a failed batch leaves events serving their stored
- * values, as before.
+ * (FailoverCoordinator). A failed batch falls back to the arcsec snapshot —
+ * never to the stored source coordinates, which are DEGREES for the
+ * heliographic systems.
  *
  * @package    Helioviewer\EventsApi\Coordinator
  * @author  Kasim Necdet Percinel <kasim.n.percinel@nasa.gov>
@@ -97,7 +98,7 @@ class CoordinateRotator
             $event->visible = true;
 
             if (!isset($rotatedCoordinates[$event->id])) {
-                return $event; // unresolved or failed batch: serve stored values
+                return $this->serveSnapshot($event, $withFootprints);
             }
 
             $rotated = $rotatedCoordinates[$event->id];
@@ -231,4 +232,32 @@ class CoordinateRotator
         return $result;
     }
 
+    /**
+     * Rotation was not possible for this event. Serve the arcsec snapshot at its
+     * own coordinate_time rather than the stored source coordinates, which are
+     * DEGREES for carrington and stonyhurst — the client reads these fields as
+     * arcsec either way, so falling back to the source units renders the event
+     * as a tiny blob at disc centre and loses the far-side vertex flags.
+     *
+     * @param Event $event Event that could not be rotated
+     * @param bool $withFootprints Whether the caller wants footprints served
+     * @return Event
+     */
+    private function serveSnapshot(Event $event, bool $withFootprints): Event
+    {
+        if ($event->x_hpc === null) {
+            return $event; // no snapshot either: nothing better to offer
+        }
+
+        $event->hv_hpc_x = $event->x_hpc;
+        $event->hv_hpc_y = $event->y_hpc;
+
+        if ($withFootprints && is_array($event->footprint_hpc)) {
+            $event->footprint = $event->footprint_hpc;
+        }
+
+        $this->logger->warning("CoordinateRotator | Serving unrotated snapshot for {$event->id}");
+
+        return $event;
+    }
 }
