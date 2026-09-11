@@ -36,7 +36,7 @@ class CachedHttpClient implements ClientInterface
         ?LoggerInterface $logger = null
     ) {
         $this->client = $client ?? new Client([
-            'timeout' => 60.0,
+            'timeout' => 180.0,
             'connect_timeout' => 3.0,
             'http_errors' => true,
             'headers' => [

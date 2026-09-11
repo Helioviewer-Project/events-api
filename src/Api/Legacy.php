@@ -149,6 +149,14 @@ class Legacy
 
                     $eventArray['link'] = $linksData;
 
+                    // WSA views carry the event's own API urls; added here because the
+                    // uuid does not exist yet when the processor builds them.
+                    if (($eventArray['source_id'] ?? null) === JsonSource::WSA && isset($eventArray['views'][0]['content'])) {
+                        $url = Event::getUrlById($uuid);
+                        $eventArray['views'][0]['content']['EventsAPI URL'] = $url;
+                        $eventArray['views'][0]['content']['EventsAPI Source URL'] = $url . '/source';
+                    }
+
                     // Add concept for HEK events
                     if (($eventArray['source_id'] ?? null) === JsonSource::HEK) {
                         $eventArray['concept'] = $eventArray['source']['concept'];

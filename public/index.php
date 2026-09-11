@@ -81,7 +81,6 @@ $failuresController = new FailuresController($container);
 $app->get('/helioviewer/events/{source}/observation/{timestamp}', [$helioviewerController, 'getByObservation']);
 $app->post('/helioviewer/events/from/{from}/to/{to}', [$helioviewerController, 'getEventsByPaths']);
 $app->post('/helioviewer/distributions/size/{size}/from/{from}/to/{to}', [$helioviewerController, 'getDistribution']);
-$app->post('/helioviewer/events/{sources}/observations', [$helioviewerController, 'getBatchObservations']);
 $app->post('/helioviewer/events/frames_with_selections', [$helioviewerController, 'getObservationsBySelection']);
 
 // ===========================

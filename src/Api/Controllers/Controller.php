@@ -14,6 +14,7 @@ use Psr\Log\LoggerInterface;
 use Psr\SimpleCache\CacheInterface;
 use Psr\Http\Client\ClientInterface;
 use Helioviewer\EventsApi\Coordinator\CoordinateRotator;
+use Helioviewer\EventsApi\Coordinator\HPC\HPCResolver;
 use Helioviewer\EventsApi\Events\Event;
 use Helioviewer\EventsApi\Events\Sources\JsonSource;
 use Helioviewer\EventsApi\Sentry\ClientInterface as SentryClientInterface;
@@ -36,6 +37,7 @@ abstract class Controller
 
     // Coordinator services
     protected CoordinateRotator $coordinateRotator;
+    protected HPCResolver $hpcResolver;
 
     // External services
     protected HarpService $harpService;
@@ -60,6 +62,7 @@ abstract class Controller
         $this->failureStorage = $container->get('failureStorage');
 
         $this->coordinateRotator = $container->get('coordinateRotator');
+        $this->hpcResolver = $container->get('hpcResolver');
 
         $this->harpService = $container->get('harp');
         $this->noaaService = $container->get('noaa');
@@ -141,6 +144,14 @@ abstract class Controller
                 ];
             }
             $eventArray['link'] = $linksData;
+
+            // WSA views carry the event's own API urls; added here because the
+            // uuid does not exist yet when the processor builds them.
+            if (($eventArray['source_id'] ?? null) === JsonSource::WSA && isset($eventArray['views'][0]['content'])) {
+                $url = Event::getUrlById($uuid);
+                $eventArray['views'][0]['content']['EventsAPI URL'] = $url;
+                $eventArray['views'][0]['content']['EventsAPI Source URL'] = $url . '/source';
+            }
 
             if (($eventArray['source_id'] ?? null) === JsonSource::HEK) {
                 $eventArray['concept'] = $eventArray['source']['concept'] ?? null;

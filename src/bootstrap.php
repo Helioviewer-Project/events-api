@@ -73,6 +73,8 @@ use Helioviewer\EventsApi\Storage\RedisCache;
 use Helioviewer\EventsApi\Utils\CachedHttpClient;
 use Helioviewer\EventsApi\Coordinator\HttpCoordinator;
 use Helioviewer\EventsApi\Coordinator\CoordinateRotator;
+use Helioviewer\EventsApi\Coordinator\FailoverCoordinator;
+use Helioviewer\EventsApi\Coordinator\HPC\HPCResolver;
 use Helioviewer\EventsApi\Storage\Json\LocalFile;
 use Helioviewer\EventsApi\Storage\Json\ShardedLocalFile;
 use Helioviewer\EventsApi\Jsoc\HarpService;
@@ -246,7 +248,9 @@ $coordinator = new HttpCoordinator($httpClient, $logger);
 $backup_coordinator = new HttpCoordinator($httpClient, $logger, 'http://coordinator');
 $harpService = new HarpService($httpClient, $redisCache, $logger);
 $noaaService = new NoaaService($httpClient, $redisCache, $logger);
-$coordinateRotator = new CoordinateRotator($coordinator, $backup_coordinator, $logger, $redisCache, $sentry);
+$failoverCoordinator = new FailoverCoordinator($coordinator, $backup_coordinator, $logger, $sentry);
+$hpcResolver = HPCResolver::createDefault($failoverCoordinator, $logger);
+$coordinateRotator = new CoordinateRotator($failoverCoordinator, $hpcResolver, $logger, $redisCache);
 $distributionRepository = new DistributionPostgres($redisCache, $logger);
 
 // Initialize container with all services
@@ -254,6 +258,7 @@ $distributionRepository = new DistributionPostgres($redisCache, $logger);
     // Core services
     'cache' => $redisCache,
     'coordinateRotator' => $coordinateRotator,
+    'hpcResolver' => $hpcResolver,
     'jsonStorage' => $jsonStorage,
     'failureStorage' => $failureStorage,
     'eventRepository' => $eventRepository,

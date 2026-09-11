@@ -49,15 +49,17 @@ abstract class JsonSource implements SourceInterface
      */
     public const CCMC = 1;    // Community Coordinated Modeling Center
     public const HEK = 2;     // Heliophysics Event Knowledgebase
+    public const WSA = 3;     // Wang-Sheeley-Arge model (HelioAnalytics dashboard)
     public const RHESSI = 4;  // Reuven Ramaty High Energy Solar Spectroscopic Imager
 
     /** Currently active sources — single source of truth for validation */
-    public const VALID_SOURCES = ['CCMC', 'HEK', 'RHESSI'];
+    public const VALID_SOURCES = ['CCMC', 'HEK', 'WSA', 'RHESSI'];
 
     /** Map source name to source_id */
     private const SOURCE_MAP = [
         'CCMC' => self::CCMC,
         'HEK' => self::HEK,
+        'WSA' => self::WSA,
         'RHESSI' => self::RHESSI,
     ];
 
@@ -309,7 +311,7 @@ abstract class JsonSource implements SourceInterface
      * - Multiple response formats (preferring JSON)
      *
      * Configuration details:
-     * - 60-second timeout to handle slow scientific computing endpoints
+     * - 180-second timeout to handle slow scientific computing endpoints
      * - HTTP error exceptions enabled for proper PSR-18 compliance
      * - User-Agent header for API provider identification and rate limiting
      * - Accept header specifying JSON preference for APIs supporting multiple formats
@@ -321,7 +323,8 @@ abstract class JsonSource implements SourceInterface
     {
         return new Client([
             // Extended timeout for scientific APIs that may process large datasets
-            'timeout' => 60.0,
+            // (HEK JSON transfers can stall for minutes on the AWS→LMSAL path)
+            'timeout' => 180.0,
             // Enable HTTP error exceptions for proper PSR-18 error handling
             'http_errors' => true,
             'headers' => [

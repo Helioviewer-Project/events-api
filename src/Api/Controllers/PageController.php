@@ -401,11 +401,13 @@ events = response.<span class="fn">json</span>()</code></pre>
   "end": "2025-03-15 12:00:00",
   "hv_hpc_x": -806.97,
   "hv_hpc_y": 440.01,
+  "visible": true,
   "label": "HMI SHARP 12923",
   "coordinate_system": "helioprojective",
   "regions": [{"organization": "NOAA", "external_id": "14033", ...}],
   ...
 }, ... <span class="cmt">// 49 events</span>]</code></pre>
+                    <p><code>visible</code> says whether the event's center faces the observer at the requested time. An event that has rotated behind the limb is still returned, flagged <code>visible: false</code> — the client decides how to draw it. Far-side footprint vertices carry their own <code>"visible": false</code> beside <code>x</code>/<code>y</code>; front-side vertices have no such key, and a missing key always means visible.</p>
                 </div>
             </details>
 
@@ -594,6 +596,7 @@ data = response.<span class="fn">json</span>()</code></pre>
         "end": "2025-03-15T12:00:00",
         "hv_hpc_x": -806.97,
         "hv_hpc_y": 440.01,
+        "visible": true,
         "label": "HMI SHARP 12923",
         ...
       }, ...]
@@ -616,7 +619,7 @@ data = response.<span class="fn">json</span>()</code></pre>
                         <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
                         <tr><td><code>from</code></td><td>path</td><td>Start time (Unix timestamp)</td></tr>
                         <tr><td><code>to</code></td><td>path</td><td>End time (Unix timestamp)</td></tr>
-                        <tr><td><code>paths</code></td><td>body (JSON)</td><td>Array of event path prefixes</td></tr>
+                        <tr><td><code>paths</code></td><td>body (JSON)</td><td>Array of event path prefixes; an entry ending in <code>&gt;&gt;&lt;uuid&gt;</code> selects that single event by id</td></tr>
                     </table>
                     <pre><code><span class="kw">import</span> requests
 
@@ -692,50 +695,11 @@ data = response.<span class="fn">json</span>()</code></pre>
             <details>
                 <summary>
                     <span class="method-badge method-post">POST</span>
-                    <span class="endpoint-path">/helioviewer/events/{sources}/observations</span>
-                    <span class="endpoint-desc">Batch observations (movie frames)</span>
-                </summary>
-                <div class="endpoint-detail">
-                    <p>Get deduplicated events + rotated coordinates for multiple timestamps in one request. Designed for movie rendering.</p>
-                    <table class="param-table">
-                        <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
-                        <tr><td><code>sources</code></td><td>path</td><td>Sources joined by <code>::</code> (e.g., <code>HEK::CCMC</code>)</td></tr>
-                        <tr><td><code>timestamps</code></td><td>body (JSON)</td><td>Array of datetime strings (max 150)</td></tr>
-                    </table>
-                    <pre><code><span class="kw">import</span> requests
-
-response = requests.<span class="fn">post</span>(
-    <span class="str">"https://events.helioviewer.org/helioviewer/events/HEK::CCMC/observations"</span>,
-    json={<span class="str">"timestamps"</span>: [<span class="str">"2025-03-15 11:00:00"</span>, <span class="str">"2025-03-15 12:00:00"</span>]}
-)
-data = response.<span class="fn">json</span>()</code></pre>
-                    <p><strong>Example response:</strong></p>
-                    <pre><code>{
-  <span class="str">"event_types"</span>: [{<span class="str">"name"</span>: <span class="str">"Active Region"</span>, <span class="str">"pin"</span>: <span class="str">"AR"</span>, <span class="str">"groups"</span>: [{<span class="str">"name"</span>: <span class="str">"HMI SHARP"</span>, <span class="str">"event_ids"</span>: [...]}]}, ...],
-  <span class="str">"events"</span>: {
-    <span class="str">"019c3d8f-0932-..."</span>: {
-      <span class="str">"label"</span>: <span class="str">"HMI SHARP 12923"</span>, <span class="str">"start"</span>: <span class="str">"2025-03-15T08:00:00"</span>, <span class="str">"end"</span>: <span class="str">"2025-03-15T12:00:00"</span>,
-      <span class="str">"hv_hpc_x"</span>: <span class="num">-806.97</span>, <span class="str">"hv_hpc_y"</span>: <span class="num">440.01</span>, <span class="str">"footprint"</span>: [...], ...
-    }, ...
-  },
-  <span class="str">"observations"</span>: {
-    <span class="str">"2025-03-15 11:00:00"</span>: {<span class="str">"019c3d8f-0932-..."</span>: {<span class="str">"hv_hpc_x"</span>: <span class="num">-800.12</span>, <span class="str">"hv_hpc_y"</span>: <span class="num">439.88</span>}, ...},
-    <span class="str">"2025-03-15 12:00:00"</span>: { ... }
-  },
-  <span class="str">"errors"</span>: {}
-}</code></pre>
-                    <p>Static event data sent once in <code>events</code>. Per-timestamp rotated coords in <code>observations</code>. Client shifts footprints by center offset. Max 150 timestamps per request.</p>
-                </div>
-            </details>
-
-            <details>
-                <summary>
-                    <span class="method-badge method-post">POST</span>
                     <span class="endpoint-path">/helioviewer/events/frames_with_selections</span>
                     <span class="endpoint-desc">Batch observations by selections</span>
                 </summary>
                 <div class="endpoint-detail">
-                    <p>Same shape as the previous endpoint, but the filter is a flexible selections array instead of a fixed sources segment.</p>
+                    <p>Batch observations filtered by a flexible selections array of path prefixes. Static event data (arcsec snapshot base) sent once in <code>events</code>; each timestamp carries only that frame's <code>dx/dy</code> arcsec offset from it — client renders pin = center + (dx,dy). <code>footprint</code> is a list of polygons, shifted by the same delta.</p>
                     <table class="param-table">
                         <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
                         <tr><td><code>timestamps</code></td><td>body (JSON)</td><td>Array of datetime strings (max 150)</td></tr>
@@ -757,16 +721,17 @@ data = response.<span class="fn">json</span>()</code></pre>
     <span class="str">"019c3d8f-..."</span>: {
       <span class="str">"path"</span>: <span class="str">"HEK&gt;&gt;Flare&gt;&gt;SSW Latest Events"</span>,
       <span class="str">"label"</span>: <span class="str">"..."</span>, <span class="str">"start"</span>: <span class="str">"2025-03-15T11:50:00"</span>, <span class="str">"end"</span>: <span class="str">"2025-03-15T12:10:00"</span>,
-      <span class="str">"hv_hpc_x"</span>: <span class="num">-123.4</span>, <span class="str">"hv_hpc_y"</span>: <span class="num">567.8</span>, <span class="str">"footprint"</span>: [...],
+      <span class="str">"hv_hpc_x"</span>: <span class="num">-123.4</span>, <span class="str">"hv_hpc_y"</span>: <span class="num">567.8</span>, <span class="str">"footprint"</span>: [[...]],
       <span class="str">"type"</span>: <span class="str">"FL"</span>, <span class="str">"pin"</span>: <span class="str">"FL"</span>
     }, ...
   },
   <span class="str">"timestamps"</span>: {
-    <span class="str">"2025-03-15 11:00:00"</span>: {<span class="str">"019c3d8f-..."</span>: {<span class="str">"hv_hpc_x"</span>: <span class="num">-119.0</span>, <span class="str">"hv_hpc_y"</span>: <span class="num">570.2</span>}, ...},
+    <span class="str">"2025-03-15 11:00:00"</span>: {<span class="str">"019c3d8f-..."</span>: {<span class="str">"dx"</span>: <span class="num">4.4</span>, <span class="str">"dy"</span>: <span class="num">2.4</span>, <span class="str">"visible"</span>: <span class="kw">true</span>}, ...},
     <span class="str">"2025-03-15 12:00:00"</span>: { ... }
   }
 }</code></pre>
                     <p>A selection matches every event whose path equals the prefix or starts with that prefix. Max 150 timestamps and 200 selections per request.</p>
+                    <p><code>visible</code> is per frame: whether the event's center faces the observer at that timestamp, so a movie can fade a region as it rotates over the limb without re-fetching its footprint. Far-side vertices in the <code>events</code> footprint base carry their own <code>"visible": false</code>.</p>
                 </div>
             </details>
 

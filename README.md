@@ -84,6 +84,8 @@ make
 - `make collect 2024-01-01` - Collect events for single day
 - `make collect 2024-01-01 2024-01-31` - Collect events for date range (daily chunks)
 - `make collect 2024-01-01 2024-01-31 5` - Collect date range in 5-day chunks
+- `make collect SOURCES="NAME1,NAME2" 2024-01-01` - Collect only from the named sources
+- `make sources` - List every registered source and the path it writes to
 - `make recents` - Show the most recent events from the database
 - `make recents 10` - Show last 10 events
 - `make stats` - Show database statistics grouped by source and path
@@ -161,6 +163,7 @@ Example response:
             "end": "2025-03-15T12:00:00",
             "hv_hpc_x": -806.97,
             "hv_hpc_y": 440.01,
+            "visible": true,
             "label": "HMI SHARP 12923",
             "..."
           },
@@ -181,7 +184,7 @@ Get events matching path prefixes within a time range. Returns a flat list with 
 |-----------|------|-------------|
 | `from` | path | Start time (Unix timestamp) |
 | `to` | path | End time (Unix timestamp) |
-| `paths` | body (JSON) | Array of event path prefixes |
+| `paths` | body (JSON) | Array of event path prefixes; an entry ending in `>><uuid>` selects that single event by id |
 
 ```python
 import requests
@@ -259,52 +262,9 @@ Example response:
 }
 ```
 
-#### POST `/helioviewer/events/{sources}/observations`
-
-Get deduplicated events + rotated coordinates for multiple timestamps. Designed for movie rendering — static event data sent once, per-timestamp rotated coordinates sent separately.
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `sources` | path | Sources joined by `::` (e.g., `HEK::CCMC`) |
-| `timestamps` | body (JSON) | Array of datetime strings (max 150 per request) |
-
-```python
-import requests
-
-response = requests.post(
-    "https://events.helioviewer.org/helioviewer/events/HEK::CCMC/observations",
-    json={"timestamps": ["2025-03-15 11:00:00", "2025-03-15 12:00:00"]}
-)
-data = response.json()
-```
-
-Example response:
-```json
-{
-  "event_types": [{"name": "Active Region", "pin": "AR", "groups": [{"name": "HMI SHARP", "event_ids": ["019c3d8f-..."]}]}],
-  "events": {
-    "019c3d8f-...": {
-      "label": "HMI SHARP 12923",
-      "start": "2025-03-15T08:00:00",
-      "end": "2025-03-15T12:00:00",
-      "hv_hpc_x": -806.97, "hv_hpc_y": 440.01,
-      "footprint": [{"x": -810.2, "y": 438.5}, "..."],
-      "type": "AR", "concept": "Active Region"
-    }
-  },
-  "observations": {
-    "2025-03-15 11:00:00": {"019c3d8f-...": {"hv_hpc_x": -800.12, "hv_hpc_y": 439.88}, "..."},
-    "2025-03-15 12:00:00": {"..."}
-  },
-  "errors": {}
-}
-```
-
-For movies > 150 frames, split timestamps into chunks and merge `observations` across responses.
-
 #### POST `/helioviewer/events/frames_with_selections`
 
-Same shape as the previous endpoint, but the filter is a flexible selections array of path prefixes instead of a fixed sources segment. A selection matches every event whose path equals the prefix or starts with that prefix.
+Get deduplicated events + rotated coordinates for multiple timestamps, filtered by a flexible `selections` array of path prefixes — designed for movie rendering (static event data sent once, per-timestamp rotated coordinates sent separately). A selection matches every event whose path equals the prefix or starts with that prefix.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -331,18 +291,24 @@ Example response:
     "019c3d8f-...": {
       "path": "HEK>>Flare>>SSW Latest Events",
       "label": "...", "start": "2025-03-15T11:50:00", "end": "2025-03-15T12:10:00",
-      "hv_hpc_x": -123.4, "hv_hpc_y": 567.8, "footprint": [...],
+      "hv_hpc_x": -123.4, "hv_hpc_y": 567.8, "footprint": [[...]],
       "type": "FL", "pin": "FL"
     }
   },
   "timestamps": {
-    "2025-03-15 11:00:00": {"019c3d8f-...": {"hv_hpc_x": -119.0, "hv_hpc_y": 570.2}},
-    "2025-03-15 12:00:00": {"019c3d8f-...": {"hv_hpc_x": -113.7, "hv_hpc_y": 572.9}}
+    "2025-03-15 11:00:00": {"019c3d8f-...": {"dx": 4.4, "dy": 2.4, "visible": true}},
+    "2025-03-15 12:00:00": {"019c3d8f-...": {"dx": 9.7, "dy": 5.1, "visible": true}}
   }
 }
 ```
 
 `timestamps[ts]` is `{}` (object) if no event in the selection is active at that moment.
+
+For movies > 150 frames, split timestamps into chunks and merge `timestamps` across responses.
+
+`hv_hpc_x/y` and `footprint` in `events` are the arcsec base at the event's own coordinate time; each timestamp carries `{"dx", "dy"}`, that frame's arcsec offset from the base. Render pin = `center + (dx, dy)`, and shift every polygon point by the same delta. `footprint` is a **list of polygons** (`[[{x,y},…],…]` — multi-contour events like WSA coronal-hole maps carry several).
+
+`visible` is per frame: whether the event's center faces the observer at that timestamp, so a movie can fade a region as it rotates over the limb without re-fetching its footprint. Far-side vertices in the `events` footprint base carry their own `"visible": false`.
 
 ---
 
@@ -410,6 +376,7 @@ Example response:
     "end": "2025-03-15 12:00:00",
     "hv_hpc_x": -806.97,
     "hv_hpc_y": 440.01,
+    "visible": true,
     "label": "HMI SHARP 12923",
     "coordinate_system": "helioprojective",
     "regions": [{"organization": "NOAA", "external_id": "14033", "..."}],
@@ -418,6 +385,8 @@ Example response:
   "... (49 events)"
 ]
 ```
+
+`visible` says whether the event's center faces the observer at the requested time — an event that has rotated behind the limb is still returned, with `visible: false`, and the client decides how to draw it. Far-side footprint vertices carry their own `"visible": false` next to `x`/`y`; front-side vertices have no such key. Both fields are additive, and a missing key always means visible.
 
 #### GET `/api/v1/events/{uuid}`
 

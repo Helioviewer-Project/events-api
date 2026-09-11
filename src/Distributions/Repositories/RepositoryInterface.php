@@ -84,4 +84,25 @@ interface RepositoryInterface
      * @throws \RuntimeException If the truncation fails
      */
     public function truncate(): void;
+
+    /**
+     * Count the distribution buckets held for each given path tree.
+     *
+     * Buckets are stored per exact leaf path; parent totals are summed from
+     * those at query time, so removing a leaf's buckets is enough to keep
+     * every ancestor correct.
+     *
+     * @param array<string> $paths Event paths
+     * @return int Total number of bucket rows
+     */
+    public function countByPathTree(array $paths): int;
+
+    /**
+     * Delete every distribution bucket under the given path trees.
+     *
+     * @param array<string> $paths Event paths
+     * @return int Number of bucket rows deleted
+     * @throws \RuntimeException If the deletion fails
+     */
+    public function deleteByPathTree(array $paths): int;
 }
