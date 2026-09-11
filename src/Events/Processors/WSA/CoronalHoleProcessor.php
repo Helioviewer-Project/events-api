@@ -16,9 +16,10 @@ use Helioviewer\EventsApi\Events\Sources\SourceInterface;
  * contours:[{lat[],lon[]},…]}`). All contours become the event footprint — a LIST of
  * polygons `[[{x,y},…],…]` — and the pin is the largest contour's centroid. Coordinates
  * stay in Carrington degrees and are rotated to HPC at query time by CoordinateRotator
- * (coordinate_system='carrington'). Path is the input map alone — no satellite
- * level (see CoronalHole::SAT) and no realization level; the 12 AGONG members
- * sit under the one node and are told apart by their label. See docs/WSA_PLAN.md.
+ * (coordinate_system='carrington'). Path is the input map, then the ensemble
+ * realization for AGONG (R0…R11, one branch each); GONGZ has a single member
+ * and stays flat. No satellite level — the maps are identical whatever `sat` is
+ * requested (see CoronalHole::SAT). See docs/WSA_PLAN.md.
  *
  * @package Helioviewer\EventsApi\Events\Processors\WSA
  */
@@ -68,18 +69,18 @@ class CoronalHoleProcessor extends Processor
 
         [$start, $peak, $end] = $this->timeline($rawRecord);
 
-        // Path: input map only. No satellite level — the maps are identical
-        // whatever `sat` is requested — and no realization level either: all 12
-        // AGONG members list under the one node, told apart by their label.
-        $leaf = $inputMap;
+        // Path: input map, then the ensemble realization — each of AGONG's 12
+        // members gets its own branch, so they can be selected one at a time
+        // instead of all drawing at once. GONGZ has a single member and stays
+        // flat. No satellite level: the maps are identical whatever `sat` is
+        // requested (see CoronalHole::SAT).
+        $leaf = $inputMap === 'AGONG' ? "{$inputMap}>>R{$real}" : $inputMap;
 
-        // Labels — the realization is not a path level, so it has to be legible
-        // here (GONGZ has a single member and carries none):
-        //   label:       "Real {n}, Forecast: {t}"
-        //   short_label: "R{n}, Forecast: {t}"
+        // The realization is a path level now, so the label carries the forecast
+        // window alone: "Forecast: {t}".
         $forecastTag = $this->forecastTag($peak);
-        $shortLabel  = $inputMap === 'AGONG' ? "R{$real}, {$forecastTag}" : $forecastTag;
-        $label       = $inputMap === 'AGONG' ? "Real {$real}, {$forecastTag}" : $forecastTag;
+        $shortLabel  = $forecastTag;
+        $label       = $forecastTag;
 
         $event = new Event();
         $event->fill([
