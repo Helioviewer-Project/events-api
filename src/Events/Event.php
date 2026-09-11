@@ -178,6 +178,44 @@ class Event extends Model
     }
 
     /**
+     * Which coordinate system this event can be rotated from. The only place
+     * that interprets coordinate_system, so also the only place that copes with
+     * a value nobody planned for.
+     *
+     * @return string carrington, stonyhurst, or helioprojective
+     */
+    public function coordinateSystem(): string
+    {
+        if ($this->coordinate_system === 'carrington' && $this->hasUsableDegrees()) {
+            return 'carrington';
+        }
+
+        if ($this->coordinate_system === 'stonyhurst' && $this->hasUsableDegrees()) {
+            return 'stonyhurst';
+        }
+
+        // Everything else rides the arcsec snapshot through /hpc: events already
+        // stored in helioprojective, rows predating the coordinate_system column
+        // (NULL), a system we do not know, and heliographic rows whose degrees
+        // are unusable.
+        return 'helioprojective';
+    }
+
+    /**
+     * Whether hv_hpc_x/y hold degrees a heliographic route can accept. Same
+     * test AbstractHeliographicStrategy applies at ingest.
+     *
+     * @return bool
+     */
+    public function hasUsableDegrees(): bool
+    {
+        return is_numeric($this->hv_hpc_x)
+            && is_numeric($this->hv_hpc_y)
+            && $this->hv_hpc_y >= -90
+            && $this->hv_hpc_y <= 90;
+    }
+
+    /**
      * Scope a query to only include events from a specific source.
      *
      * @param  Builder $query The query builder instance
