@@ -218,7 +218,7 @@ class Postgres implements RepositoryInterface
         return Event::where(function ($q) use ($pathPrefixes, $uuids) {
             foreach ($pathPrefixes as $prefix) {
                 $q->orWhere('path', '=', $prefix);
-                $q->orWhere('path', 'LIKE', $prefix . '>>%');
+                $q->orWhere('path', 'LIKE', $this->nestedPathPattern($prefix));
             }
             if (!empty($uuids)) {
                 $q->orWhereIn('id', $uuids);
@@ -541,7 +541,7 @@ class Postgres implements RepositoryInterface
         return Event::where(function (Builder $query) use ($pathPrefixes) {
                 foreach ($pathPrefixes as $prefix) {
                     $query->orWhere('path', '=', $prefix);
-                    $query->orWhere('path', 'LIKE', $prefix . '>>%');
+                    $query->orWhere('path', 'LIKE', $this->nestedPathPattern($prefix));
                 }
             })
             ->orderBy('start')
@@ -567,7 +567,7 @@ class Postgres implements RepositoryInterface
         return Event::where(function (Builder $query) use ($pathPrefixes) {
             foreach ($pathPrefixes as $prefix) {
                 $query->orWhere('path', '=', $prefix);
-                $query->orWhere('path', 'LIKE', $prefix . '>>%');
+                $query->orWhere('path', 'LIKE', $this->nestedPathPattern($prefix));
             }
         })->count();
     }
@@ -577,7 +577,7 @@ class Postgres implements RepositoryInterface
      *
      * An event overlaps with [start, end] if: event.start < end AND event.end > start
      *
-     * @param array<string> $pathPrefixes Array of path prefixes to match
+     * @param array<string> $pathPrefixes Prefixes; each matches `path = prefix` or `path LIKE 'prefix>>%'`
      * @param int $start Start timestamp (Unix)
      * @param int $end End timestamp (Unix)
      * @return array<Event> Array of matching Event objects ordered by start time
@@ -590,7 +590,11 @@ class Postgres implements RepositoryInterface
 
         return Event::where(function (Builder $query) use ($pathPrefixes, $uuids) {
                 foreach ($pathPrefixes as $prefix) {
-                    $query->orWhere('path', 'LIKE', $prefix . '%');
+                    // The node itself, plus everything nested under it — never a
+                    // sibling that merely starts with the same characters, or
+                    // `…>>AGONG>>R1` would also return R10 and R11.
+                    $query->orWhere('path', '=', $prefix);
+                    $query->orWhere('path', 'LIKE', $this->nestedPathPattern($prefix));
                 }
                 if (!empty($uuids)) {
                     $query->orWhereIn('id', $uuids);
@@ -658,6 +662,21 @@ class Postgres implements RepositoryInterface
     }
 
     /**
+     * LIKE pattern matching everything nested under a path.
+     *
+     * The wildcards are escaped first: `_` matches any single character in LIKE
+     * and real paths contain it (EGSO_SFC, SWPC_REALTIME), and `%` arrives from
+     * request bodies, where an unescaped one would match every path.
+     *
+     * @param string $path Path whose children should match
+     * @return string LIKE pattern
+     */
+    private function nestedPathPattern(string $path): string
+    {
+        return str_replace(['\\', '%', '_'], ['\\\\', '\%', '\_'], $path) . '>>%';
+    }
+
+    /**
      * Restrict a query to one path and everything nested under it.
      *
      * Matches the path exactly or as a '<path>>>' prefix, so a sibling that
@@ -669,7 +688,7 @@ class Postgres implements RepositoryInterface
      */
     private function inPathTree(Builder $query, string $path): Builder
     {
-        $nested = str_replace(['\\', '%', '_'], ['\\\\', '\%', '\_'], $path) . '>>%';
+        $nested = $this->nestedPathPattern($path);
 
         return $query->where(function (Builder $inner) use ($path, $nested) {
             $inner->where('path', $path)
