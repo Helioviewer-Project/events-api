@@ -1,4 +1,4 @@
-.PHONY: composer-install composer-require composer-dump up down build shell shell-root nginx-reload migrate-status migrate-create migrate-run migrate-rollback seed-run collect sources purge-path recents reset stats logs db-shell db-backup cache-flush fix-regions distribution-build reprocess reprocess-uuid backfill-hpc build-failure-report retry-failures help
+.PHONY: composer-install composer-require composer-dump up down build pull images shell shell-root nginx-reload migrate-status migrate-create migrate-run migrate-rollback seed-run collect sources purge-path recents reset stats logs db-shell db-backup cache-flush fix-regions distribution-build reprocess reprocess-uuid backfill-hpc build-failure-report retry-failures help
 .DEFAULT_GOAL := help
 
 # Set compose file based on ENV
@@ -25,6 +25,37 @@ down:
 
 build:
 	$(DOCKER_COMPOSE) build --no-cache
+
+# Pull newer images for every service that uses one (phpfpm is built, not pulled).
+# Note this only updates the local image cache — containers keep running the
+# image they were created from until they are recreated, so `make images` after
+# this will show them as STALE until `make up`.
+pull:
+	$(DOCKER_COMPOSE) pull
+	@echo ""
+	@echo "Pulled. Recreate the containers to actually use it:  make up"
+	@echo "Check what is running now:                           make images"
+
+# What each container is ACTUALLY running, versus what has been pulled. A
+# container created before a pull keeps the old image indefinitely, which is
+# easy to miss: the coordinator sat on 3.2.0 for months while `latest` moved on.
+#
+# The reference has to come from the container's own Config.Image — `compose ps`
+# reports an already-resolved sha256 for a tag that has since moved, so
+# comparing against that would always agree with itself.
+images:
+	@printf "%-13s %-46s %-8s %s\n" SERVICE IMAGE VERSION STATE
+	@$(DOCKER_COMPOSE) ps -a --format '{{.Service}}|{{.Name}}' | while IFS='|' read -r svc name; do \
+		ref=$$(docker inspect --format '{{.Config.Image}}' "$$name" 2>/dev/null); \
+		running=$$(docker inspect --format '{{.Image}}' "$$name" 2>/dev/null); \
+		pulled=$$(docker image inspect --format '{{.Id}}' "$$ref" 2>/dev/null); \
+		ver=$$(docker inspect --format '{{index .Config.Labels "org.opencontainers.image.version"}}' "$$name" 2>/dev/null); \
+		[ -n "$$ver" ] || ver="-"; \
+		if [ -z "$$pulled" ]; then state="built locally"; \
+		elif [ "$$running" = "$$pulled" ]; then state="up to date"; \
+		else state="STALE - run: make up"; fi; \
+		printf "%-13s %-46s %-8s %s\n" "$$svc" "$$ref" "$$ver" "$$state"; \
+	done
 
 shell:
 	$(DOCKER_COMPOSE) exec --user $(shell id -u):$(shell id -g) phpfpm bash
@@ -161,6 +192,8 @@ help:
 	@echo "  up                    - Start the Docker containers"
 	@echo "  down                  - Stop the Docker containers"
 	@echo "  build                 - Build the Docker images"
+	@echo "  pull                  - Pull newer images (then 'make up' to recreate containers)"
+	@echo "  images                - Show the image each container is running, and whether it is stale"
 	@echo "  shell                 - Open a bash shell in the PHP container"
 	@echo "  shell-root            - Open a bash shell in the PHP container as root"
 	@echo "  nginx-reload          - Reload nginx configuration"
