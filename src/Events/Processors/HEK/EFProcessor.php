@@ -25,36 +25,6 @@ class EFProcessor extends EventTypeProcessor
     }
 
     /**
-     * Get timeline data for Emerging Flux events.
-     * Older Emerging flux region module (version < 0.55) uses peak time for coordinate_time.
-     *
-     * @param array $rawRecord Raw event data from HEK
-     * @return array ['start' => int, 'peak' => int, 'end' => int, 'coordinate_time' => int]
-     */
-    protected function getTimeLine(array $rawRecord): array
-    {
-        $start = strtotime($rawRecord['event_starttime']);
-        $peakTime = !empty($rawRecord['event_peaktime']) ? strtotime($rawRecord['event_peaktime']) : false;
-        $peak = ($peakTime !== false && $peakTime > 0) ? $peakTime : $start;
-        $end = strtotime($rawRecord['event_endtime']);
-
-        $frmName = $rawRecord['frm_name'] ?? '';
-        $frmVersion = (float)($rawRecord['frm_versionnumber'] ?? 1.0);
-
-        // Older Emerging flux region module versions use peak time
-        $coordinateTime = ($frmName === 'Emerging flux region module' && $frmVersion < 0.55)
-            ? $peak
-            : $start;
-
-        return [
-            'start'           => $start,
-            'peak'            => $peak,
-            'end'             => $end,
-            'coordinate_time' => $coordinateTime,
-        ];
-    }
-
-    /**
      * Build label array for Emerging Flux events.
      *
      * @param array $rawRecord Raw event data from HEK

@@ -52,7 +52,20 @@ class EventTypeProcessor extends BaseProcessor
 
     /**
      * Get timeline data from raw record.
-     * Can be overridden by subclasses for event-specific behavior.
+     *
+     * coordinate_time is event_starttime for every type, because that is the
+     * instant HEK quotes its coordinates for. HEK never states this, but its
+     * own data proves it: hgc_x minus hgs_x is L0, so events sharing the
+     * instant the coordinates were measured must share that difference.
+     * Grouped by start time it is identical across 18,050 groups (spread
+     * 0.0090 deg, which is exactly how far L0 moves inside a 60-second
+     * bucket); grouped by peak or end it scatters by 12 and 26 degrees.
+     *
+     * Several subclasses used to override this to store peak or end instead.
+     * That was harmless while every event was stored in arcsec — a frame that
+     * does not depend on the clock — but a heliographic row is rotated from
+     * coordinate_time to the requested time, so an error there is rotated
+     * straight into the answer at about 13.2 deg/day.
      *
      * @param array $rawRecord Raw event data from HEK
      * @return array ['start' => int, 'peak' => int, 'end' => int, 'coordinate_time' => int]
