@@ -1,4 +1,4 @@
-.PHONY: composer-install composer-require composer-dump up down build pull images shell shell-root nginx-reload migrate-status migrate-create migrate-run migrate-rollback seed-run collect sources purge-path recents reset stats logs db-shell db-backup cache-flush fix-regions distribution-build reprocess reprocess-uuid backfill-hpc build-failure-report retry-failures help
+.PHONY: composer-install composer-require composer-dump up down build ps pull images dlogs shell shell-root nginx-reload migrate-status migrate-create migrate-run migrate-rollback seed-run collect sources purge-path recents reset stats logs db-shell db-backup cache-flush fix-regions distribution-build reprocess reprocess-uuid backfill-hpc build-failure-report retry-failures help
 .DEFAULT_GOAL := help
 
 # Set compose file based on ENV
@@ -26,6 +26,19 @@ down:
 build:
 	$(DOCKER_COMPOSE) build --no-cache
 
+# Container status for this project only, with health broken out of STATUS —
+# a container can be running and permanently unhealthy, which the default
+# `docker compose ps` buries at the end of a long line.
+ps:
+	@echo "$(DOCKER_COMPOSE) ps -a"
+	@printf "%-13s %-9s %-11s %-22s %s\n" SERVICE STATE HEALTH UPTIME PORTS
+	@$(DOCKER_COMPOSE) ps -a --format '{{.Service}}|{{.State}}|{{.Health}}|{{.Status}}|{{.Ports}}' | while IFS='|' read -r svc st hl up po; do \
+		[ -n "$$hl" ] || hl="-"; \
+		[ -n "$$po" ] || po="-"; \
+		up=$$(echo "$$up" | sed 's/ (health[^)]*)//; s/ (unhealthy)//'); \
+		printf "%-13s %-9s %-11s %-22s %s\n" "$$svc" "$$st" "$$hl" "$$up" "$$po"; \
+	done
+
 # Pull newer images for every service that uses one (phpfpm is built, not pulled).
 # Note this only updates the local image cache — containers keep running the
 # image they were created from until they are recreated, so `make images` after
@@ -44,6 +57,7 @@ pull:
 # reports an already-resolved sha256 for a tag that has since moved, so
 # comparing against that would always agree with itself.
 images:
+	@echo "$(DOCKER_COMPOSE) ps -a  +  docker image inspect"
 	@printf "%-13s %-46s %-8s %s\n" SERVICE IMAGE VERSION STATE
 	@$(DOCKER_COMPOSE) ps -a --format '{{.Service}}|{{.Name}}' | while IFS='|' read -r svc name; do \
 		ref=$$(docker inspect --format '{{.Config.Image}}' "$$name" 2>/dev/null); \
@@ -141,6 +155,17 @@ retry-failures:
 logs:
 	$(DOCKER_COMPOSE) exec phpfpm sh -c 'tail -f /u/apps/data/logs/*.log'
 
+# Container stdout/stderr, as opposed to `logs` above which tails the
+# application's own files inside phpfpm. This is where a container that will
+# not start says why — the app log does not exist yet at that point.
+# Follows by default; Ctrl+C to stop, or FOLLOW=0 for a one-shot dump.
+#   make dlogs                          all services, follow from the last 100
+#   make dlogs SERVICE=coordinator      one service
+#   make dlogs SERVICE=phpfpm FOLLOW=0  print and exit
+#   make dlogs TAIL=1000                deeper history
+dlogs:
+	$(DOCKER_COMPOSE) logs --tail=$(or $(TAIL),100) $(if $(filter-out 0,$(or $(FOLLOW),1)),--follow) $(SERVICE)
+
 cache-flush:
 	@echo "Flushing Redis cache..."
 	@$(DOCKER_COMPOSE) exec redis redis-cli FLUSHALL
@@ -192,12 +217,14 @@ help:
 	@echo "  up                    - Start the Docker containers"
 	@echo "  down                  - Stop the Docker containers"
 	@echo "  build                 - Build the Docker images"
+	@echo "  ps                    - Show container status, with health as its own column"
 	@echo "  pull                  - Pull newer images (then 'make up' to recreate containers)"
 	@echo "  images                - Show the image each container is running, and whether it is stale"
 	@echo "  shell                 - Open a bash shell in the PHP container"
 	@echo "  shell-root            - Open a bash shell in the PHP container as root"
 	@echo "  nginx-reload          - Reload nginx configuration"
 	@echo "  logs                  - Follow application logs (tail -f)"
+	@echo "  dlogs                 - Follow container logs (use: make dlogs SERVICE=coordinator TAIL=500 FOLLOW=0)"
 	@echo ""
 	@echo "Composer Management:"
 	@echo "  composer-install      - Install PHP dependencies via Composer"
