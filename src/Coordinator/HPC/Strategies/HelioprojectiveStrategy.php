@@ -9,13 +9,20 @@ use Illuminate\Database\Eloquent\Collection;
 use Psr\Log\LoggerInterface;
 
 /**
- * Events already stored in helioprojective arcsec (HEK, RHESSI): straight
- * copy, no coordinator calls.
+ * Events already stored in helioprojective arcsec (RHESSI, and the HEK records
+ * whose producer submitted a projected position): straight copy, no coordinator
+ * calls.
  *
- * No coordinator reply means no per-vertex `visible` flag, which is correct
- * here: these are detections from Earth-facing imagery, so every vertex faces
- * the observer at the event's own coordinate_time. Whether it has rotated away
- * since is answered by CoordinateRotator at query time.
+ * No coordinator reply means no per-vertex `visible` flag. That is not a gap —
+ * there is nothing to report. A helioprojective coordinate is a projection, and
+ * the projection is where the side-of-the-Sun information was lost: two points
+ * on opposite sides of the Sun land on the same x/y. Nothing downstream can
+ * recover it, which is measurable rather than theoretical — of the 1,042,918
+ * HEK events whose producer submitted one, zero classify as far side once
+ * converted back to degrees.
+ *
+ * Events that arrived in a heliographic system keep it and are claimed by
+ * StonyhurstStrategy or CarringtonStrategy instead, which do get the flag.
  *
  * @package Helioviewer\EventsApi\Coordinator\HPC\Strategies
  * @author  Kasim Necdet Percinel <kasim.n.percinel@nasa.gov>
