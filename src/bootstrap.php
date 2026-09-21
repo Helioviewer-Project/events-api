@@ -106,6 +106,15 @@ if (!defined('HV_COORDINATOR_URL')) {
     define('HV_COORDINATOR_URL', $_ENV['HV_COORDINATOR_URL'] ?? 'https://api.helioviewer.org/coordinate');
 }
 
+// The in-stack fallback, used when the primary is unreachable. The port is part
+// of the URL because the image moved it: coordinator 3.2.0 ran `fastapi run
+// --port 80`, 4.0.0 runs `--port 8000`. Pulling a newer image therefore silently
+// takes the fallback offline unless this matches, and a dead fallback only shows
+// up at the moment the primary is already failing.
+if (!defined('HV_COORDINATOR_FALLBACK_URL')) {
+    define('HV_COORDINATOR_FALLBACK_URL', $_ENV['HV_COORDINATOR_FALLBACK_URL'] ?? 'http://coordinator:8000');
+}
+
 
 // === DATABASE INITIALIZATION ===
 $capsule = new Capsule;
@@ -245,7 +254,7 @@ $sentry = $sentryEnabled
 // HTTP and external services
 $httpClient = new CachedHttpClient(null, $redisCache, 120, 'http_client:', $logger); // 2 minute cache
 $coordinator = new HttpCoordinator($httpClient, $logger);
-$backup_coordinator = new HttpCoordinator($httpClient, $logger, 'http://coordinator');
+$backup_coordinator = new HttpCoordinator($httpClient, $logger, HV_COORDINATOR_FALLBACK_URL);
 $harpService = new HarpService($httpClient, $redisCache, $logger);
 $noaaService = new NoaaService($httpClient, $redisCache, $logger);
 $failoverCoordinator = new FailoverCoordinator($coordinator, $backup_coordinator, $logger, $sentry);
