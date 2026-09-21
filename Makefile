@@ -138,7 +138,7 @@ distribution-build:
 	$(DOCKER_COMPOSE) run --rm --user $(shell id -u):$(shell id -g) phpfpm php bin/build-distribution.php
 
 reprocess:
-	PATHS='$(PATHS)' APPLY='$(APPLY)' $(DOCKER_COMPOSE) run --rm --user $(shell id -u):$(shell id -g) -e PATHS -e APPLY phpfpm php bin/reprocess.php
+	PATHS='$(PATHS)' APPLY='$(APPLY)' RESOLVE='$(RESOLVE)' $(DOCKER_COMPOSE) run --rm --user $(shell id -u):$(shell id -g) -e PATHS -e APPLY -e RESOLVE phpfpm php bin/reprocess.php
 
 reprocess-uuid:
 	UUID='$(UUID)' APPLY='$(APPLY)' $(DOCKER_COMPOSE) run --rm --user $(shell id -u):$(shell id -g) -e UUID -e APPLY phpfpm php bin/reprocess-uuid.php
