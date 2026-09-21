@@ -31,18 +31,16 @@ ini_set('memory_limit', '2G');
 require __DIR__ . '/../src/bootstrap.php';
 
 use Helioviewer\EventsApi\Events\Collector as EventCollector;
+use Helioviewer\EventsApi\Utils\Env;
 use Helioviewer\EventsApi\Utils\Container;
 use Helioviewer\EventsApi\Utils\SignalHandler;
 
 SignalHandler::setup();
 
-$apply = getenv('APPLY') === '1';
-$chunkSize = getenv('CHUNK') !== false && getenv('CHUNK') !== '' ? max(1, (int) getenv('CHUNK')) : 500;
+$apply = Env::flag('APPLY');
+$chunkSize = Env::int('CHUNK', 500, 1);
 
-$paths = array_values(array_filter(
-    array_map('trim', explode(',', (string) (getenv('PATHS') ?: ''))),
-    fn($s) => $s !== ''
-));
+$paths = Env::list('PATHS');
 
 if (empty($paths)) {
     fwrite(STDERR, "PATHS is required, e.g. PATHS=\"CCMC>>Solar Flare Predictions>>ASSA\"\n");

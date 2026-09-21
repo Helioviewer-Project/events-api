@@ -24,21 +24,18 @@ ini_set('memory_limit', '2G');
 require __DIR__ . '/../src/bootstrap.php';
 
 use Helioviewer\EventsApi\Events\Event;
+use Helioviewer\EventsApi\Utils\Env;
 use Helioviewer\EventsApi\Utils\Container;
 use Helioviewer\EventsApi\Utils\SignalHandler;
 use Illuminate\Database\Capsule\Manager as Capsule;
 
 SignalHandler::setup();
 
-$apply = getenv('APPLY') === '1';
-$force = getenv('FORCE') === '1';
-$chunkSize = getenv('CHUNK') !== false && getenv('CHUNK') !== '' ? max(1, (int) getenv('CHUNK')) : 500;
+$apply = Env::flag('APPLY');
+$force = Env::flag('FORCE');
+$chunkSize = Env::int('CHUNK', 500, 1);
 
-$pathFilter = $_ENV['PATHS'] ?? getenv('PATHS') ?: '';
-$pathPrefixes = [];
-if (trim($pathFilter) !== '') {
-    $pathPrefixes = array_filter(array_map('trim', explode(',', $pathFilter)), fn($s) => $s !== '');
-}
+$pathPrefixes = Env::list('PATHS');
 
 $container = Container::getInstance();
 $logger = $container['logger'];

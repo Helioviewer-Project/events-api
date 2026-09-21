@@ -34,6 +34,7 @@ ini_set('memory_limit', '2G');
 
 require __DIR__ . '/../src/bootstrap.php';
 
+use Helioviewer\EventsApi\Utils\Env;
 use Helioviewer\EventsApi\Utils\Container;
 use Helioviewer\EventsApi\Utils\SignalHandler;
 use Helioviewer\EventsApi\Events\Collector as EventCollector;
@@ -41,25 +42,15 @@ use Helioviewer\EventsApi\Events\Collector as EventCollector;
 SignalHandler::setup();
 
 // === ENV-BASED ARG PARSING ===
-$pathFilter = $_ENV['PATHS'] ?? getenv('PATHS') ?: '';
-$applyRaw = $_ENV['APPLY'] ?? getenv('APPLY') ?: '';
-$apply = $applyRaw !== '' && $applyRaw !== '0' && strcasecmp($applyRaw, 'false') !== 0;
+$pathPrefixes = Env::list('PATHS');
+$apply = Env::flag('APPLY');
 
 // RESOLVE=0 clears each changed event's HPC snapshot without rebuilding it.
 // Collector resolves one event per coordinator round trip, which is fine for a
 // handful of rows and hopeless for millions; the cleared rows are exactly the
 // backfill-hpc worklist, and that batches properly. Default stays on so a
 // normal reprocess still leaves every row fully resolved.
-// Read without `?:` — it treats the string "0" as empty, which is precisely
-// the value being looked for here.
-$resolveRaw = $_ENV['RESOLVE'] ?? getenv('RESOLVE');
-$resolveRaw = ($resolveRaw === false || $resolveRaw === null) ? '' : (string) $resolveRaw;
-$resolve = $resolveRaw !== '0' && strcasecmp($resolveRaw, 'false') !== 0;
-
-$pathPrefixes = [];
-if (trim($pathFilter) !== '') {
-    $pathPrefixes = array_filter(array_map('trim', explode(',', $pathFilter)), fn($s) => $s !== '');
-}
+$resolve = Env::flag('RESOLVE', true);
 
 // === SERVICES ===
 $container = Container::getInstance();

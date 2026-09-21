@@ -10,6 +10,7 @@ ini_set('memory_limit', '2G');
 require __DIR__ . '/../src/bootstrap.php';
 
 // === IMPORTS ===
+use Helioviewer\EventsApi\Utils\Env;
 use Helioviewer\EventsApi\Utils\Container;
 use Helioviewer\EventsApi\Events\Collector as EventCollector;
 use Helioviewer\EventsApi\Utils\TimeRange;
@@ -27,10 +28,7 @@ $chunkInterval = $argv[3] ?? null;
 
 // Optional source filter, by name rather than path — see bin/sources.php.
 // Accepts comma or semicolon separated names.
-$sourceNames = array_values(array_filter(
-    array_map('trim', preg_split('/[,;]/', (string) (getenv('SOURCES') ?: ''))),
-    fn($name) => $name !== ''
-));
+$sourceNames = Env::list('SOURCES', ',;');
 
 try {
     [$start, $end] = ArgumentParser::parseDateRange($startDate, $endDate);

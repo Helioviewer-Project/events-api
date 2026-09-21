@@ -18,15 +18,13 @@ declare(strict_types=1);
 
 require __DIR__ . '/../src/bootstrap.php';
 
+use Helioviewer\EventsApi\Utils\Env;
 use Helioviewer\EventsApi\Utils\Container;
 use Helioviewer\EventsApi\Events\Collector as EventCollector;
 
 // UUIDs from argv and/or the UUID env var (comma-separated).
 $uuids = array_slice($argv, 1);
-$envUuid = $_ENV['UUID'] ?? getenv('UUID') ?: '';
-if ($envUuid !== '') {
-    $uuids = array_merge($uuids, array_map('trim', explode(',', $envUuid)));
-}
+$uuids = array_merge($uuids, Env::list('UUID'));
 $uuids = array_values(array_filter(array_unique($uuids), fn($u) => $u !== ''));
 
 if (empty($uuids)) {
@@ -34,8 +32,7 @@ if (empty($uuids)) {
     exit(1);
 }
 
-$applyRaw = $_ENV['APPLY'] ?? getenv('APPLY') ?: '';
-$apply = $applyRaw !== '' && $applyRaw !== '0' && strcasecmp($applyRaw, 'false') !== 0;
+$apply = Env::flag('APPLY');
 
 $container = Container::getInstance();
 $eventRepository = $container['eventRepository'];
