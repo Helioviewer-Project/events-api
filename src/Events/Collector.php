@@ -377,12 +377,22 @@ class Collector
         // while the coordinator was down) — the regular sync self-heals those rows.
         // Fields are nulled first so a resolver failure lands the row back on the
         // backfill worklist instead of keeping a stale snapshot.
-        if ($this->hpcResolver !== null
-            && ($event->coordinatesDifferFrom($existingEvent) || $existingEvent->footprint_hpc === null)) {
+        $snapshotRebuilt = $event->coordinatesDifferFrom($existingEvent)
+            || $existingEvent?->footprint_hpc === null;
+
+        if ($snapshotRebuilt) {
             $event->x_hpc = null;
             $event->y_hpc = null;
             $event->footprint_hpc = null;
-            $this->hpcResolver->resolve(new EloquentCollection([$event]));
+
+            // Nulling is unconditional, resolving is not: with no resolver the
+            // row lands on the backfill worklist (footprint_hpc IS NULL) rather
+            // than keeping a snapshot built from the coordinates it just
+            // replaced. That is what a bulk reprocess wants — resolving here is
+            // one coordinator round trip per event.
+            if ($this->hpcResolver !== null) {
+                $this->hpcResolver->resolve(new EloquentCollection([$event]));
+            }
         }
 
         if ($existingEvent) {
@@ -401,6 +411,22 @@ class Collector
 
             // Update existing event with new data
             $existingEvent->fill($event->toArray());
+
+            // toArray() drops $hidden, and the whole native-HPC snapshot is
+            // hidden — so fill() silently leaves the stored row's old snapshot
+            // in place, however far the coordinates have just moved. Carry the
+            // three fields across by hand, including when they are null: null
+            // is what puts the row on the backfill worklist.
+            //
+            // Only when this pass actually rebuilt them. Otherwise $event is a
+            // freshly processed model that never had a snapshot, and copying
+            // its nulls would discard a perfectly good stored one.
+            if ($snapshotRebuilt) {
+                $existingEvent->x_hpc = $event->x_hpc;
+                $existingEvent->y_hpc = $event->y_hpc;
+                $existingEvent->footprint_hpc = $event->footprint_hpc;
+            }
+
             $savedEvent = $this->repository->save($existingEvent);
 
             // Add new distribution counts if time/path changed
