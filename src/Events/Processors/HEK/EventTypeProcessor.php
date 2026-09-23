@@ -278,6 +278,21 @@ class EventTypeProcessor extends BaseProcessor
             ];
         }
 
+        // Declared heliographic but the degrees will not support it, so the row
+        // silently keeps arcsec and never gets a far-side flag. Rare enough to
+        // be worth a line each: a reprocess of the whole archive turned up
+        // 7,118 of these, and without this they were invisible — the run
+        // reported no failures because nothing had failed.
+        if ($heliographic) {
+            $this->logger->warning(sprintf(
+                'HEK | %s declared %s but hgs_x/hgs_y are unusable (%s, %s) | storing arcsec',
+                $rawRecord['kb_archivid'] ?? '?',
+                $declared,
+                var_export($lon, true),
+                var_export($lat, true)
+            ));
+        }
+
         return [
             'system'   => 'helioprojective',
             'x'        => (float) ($rawRecord['hpc_x'] ?? 0),
