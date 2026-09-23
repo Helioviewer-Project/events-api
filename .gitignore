@@ -36,3 +36,12 @@ Thumbs.db
 
 # Local DB dumps
 /backups/
+
+# Working reports and scratch scripts served from public/. They live there to be
+# web-accessible, not because they are part of the app. The negations keep the
+# app's own pages tracked — gitignore cannot untrack them anyway, but they say
+# which files are deliberate.
+public/*.html
+public/*.php.txt
+!public/failures.html
+!public/stats.html
