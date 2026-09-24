@@ -25,6 +25,24 @@ class ARProcessor extends EventTypeProcessor
     }
 
     /**
+     * SPoCA reports each region as found in the map at event_endtime, valid
+     * since the previous map at event_starttime; the ivorn is named after the
+     * end time (..._20110218T190001_2). Other FRMs report at start.
+     *
+     * @param array $rawRecord Raw event data from HEK
+     * @param int $start event_starttime
+     * @param int $peak event_peaktime, or start when absent
+     * @param int $end event_endtime
+     * @return int
+     */
+    protected function coordinateTime(array $rawRecord, int $start, int $peak, int $end): int
+    {
+        $frmName = $rawRecord['frm_name'] ?? '';
+
+        return ($frmName === 'SPoCA') ? $end : $start;
+    }
+
+    /**
      * Build label array for Active Region events.
      *
      * @param array $rawRecord Raw event data from HEK

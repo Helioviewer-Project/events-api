@@ -53,19 +53,11 @@ class EventTypeProcessor extends BaseProcessor
     /**
      * Get timeline data from raw record.
      *
-     * coordinate_time is event_starttime for every type, because that is the
-     * instant HEK quotes its coordinates for. HEK never states this, but its
-     * own data proves it: hgc_x minus hgs_x is L0, so events sharing the
-     * instant the coordinates were measured must share that difference.
-     * Grouped by start time it is identical across 18,050 groups (spread
-     * 0.0090 deg, which is exactly how far L0 moves inside a 60-second
-     * bucket); grouped by peak or end it scatters by 12 and 26 degrees.
-     *
-     * Several subclasses used to override this to store peak or end instead.
-     * That was harmless while every event was stored in arcsec — a frame that
-     * does not depend on the clock — but a heliographic row is rotated from
-     * coordinate_time to the requested time, so an error there is rotated
-     * straight into the answer at about 13.2 deg/day.
+     * coordinate_time is the instant the producer's coordinates describe, and
+     * that is a per-producer convention — see coordinateTime(). It matters
+     * because a row is rotated from coordinate_time to the requested time, so
+     * a wrong epoch is rotated straight into the answer at about 13.2 deg/day:
+     * four hours is 60 arcsec at disc centre.
      *
      * @param array $rawRecord Raw event data from HEK
      * @return array ['start' => int, 'peak' => int, 'end' => int, 'coordinate_time' => int]
@@ -90,8 +82,29 @@ class EventTypeProcessor extends BaseProcessor
             'start'           => $start,
             'peak'            => $peak,
             'end'             => $end,
-            'coordinate_time' => $start,  // Default: use start time
+            'coordinate_time' => $this->coordinateTime($rawRecord, $start, $peak, $end),
         ];
+    }
+
+    /**
+     * The instant the producer's coordinates describe.
+     *
+     * HEK derives every event's heliographic fields at event_starttime, so
+     * hgc_x minus hgs_x always equals L0(start) — that proves HEK's conversion
+     * time, not the producer's measurement time, which is the producer's own
+     * convention. The subclasses whose producers deviate from start override
+     * this: ARProcessor and CHProcessor (SPoCA reports at end), FlareProcessor
+     * (peak) and EFProcessor (older module versions at peak).
+     *
+     * @param array $rawRecord Raw event data from HEK
+     * @param int $start event_starttime
+     * @param int $peak event_peaktime, or start when absent
+     * @param int $end event_endtime
+     * @return int
+     */
+    protected function coordinateTime(array $rawRecord, int $start, int $peak, int $end): int
+    {
+        return $start;
     }
 
     /**

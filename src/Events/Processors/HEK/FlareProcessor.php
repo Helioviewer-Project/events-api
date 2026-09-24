@@ -25,6 +25,22 @@ class FlareProcessor extends EventTypeProcessor
     }
 
     /**
+     * Flares use peak time for their coordinates. This is the behaviour
+     * production was validated with; start and peak differ by under two
+     * minutes for most flares, so it is rarely visible either way.
+     *
+     * @param array $rawRecord Raw event data from HEK
+     * @param int $start event_starttime
+     * @param int $peak event_peaktime, or start when absent
+     * @param int $end event_endtime
+     * @return int
+     */
+    protected function coordinateTime(array $rawRecord, int $start, int $peak, int $end): int
+    {
+        return $peak;
+    }
+
+    /**
      * Build label array for Flare events.
      *
      * @param array $rawRecord Raw event data from HEK

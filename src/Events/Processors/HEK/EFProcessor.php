@@ -25,6 +25,24 @@ class EFProcessor extends EventTypeProcessor
     }
 
     /**
+     * Older Emerging flux region module versions (before 0.55) reported their
+     * coordinates at peak time; everything since, and every other FRM, at start.
+     *
+     * @param array $rawRecord Raw event data from HEK
+     * @param int $start event_starttime
+     * @param int $peak event_peaktime, or start when absent
+     * @param int $end event_endtime
+     * @return int
+     */
+    protected function coordinateTime(array $rawRecord, int $start, int $peak, int $end): int
+    {
+        $frmName = $rawRecord['frm_name'] ?? '';
+        $frmVersion = (float)($rawRecord['frm_versionnumber'] ?? 1.0);
+
+        return ($frmName === 'Emerging flux region module' && $frmVersion < 0.55) ? $peak : $start;
+    }
+
+    /**
      * Build label array for Emerging Flux events.
      *
      * @param array $rawRecord Raw event data from HEK
