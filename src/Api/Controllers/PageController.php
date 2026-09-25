@@ -384,7 +384,7 @@ events = response.<span class="fn">json</span>()</code></pre>
                     <p>Get events from a specific source active at a given observation time.</p>
                     <table class="param-table">
                         <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
-                        <tr><td><code>source</code></td><td>path</td><td>Event source (CCMC, HEK, RHESSI)</td></tr>
+                        <tr><td><code>source</code></td><td>path</td><td>Event source (CCMC, HEK, RHESSI, WSA)</td></tr>
                         <tr><td><code>timestamp</code></td><td>path</td><td>Observation time (any supported format)</td></tr>
                     </table>
                     <pre><code><span class="kw">import</span> requests
@@ -572,7 +572,7 @@ events = data[<span class="str">"events"</span>]</code></pre>
                     <p>Get events active at a specific observation time, grouped by event type with nested detection method groups.</p>
                     <table class="param-table">
                         <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
-                        <tr><td><code>source</code></td><td>path</td><td>Event source (CCMC, HEK, RHESSI)</td></tr>
+                        <tr><td><code>source</code></td><td>path</td><td>Event source (CCMC, HEK, RHESSI) — WSA is not implemented on this legacy endpoint; use /api/v1/events/WSA/observation/{timestamp}</td></tr>
                         <tr><td><code>timestamp</code></td><td>path</td><td>Observation time (any supported format)</td></tr>
                     </table>
                     <pre><code><span class="kw">import</span> requests
@@ -614,7 +614,7 @@ data = response.<span class="fn">json</span>()</code></pre>
                     <span class="endpoint-desc">Events by path prefixes</span>
                 </summary>
                 <div class="endpoint-detail">
-                    <p>Get events matching path prefixes within a time range. Returns flat list with Helioviewer-specific fields.</p>
+                    <p>Get events matching path prefixes within a time range. Returns flat list with Helioviewer-specific fields; <code>hv_hpc_x</code>/<code>hv_hpc_y</code> are the arcsec snapshot at the event's own <code>coordinate_time</code>, and <code>hv_labels_formatted</code> holds the tooltip rows (HEK source fields, or the WSA view).</p>
                     <table class="param-table">
                         <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
                         <tr><td><code>from</code></td><td>path</td><td>Start time (Unix timestamp)</td></tr>

@@ -12,7 +12,10 @@ use Helioviewer\EventsApi\Events\Sources\JsonSource;
 class HelioviewerController extends Controller
 {
     /**
-     * Get events by observation (Legacy format for Helioviewer.org)
+     * Get events by observation (Legacy format for Helioviewer.org).
+     *
+     * Not implemented for WSA: the legacy tree stops at three path levels and
+     * WSA paths go deeper. Clients get WSA from /api/v1/events/WSA/observation.
      */
     public function getByObservation(Request $request, Response $response, array $args): Response
     {
@@ -21,6 +24,12 @@ class HelioviewerController extends Controller
         // Validate source
         if (!in_array($source, JsonSource::VALID_SOURCES)) {
             return $this->error($response, 'Invalid source. Must be one of: ' . implode(', ', JsonSource::VALID_SOURCES), 400);
+        }
+
+        // WSA is not implemented here: this is the legacy tree format, and WSA paths
+        // run deeper than the three levels it models. WSA is served by the v1 route.
+        if ($source === 'WSA') {
+            return $this->error($response, 'WSA is not available on this legacy endpoint. Use /api/v1/events/WSA/observation/{timestamp}', 400);
         }
 
         $timestamp = $args['timestamp'];
@@ -469,8 +478,10 @@ class HelioviewerController extends Controller
             'event_starttime' => date('Y-m-d H:i:s', $event->start),
             'event_endtime' => date('Y-m-d H:i:s', $event->end),
             'event_peaktime' => $event->peak ? date('Y-m-d H:i:s', $event->peak) : null,
-            'hv_hpc_x' => $event->hv_hpc_x,
-            'hv_hpc_y' => $event->hv_hpc_y,
+            // The arcsec snapshot, not the stored center: hv_hpc_x/y are DEGREES
+            // for stonyhurst and carrington rows, and the client reads this as arcsec.
+            'hv_hpc_x' => $event->x_hpc ?? $event->hv_hpc_x,
+            'hv_hpc_y' => $event->y_hpc ?? $event->hv_hpc_y,
             'url' => $event->getUrl(),
             'source_url' => $event->getUrl() . '/source',
             'modifier' => 0,
@@ -536,21 +547,53 @@ class HelioviewerController extends Controller
         }
 
         if ($event->source_id === JsonSource::WSA) {
-            // Path: WSA>>{product}>>{sat}>>{input_map} — product names the concept,
-            // sat + input map identify the "method" (mirrors the FRM role elsewhere).
+            // Path: WSA>>{product}>>{input_map}[>>R{n}] for coronal holes and
+            // WSA>>{product}>>{sat}>>{input_map} for footpoints — product names the
+            // concept, the levels below it identify the "method" (the FRM role elsewhere).
             $pathParts = explode('>>', $event->path);
 
             $formatted['kb_archivid'] = $event->remote_id ?? $uuid;
             $formatted['frm_name'] = implode(' ', array_slice($pathParts, 2)) ?: 'WSA';
             $formatted['frm_specificid'] = '';
             $formatted['concept'] = $pathParts[1] ?? $event->label;
-            $formatted['hv_labels_formatted'] = [];
+            $formatted['hv_labels_formatted'] = $this->wsaLabelsFromView($uuid, $event->path);
             // 'CH' (Coronal Hole) / 'MC' (Magnetic Connectivity) — without this the
             // helioviewer API renders the series as event_type "UNK".
             $formatted['event_type'] = $event->legacy_type;
         }
 
         return $formatted;
+    }
+
+    /**
+     * Tooltip rows for a WSA event, read off its stored view. The client shows
+     * the first entry as the tooltip heading, so the forecast comes first; every
+     * value is a string because the client runs replace() on each one.
+     *
+     * @param string $uuid Event id
+     * @param string $path The event's path; its second level names the product
+     * @return array<string, string> Label => value, in display order
+     */
+    private function wsaLabelsFromView(string $uuid, string $path): array
+    {
+        $views   = $this->jsonStorage->loadById($uuid, 'views') ?: [];
+        $content = $views[0]['content'] ?? [];
+        $product = explode('>>', $path)[1] ?? '';
+
+        $keys = $product === 'Coronal Hole'
+            ? ['Forecast time', 'Input map', 'Realization', 'Forecast window', 'Contours']
+            : ['Target (sat)', 'Connectivity probability', 'Forecast time', 'Input map', 'Advanced days', 'Forecast window'];
+
+        $labels = [];
+        foreach ($keys as $key) {
+            $value = $content[$key] ?? null;
+            if ($value === null || $value === '' || $value === 'n/a') {
+                continue;
+            }
+            $labels[$key] = (string) $value;
+        }
+
+        return $labels;
     }
 
     /**

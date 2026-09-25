@@ -130,9 +130,11 @@ These endpoints return data in a format tailored for the Helioviewer.org client.
 
 Get events active at a specific observation time, in Helioviewer legacy format. Returns events grouped by event type with nested groups by detection method.
 
+**WSA is not implemented on this endpoint.** It is the legacy tree format, which stops at three path levels; WSA paths go deeper. Requesting `source=WSA` returns 400 — use `/api/v1/events/WSA/observation/{timestamp}` instead.
+
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `source` | path | Event source (CCMC, HEK, RHESSI) |
+| `source` | path | Event source (CCMC, HEK, RHESSI) — WSA not implemented, see above |
 | `timestamp` | path | Observation time (any supported timestamp format) |
 
 ```python
@@ -178,7 +180,7 @@ Example response:
 
 #### POST `/helioviewer/events/from/{from}/to/{to}`
 
-Get events matching path prefixes within a time range. Returns a flat list with Helioviewer-specific fields (`x`, `x2` as millisecond timestamps, `event_type`, `frm_name`).
+Get events matching path prefixes within a time range. Returns a flat list with Helioviewer-specific fields (`x`, `x2` as millisecond timestamps, `event_type`, `frm_name`, `hv_labels_formatted` — tooltip rows, built from the HEK source fields or the WSA view). `hv_hpc_x`/`hv_hpc_y` are the event's arcsec snapshot at its own `coordinate_time`, whatever system the row is stored in.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -354,7 +356,7 @@ Get events from a specific source active at a given observation time.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `source` | path | Event source (CCMC, HEK, RHESSI) |
+| `source` | path | Event source (CCMC, HEK, RHESSI, WSA) |
 | `timestamp` | path | Observation time (any supported timestamp format) |
 
 ```python

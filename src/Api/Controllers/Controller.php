@@ -156,6 +156,11 @@ abstract class Controller
             if (($eventArray['source_id'] ?? null) === JsonSource::HEK) {
                 $eventArray['concept'] = $eventArray['source']['concept'] ?? null;
             }
+
+            // WSA has no concept field in its source; the product level of the path is it.
+            if (($eventArray['source_id'] ?? null) === JsonSource::WSA && isset($eventArray['path'])) {
+                $eventArray['concept'] = explode('>>', $eventArray['path'])[1] ?? null;
+            }
         }
 
         // legacy_id per source (mirrors Legacy::normalizeEvent)
