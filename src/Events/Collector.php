@@ -196,8 +196,16 @@ class Collector
             $collector->addProcessor(new HEKEventTypeProcessor($eventType, $logger, $sentryForProcessors));
         }
 
-        $collector->addSource('CCMC>>DONKI>>CME', new DonkiCmeSource($httpClient));
-        $collector->addSource('CCMC>>DONKI>>Solar Flares', new DonkiFlareSource($httpClient));
+        // CCMC collection is switched off (2026-09-30): CCMC moved its public
+        // endpoints — kauai.ccmc.gsfc.nasa.gov/DONKI/WS/get/* now redirects to an
+        // HTML announcement with HTTP 200, and the FlareScoreboard HAPI moved to
+        // ccmc.gsfc.nasa.gov/flare-scoreboard/hapi/ as a HAPI 3.0 server with a
+        // different time syntax. Stored CCMC events stay served and reprocessable
+        // (the processors below remain registered); only fetching stops until the
+        // sources are pointed at the new endpoints and the DONKI model-page scrape
+        // (helioviewer/event-interface) has a working replacement.
+        // $collector->addSource('CCMC>>DONKI>>CME', new DonkiCmeSource($httpClient));
+        // $collector->addSource('CCMC>>DONKI>>Solar Flares', new DonkiFlareSource($httpClient));
 
         // Prediction models
         $predictionModels = [
@@ -215,10 +223,11 @@ class Collector
             'AEffort_REGIONS' => 'AEffort',
         ];
 
-        foreach ($predictionModels as $modelId => $modelName) {
-            $collector->addSource("CCMC>>Solar Flare Predictions>>$modelName",
-                new FlareScoreboardSource($modelId, $modelName, $httpClient));
-        }
+        // Off with the rest of CCMC, see above.
+        // foreach ($predictionModels as $modelId => $modelName) {
+        //     $collector->addSource("CCMC>>Solar Flare Predictions>>$modelName",
+        //         new FlareScoreboardSource($modelId, $modelName, $httpClient));
+        // }
 
         // === PROCESSORS ===
         // DONKI processors don't need coordinate resolution (coordinates in raw data)
