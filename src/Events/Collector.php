@@ -334,10 +334,10 @@ class Collector
      * @param array<string, mixed> $rawRecord  Raw source record
      * @param SourceInterface      $source     The source it came from
      * @param string               $pathPrefix Path prefix to prepend (e.g. "HEK")
-     * @param bool                 $reprocess  When true, skip updating
-     *                                         distributions AND skip rewriting
+     * @param bool                 $reprocess  When true, skip rewriting
      *                                         sources/<uuid>.json (the input).
-     *                                         Defaults to false (normal collect).
+     *                                         Distributions are kept in step
+     *                                         either way. Defaults to false.
      * @return Event|null The saved Event, or null if no processor matched.
      * @throws InvalidEventException | CoordinateResolutionException
      *         Let the caller handle (write failure JSONs, log, etc.)
@@ -412,9 +412,19 @@ class Collector
                 $existingEvent->path !== $event->path
             );
 
-            // Remove old distribution counts if time/path changed
-            if (!$reprocess && $distributionChanged) {
-                $this->logger->debug("Distribution update needed: time/path changed");
+            // Remove old distribution counts if time/path changed. This runs on
+            // reprocess too: a replayed rule that moves start/end (WSA's active
+            // window) must move the bucket counts with it, and when nothing
+            // moved the delta is skipped anyway.
+            if ($distributionChanged) {
+                $this->logger->info(sprintf(
+                    'Distribution update | %s | %s | start %s -> %s | end %s -> %s%s',
+                    $existingEvent->id,
+                    $event->path,
+                    gmdate('Y-m-d H:i', $existingEvent->start), gmdate('Y-m-d H:i', $event->start),
+                    gmdate('Y-m-d H:i', $existingEvent->end), gmdate('Y-m-d H:i', $event->end),
+                    $existingEvent->path !== $event->path ? " | path was {$existingEvent->path}" : ''
+                ));
                 $this->distributionRepository->removeEvent($existingEvent);
             }
 
@@ -439,7 +449,7 @@ class Collector
             $savedEvent = $this->repository->save($existingEvent);
 
             // Add new distribution counts if time/path changed
-            if (!$reprocess && $distributionChanged) {
+            if ($distributionChanged) {
                 $this->distributionRepository->addEvent($savedEvent);
             }
 
@@ -449,9 +459,7 @@ class Collector
             $savedEvent = $this->repository->save($event);
 
             // Add to distributions
-            if (!$reprocess) {
-                $this->distributionRepository->addEvent($savedEvent);
-            }
+            $this->distributionRepository->addEvent($savedEvent);
 
             $action = "Created";
         }

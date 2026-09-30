@@ -12,7 +12,7 @@ declare(strict_types=1);
  *   3. Runs the full processing pipeline via Collector::processRawRecord(reprocess=true)
  *      which upserts the event row, rewrites views/<uuid>.json and links/<uuid>.json,
  *      and updates region associations.
- *      Distributions are NOT touched (rebuild via `make distribution-build` if needed).
+ *      Distribution counts follow when start/end/path change.
  *      Sources JSON is NOT rewritten (it IS the input).
  *
  * Usage (via make):

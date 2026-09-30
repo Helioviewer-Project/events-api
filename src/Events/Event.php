@@ -172,10 +172,20 @@ class Event extends Model
         return $existingEvent === null
             || $existingEvent->coordinate_time !== $this->coordinate_time
             || $existingEvent->coordinate_system !== $this->coordinate_system
-            || (float) $existingEvent->hv_hpc_x !== (float) $this->hv_hpc_x
-            || (float) $existingEvent->hv_hpc_y !== (float) $this->hv_hpc_y
+            || abs((float) $existingEvent->hv_hpc_x - (float) $this->hv_hpc_x) > self::CENTER_TOLERANCE
+            || abs((float) $existingEvent->hv_hpc_y - (float) $this->hv_hpc_y) > self::CENTER_TOLERANCE
             || $existingEvent->footprint !== $this->footprint;
     }
+
+    /**
+     * How far a re-computed centre may sit from the stored one before it counts
+     * as a change. A double round-trips through Postgres with fewer digits than
+     * PHP computes (142.62910542551 vs 142.62910542551262), and an exact float
+     * comparison read that as a move — every reprocess of every degree-stored
+     * row rebuilt its snapshot for nothing. 1e-6 degrees or arcsec is far
+     * below anything a client can draw.
+     */
+    private const CENTER_TOLERANCE = 1e-6;
 
     /**
      * Which coordinate system this event can be rotated from. The only place
