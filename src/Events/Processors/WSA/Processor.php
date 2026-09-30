@@ -23,11 +23,20 @@ abstract class Processor extends BaseProcessor
     protected const DASHBOARD_URL = 'https://ccmc.gsfc.nasa.gov/wsa-dashboard/';
     protected const DASHBOARD_COMMUNITY_URL = 'https://ccmc.gsfc.nasa.gov/community-tools/WSA-Dashboard/';
 
+    /** Seconds a WSA event stays active either side of its forecast_time. */
+    protected const ACTIVE_HALF_WIDTH = 12 * 3600;
+
     /**
      * The event timeline from the record's forecast window.
      *
      * WSA times are UTC ISO strings with no offset; the container runs in UTC.
-     * A record without a usable forecast_time falls back to the window start.
+     *
+     * The event is active for ACTIVE_HALF_WIDTH either side of forecast_time,
+     * not for the API's forecast_range: that range is ~±1 h around the forecast,
+     * which is the map's validity, not how long a viewer wants to see it. The
+     * real range still reaches the client through the view ("Forecast window").
+     * coordinate_time stays forecast_time, so widening this costs no rotation.
+     * A record without a usable forecast_time falls back to the range start.
      *
      * @param array $rawRecord Raw WSA record
      * @return array{0:int,1:int,2:int} [start, peak, end] as unix timestamps
@@ -36,14 +45,12 @@ abstract class Processor extends BaseProcessor
     {
         $peak  = !empty($rawRecord['forecast_time']) ? (int) strtotime($rawRecord['forecast_time']) : 0;
         $range = $rawRecord['forecast_range'] ?? [];
-        $start = !empty($range[0]) ? (int) strtotime($range[0]) : $peak;
-        $end   = !empty($range[1]) ? (int) strtotime($range[1]) : $peak;
 
         if ($peak === 0) {
-            $peak = $start;
+            $peak = !empty($range[0]) ? (int) strtotime($range[0]) : 0;
         }
 
-        return [$start, $peak, $end];
+        return [$peak - self::ACTIVE_HALF_WIDTH, $peak, $peak + self::ACTIVE_HALF_WIDTH];
     }
 
     /**
