@@ -321,6 +321,7 @@ class PageController extends Controller
                         <tr><th>Source</th><th>Description</th></tr>
                         <tr><td><code>CCMC</code></td><td>Community Coordinated Modeling Center (DONKI, FlareScoreboard)</td></tr>
                         <tr><td><code>HEK</code></td><td>Heliophysics Event Knowledgebase</td></tr>
+                        <tr><td><code>WSA</code></td><td>Wang-Sheeley-Arge model forecasts (CCMC WSA dashboard): coronal-hole maps and magnetic-connectivity footpoints</td></tr>
                         <tr><td><code>RHESSI</code></td><td>Reuven Ramaty High Energy Solar Spectroscopic Imager</td></tr>
                     </table>
                     <p>Source names are case-insensitive in all endpoints.</p>

@@ -1,5 +1,5 @@
 # events-api
-A unified API and event database that collects, normalizes, and serves solar event data from multiple sources (HEK, CCMC, RHESSI) for use in Helioviewer.org and related tools.
+A unified API and event database that collects, normalizes, and serves solar event data from multiple sources (HEK, CCMC, WSA, RHESSI) for use in Helioviewer.org and related tools.
 
 ## Features
 
@@ -103,6 +103,7 @@ make
 |--------|-------------|
 | CCMC | Community Coordinated Modeling Center (DONKI, FlareScoreboard) |
 | HEK | Heliophysics Event Knowledgebase |
+| WSA | Wang-Sheeley-Arge model forecasts (CCMC WSA dashboard): coronal-hole maps and magnetic-connectivity footpoints |
 | RHESSI | Reuven Ramaty High Energy Solar Spectroscopic Imager |
 
 Source names are case-insensitive in all endpoints.

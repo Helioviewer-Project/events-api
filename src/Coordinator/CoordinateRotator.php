@@ -16,7 +16,7 @@ use Illuminate\Database\Eloquent\Collection;
  * Centers are rotated in the coordinate system the source gave us: carrington
  * and stonyhurst events send their degrees to the matching route, so the
  * coordinator knows which side of the Sun the point is on and returns both the
- * position and the `visible` flag for it. Helioprojective events (HEK, RHESSI)
+ * position and the `visible` flag for it. Helioprojective events (arcsec-declared HEK, RHESSI)
  * send the stored arcsec snapshot, which is what /hpc expects.
  *
  * footprint_hpc is rigidly shifted by the center's delta; its per-vertex

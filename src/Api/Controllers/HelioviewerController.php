@@ -457,7 +457,7 @@ class HelioviewerController extends Controller
 
     /**
      * Format event for Helioviewer.org Event Timeline.
-     * Formats differently based on source_id (HEK, CCMC, RHESSI).
+     * Formats differently based on source_id (HEK, CCMC, RHESSI, WSA).
      *
      * @param Event $event The event to format
      * @return array Formatted event data
