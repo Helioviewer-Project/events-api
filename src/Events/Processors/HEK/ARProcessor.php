@@ -25,28 +25,21 @@ class ARProcessor extends EventTypeProcessor
     }
 
     /**
-     * Get timeline data for Active Region events.
-     * SPoCA events use end time for coordinate_time.
+     * SPoCA reports each region as found in the map at event_endtime, valid
+     * since the previous map at event_starttime; the ivorn is named after the
+     * end time (..._20110218T190001_2). Other FRMs report at start.
      *
      * @param array $rawRecord Raw event data from HEK
-     * @return array ['start' => int, 'peak' => int, 'end' => int, 'coordinate_time' => int]
+     * @param int $start event_starttime
+     * @param int $peak event_peaktime, or start when absent
+     * @param int $end event_endtime
+     * @return int
      */
-    protected function getTimeLine(array $rawRecord): array
+    protected function coordinateTime(array $rawRecord, int $start, int $peak, int $end): int
     {
-        $start = strtotime($rawRecord['event_starttime']);
-        $peakTime = !empty($rawRecord['event_peaktime']) ? strtotime($rawRecord['event_peaktime']) : false;
-        $peak = ($peakTime !== false && $peakTime > 0) ? $peakTime : $start;
-        $end = strtotime($rawRecord['event_endtime']);
-
         $frmName = $rawRecord['frm_name'] ?? '';
-        $coordinateTime = ($frmName === 'SPoCA') ? $end : $start;
 
-        return [
-            'start'           => $start,
-            'peak'            => $peak,
-            'end'             => $end,
-            'coordinate_time' => $coordinateTime,
-        ];
+        return ($frmName === 'SPoCA') ? $end : $start;
     }
 
     /**

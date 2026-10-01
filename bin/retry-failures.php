@@ -33,6 +33,7 @@ ini_set('memory_limit', '1G');
 
 require __DIR__ . '/../src/bootstrap.php';
 
+use Helioviewer\EventsApi\Utils\Env;
 use Helioviewer\EventsApi\Utils\Container;
 use Helioviewer\EventsApi\Utils\SignalHandler;
 use Helioviewer\EventsApi\Events\Collector as EventCollector;
@@ -42,20 +43,13 @@ SignalHandler::setup();
 const FAILURES_ROOT = '/u/apps/data/failures';
 
 // === ENV ===
-$typeFilter   = $_ENV['TYPES']   ?? getenv('TYPES')   ?: '';
-$sourceFilter = $_ENV['SOURCES'] ?? getenv('SOURCES') ?: '';
-$hashFilter   = $_ENV['HASHES']  ?? getenv('HASHES')  ?: '';
-$limitRaw     = $_ENV['LIMIT']   ?? getenv('LIMIT')   ?: '';
-$applyRaw     = $_ENV['APPLY']   ?? getenv('APPLY')   ?: '';
-$apply        = $applyRaw !== '' && $applyRaw !== '0' && strcasecmp($applyRaw, 'false') !== 0;
-$limit        = max(0, (int) $limitRaw);  // 0 = no limit
+$apply = Env::flag('APPLY');
+$limit = Env::int('LIMIT', 0, 0) ?? 0;  // 0 = no limit
 
-$typeFilters   = $typeFilter   !== '' ? array_filter(array_map('trim', explode(',', $typeFilter)))   : [];
-$sourceFilters = $sourceFilter !== '' ? array_filter(array_map('trim', explode(',', $sourceFilter))) : [];
+$typeFilters   = Env::list('TYPES');
+$sourceFilters = Env::list('SOURCES');
 // Strip optional .json suffix so users can paste filenames verbatim
-$hashFilters   = $hashFilter   !== ''
-    ? array_filter(array_map(fn($h) => preg_replace('/\.json$/', '', trim($h)), explode(',', $hashFilter)))
-    : [];
+$hashFilters   = array_map(fn($h) => preg_replace('/\.json$/', '', $h), Env::list('HASHES'));
 
 // === SERVICES ===
 $container = Container::getInstance();
@@ -69,7 +63,9 @@ $collector = EventCollector::createStandard(
     $container['harp'],
     $container['noaa'],
     $container['logger'],
-    $container['sentry']
+    $container['sentry'],
+    $container['hpcResolver'],
+    $container['cache']
 );
 $logger = $container['logger'];
 

@@ -151,4 +151,15 @@ class Postgres implements RepositoryInterface
                               ->get()
                               ->all();
     }
+
+    /**
+     * Delete every region left with no events. Their coordinates go too
+     * (FK cascade).
+     *
+     * @return int Number of regions deleted
+     */
+    public function deleteOrphaned(): int
+    {
+        return Region::whereDoesntHave('events')->delete();
+    }
 }

@@ -12,7 +12,10 @@ use Helioviewer\EventsApi\Events\Sources\JsonSource;
 class HelioviewerController extends Controller
 {
     /**
-     * Get events by observation (Legacy format for Helioviewer.org)
+     * Get events by observation (Legacy format for Helioviewer.org).
+     *
+     * Not implemented for WSA: the legacy tree stops at three path levels and
+     * WSA paths go deeper. Clients get WSA from /api/v1/events/WSA/observation.
      */
     public function getByObservation(Request $request, Response $response, array $args): Response
     {
@@ -21,6 +24,12 @@ class HelioviewerController extends Controller
         // Validate source
         if (!in_array($source, JsonSource::VALID_SOURCES)) {
             return $this->error($response, 'Invalid source. Must be one of: ' . implode(', ', JsonSource::VALID_SOURCES), 400);
+        }
+
+        // WSA is not implemented here: this is the legacy tree format, and WSA paths
+        // run deeper than the three levels it models. WSA is served by the v1 route.
+        if ($source === 'WSA') {
+            return $this->error($response, 'WSA is not available on this legacy endpoint. Use /api/v1/events/WSA/observation/{timestamp}', 400);
         }
 
         $timestamp = $args['timestamp'];
@@ -48,158 +57,6 @@ class HelioviewerController extends Controller
     }
 
     /**
-     * Get batch observations for multiple timestamps.
-     *
-     * Returns deduplicated response: static event data sent once,
-     * per-timestamp rotated coordinates sent separately.
-     *
-     * Route: POST /helioviewer/events/{sources}/observations
-     * Body: { "timestamps": ["2024-01-15 12:00:00", "2024-01-15 12:01:00", ...] }
-     */
-    public function getBatchObservations(Request $request, Response $response, array $args): Response
-    {
-        // Parse and validate sources
-        $sourcesRaw = strtoupper($args['sources'] ?? '');
-        $sources = array_filter(explode('::', $sourcesRaw), fn($s) => $s !== '');
-        $validSources = JsonSource::VALID_SOURCES;
-        $validatedSources = [];
-        $errors = [];
-
-        foreach ($sources as $source) {
-            if (in_array($source, $validSources)) {
-                $validatedSources[] = $source;
-            } else {
-                $errors[$source] = "Invalid source. Must be one of: " . implode(', ', $validSources);
-            }
-        }
-
-        if (empty($validatedSources)) {
-            return $this->error($response, 'No valid sources provided. Must be one of: ' . implode(', ', $validSources), 400);
-        }
-
-        // Parse JSON body
-        $body = $request->getBody()->getContents();
-        $json = json_decode($body, true);
-
-        if (json_last_error() !== JSON_ERROR_NONE) {
-            return $this->error($response, 'Invalid JSON body', 400);
-        }
-
-        $timestamps = $json['timestamps'] ?? [];
-
-        if (!is_array($timestamps) || empty($timestamps)) {
-            return $this->error($response, 'timestamps must be a non-empty array', 400);
-        }
-
-        if (count($timestamps) > 150) {
-            return $this->error($response, 'timestamps array exceeds maximum of 150 entries. Split into multiple requests and merge observations.', 400);
-        }
-
-        // Parse all timestamps
-        $parsedTimestamps = [];
-        foreach ($timestamps as $i => $ts) {
-            try {
-                $parsedTimestamps[] = TimestampParser::parseTimestamp($ts);
-            } catch (\InvalidArgumentException $e) {
-                return $this->error($response, "Invalid timestamp at index {$i}: " . $e->getMessage(), 400);
-            }
-        }
-
-        // Single DB query that only returns events active at ANY of the requested
-        // timestamps (ORed range conditions), avoiding the memory blow-up that
-        // findActiveInWindow($min,$max) produces when timestamps are sparse.
-        try {
-            $allEvents = $this->eventRepository->findActiveAtAnyTimestamp($validatedSources, $parsedTimestamps);
-        } catch (\Exception $e) {
-            $this->logger->error("Batch observations DB query failed: " . $e->getMessage());
-            $this->sentry->setContext('BatchObservations', [
-                'sources'    => $validatedSources,
-                'timestamps' => count($timestamps),
-                'window_min' => min($parsedTimestamps),
-                'window_max' => max($parsedTimestamps),
-            ]);
-            $this->sentry->capture($e);
-            return $this->error($response, 'Failed to query events', 500);
-        }
-
-        $this->logger->debug("Batch observations: {$allEvents->count()} events for " . implode('::', $validatedSources) . " across " . count($parsedTimestamps) . " timestamps");
-
-        // Group events by source for formatting
-        $eventsBySource = [];
-        foreach ($validatedSources as $source) {
-            $sourceId = $this->getSourceIdByName($source);
-            $eventsBySource[$source] = $allEvents->filter(fn($e) => $e->source_id === $sourceId);
-        }
-
-        // Build event_types and events dict per source, then merge
-        $allEventTypes = [];
-        $eventsDict = [];
-
-        foreach ($eventsBySource as $source => $sourceEvents) {
-            try {
-                $legacy = new LegacyEventResponse($this->jsonStorage);
-                $formatted = $legacy->formatEventsBatched($source, $sourceEvents->toArray());
-                $allEventTypes = array_merge($allEventTypes, $formatted['event_types']);
-                $eventsDict = array_merge($eventsDict, $formatted['events']);
-            } catch (\Exception $e) {
-                $this->logger->error("Batch observations format failed for {$source}: " . $e->getMessage());
-                $this->sentry->setContext('BatchObservationsFormat', ['source' => $source]);
-                $this->sentry->capture($e);
-                $errors[$source] = $e->getMessage();
-            }
-        }
-
-        // Build observations: per-timestamp rotated coordinates
-        $observations = [];
-
-        foreach ($parsedTimestamps as $idx => $t) {
-            $tsKey = $timestamps[$idx]; // Use original timestamp string as key
-
-            // Filter superset to events active at this timestamp
-            // Clone each event so rotate() doesn't mutate the originals —
-            // rotate() overwrites hv_hpc_x/y in-place, which would corrupt
-            // coords for subsequent timestamps and break cache keys
-            $activeEvents = $allEvents
-                ->filter(fn($e) => $e->start <= $t && $e->end >= $t)
-                ->map(fn($e) => clone $e);
-
-            if ($activeEvents->isEmpty()) {
-                $observations[$tsKey] = (object) [];
-                continue;
-            }
-
-            // Rotate coordinates using existing CoordinateRotator
-            $rotated = $this->coordinateRotator->rotate($activeEvents, $t);
-
-            // Extract only coordinate fields
-            $obsEntry = [];
-            foreach ($rotated as $event) {
-                $obsEntry[$event->id] = [
-                    'hv_hpc_x' => $event->hv_hpc_x,
-                    'hv_hpc_y' => $event->hv_hpc_y,
-                ];
-            }
-
-            $observations[$tsKey] = $obsEntry;
-        }
-
-        return $this->json($response, [
-            'event_types' => $allEventTypes,
-            'events' => $eventsDict,
-            'observations' => $observations,
-            'errors' => (object) $errors,
-        ]);
-    }
-
-    /**
-     * Map source name to source_id constant.
-     */
-    private function getSourceIdByName(string $source): int
-    {
-        return JsonSource::getSourceId($source);
-    }
-
-    /**
      * Get batch observations for multiple timestamps, filtered by an explicit
      * selections list (mix of path prefixes and individual event UUIDs).
      *
@@ -210,11 +67,17 @@ class HelioviewerController extends Controller
      * Route: POST /helioviewer/events/frames_with_selections
      * Body:  { "timestamps": [...], "selections": [...] }
      *
-     * Response:
+     * Static data is sent once; each timestamp carries only that frame's arcsec
+     * offset from it. Clients render pin = center + (dx,dy) and shift every
+     * footprint vertex by the same delta.
      *   {
-     *     "events":     { "<uuid>": { static fields } },
-     *     "timestamps": { "<ts>":   { "<uuid>": { "hv_hpc_x": ..., "hv_hpc_y": ... } } }
+     *     "events":     { "<uuid>": { static fields, arcsec snapshot base } },
+     *     "timestamps": { "<ts>":   { "<uuid>": { "dx": ..., "dy": ..., "visible": ... } } }
      *   }
+     *
+     * `visible` is per frame: whether the event's center faces the observer at
+     * that timestamp. Far-side footprint vertices in the snapshot base carry
+     * their own "visible": false.
      */
     public function getObservationsBySelection(Request $request, Response $response): Response
     {
@@ -251,22 +114,7 @@ class HelioviewerController extends Controller
             return $this->error($response, 'selections array exceeds maximum of 200 entries', 400);
         }
 
-        // Classify each selection: trailing UUID-like segment → uuid, else path prefix
-        $uuidPattern = '/^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$/';
-        $pathPrefixes = [];
-        $uuids = [];
-        foreach ($selections as $sel) {
-            if (!is_string($sel) || $sel === '') continue;
-            $parts = explode('>>', $sel);
-            $last  = end($parts);
-            if (preg_match($uuidPattern, $last)) {
-                $uuids[] = $last;
-            } else {
-                $pathPrefixes[] = $sel;
-            }
-        }
-        $pathPrefixes = array_values(array_unique($pathPrefixes));
-        $uuids        = array_values(array_unique($uuids));
+        [$pathPrefixes, $uuids] = $this->classifySelections($selections);
 
         if (empty($pathPrefixes) && empty($uuids)) {
             return $this->error($response, 'no usable path prefixes or UUIDs in selections', 400);
@@ -290,27 +138,50 @@ class HelioviewerController extends Controller
             return $this->error($response, 'Failed to query events', 500);
         }
 
+        // Ensure every event carries its native-HPC snapshot (in-memory only, for
+        // rows the backfill has not covered yet). The static dict below serves the
+        // arcsec base, and resolving once here also spares the per-timestamp clones.
+        $needsSnapshot = $allEvents->filter(fn($e) => $e->footprint_hpc === null || $e->x_hpc === null);
+        if ($needsSnapshot->isNotEmpty()) {
+            $this->hpcResolver->resolve($needsSnapshot);
+        }
+
+        // An event with no arcsec snapshot has nothing usable to serve: the dict
+        // below would fall back to hv_hpc_x, which is DEGREES for carrington and
+        // stonyhurst, and the client reads that field as arcsec. Better to leave
+        // the event out than to draw it in the wrong place.
+        $unusable = $allEvents->filter(fn($e) => $e->x_hpc === null);
+        if ($unusable->isNotEmpty()) {
+            $this->logger->warning("Selection observations | dropping {$unusable->count()} events with no arcsec snapshot");
+            $allEvents = $allEvents->reject(fn($e) => $e->x_hpc === null);
+        }
+
         // === Build events dict (static fields, same shape as formatEventsBatched) ===
+        // Center and footprint are the native-HPC (arcsec) snapshot at the event's
+        // own coordinate_time — same units as the per-timestamp centers, so the
+        // client's delta shift is valid for every coordinate system (WSA included).
+        // Fallback to stored values when a snapshot could not be resolved.
+        // Read straight off the model: toArray() would decode every cast attribute
+        // for all events, including the stored `footprint` this endpoint only needs
+        // when a snapshot is missing.
         $eventsDict = [];
         foreach ($allEvents as $event) {
-            $arr  = $event->toArray();
-            $uuid = $arr['id'];
-            $eventsDict[$uuid] = [
-                'remote_id'         => $arr['remote_id']     ?? null,
-                'path'              => $arr['path']          ?? null,
-                'label'             => $arr['label']         ?? null,
-                'short_label'       => $arr['short_label']   ?? null,
-                'start'             => isset($arr['start']) ? date('Y-m-d\TH:i:s', $arr['start']) : null,
-                'peak'              => isset($arr['peak'])  ? date('Y-m-d\TH:i:s', $arr['peak'])  : null,
-                'end'               => isset($arr['end'])   ? date('Y-m-d\TH:i:s', $arr['end'])   : null,
-                'hv_hpc_x'          => $arr['hv_hpc_x']      ?? null,
-                'hv_hpc_y'          => $arr['hv_hpc_y']      ?? null,
-                'footprint'         => $arr['footprint']     ?? [],
-                'coordinate_system' => $arr['coordinate_system'] ?? null,
-                'coordinate_time'   => isset($arr['coordinate_time']) ? date('Y-m-d\TH:i:s', $arr['coordinate_time']) : null,
-                'type'              => $arr['legacy_type']    ?? null,
-                'pin'               => $arr['legacy_pin']     ?? null,
-                'version'           => $arr['legacy_version'] ?? null,
+            $eventsDict[$event->id] = [
+                'remote_id'         => $event->remote_id,
+                'path'              => $event->path,
+                'label'             => $event->label,
+                'short_label'       => $event->short_label,
+                'start'             => $event->start !== null ? date('Y-m-d\TH:i:s', $event->start) : null,
+                'peak'              => $event->peak  !== null ? date('Y-m-d\TH:i:s', $event->peak)  : null,
+                'end'               => $event->end   !== null ? date('Y-m-d\TH:i:s', $event->end)   : null,
+                'hv_hpc_x'          => $event->x_hpc         ?? $event->hv_hpc_x ?? null,
+                'hv_hpc_y'          => $event->y_hpc         ?? $event->hv_hpc_y ?? null,
+                'footprint'         => $event->footprint_hpc ?? $event->footprint ?? [],
+                'coordinate_system' => $event->coordinate_system,
+                'coordinate_time'   => $event->coordinate_time !== null ? date('Y-m-d\TH:i:s', $event->coordinate_time) : null,
+                'type'              => $event->legacy_type,
+                'pin'               => $event->legacy_pin,
+                'version'           => $event->legacy_version,
             ];
         }
 
@@ -328,14 +199,32 @@ class HelioviewerController extends Controller
                 continue;
             }
 
-            $rotated = $this->coordinateRotator->rotate($activeEvents, $t);
+            // Remember each center before rotation, to detect rotation failures.
+            $centersBeforeRotate = [];
+            foreach ($activeEvents as $e) {
+                $centersBeforeRotate[$e->id] = [$e->hv_hpc_x, $e->hv_hpc_y];
+            }
+
+            // Centers only — footprints were sent once in `events`; the client
+            // moves them per frame.
+            $rotated = $this->coordinateRotator->rotate($activeEvents, $t, false);
 
             $obs = [];
             foreach ($rotated as $event) {
-                $obs[$event->id] = [
-                    'hv_hpc_x' => $event->hv_hpc_x,
-                    'hv_hpc_y' => $event->hv_hpc_y,
-                ];
+                // Center unchanged = rotation did not happen (no snapshot, or
+                // coordinator failed): the event stays at its base position.
+                $unrotated = [$event->hv_hpc_x, $event->hv_hpc_y] === $centersBeforeRotate[$event->id];
+
+                // dx/dy = rotated center minus the base center (x_hpc/y_hpc —
+                // the same values served in `events`). visible is this frame's
+                // own answer: a long-lived event rotates behind the limb mid-movie.
+                $obs[$event->id] = $unrotated
+                    ? ['dx' => 0, 'dy' => 0, 'visible' => $event->visible ?? true]
+                    : [
+                        'dx' => $event->hv_hpc_x - $event->x_hpc,
+                        'dy' => $event->hv_hpc_y - $event->y_hpc,
+                        'visible' => $event->visible ?? true,
+                    ];
             }
             $timestampsOut[$tsKey] = $obs;
         }
@@ -344,6 +233,32 @@ class HelioviewerController extends Controller
             'events'     => $eventsDict,
             'timestamps' => $timestampsOut,
         ]);
+    }
+
+    /**
+     * Split selection strings into path prefixes and UUID selectors: a
+     * selection whose last >>-segment is a UUID picks that single event by id
+     * (the breadcrumb before it is ignored), anything else is a path prefix.
+     *
+     * @param array $selections Raw selection strings
+     * @return array{0: string[], 1: string[]} [pathPrefixes, uuids], deduplicated
+     */
+    private function classifySelections(array $selections): array
+    {
+        $uuidPattern = '/^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$/';
+        $pathPrefixes = [];
+        $uuids = [];
+        foreach ($selections as $sel) {
+            if (!is_string($sel) || $sel === '') continue;
+            $parts = explode('>>', $sel);
+            $last  = end($parts);
+            if (preg_match($uuidPattern, $last)) {
+                $uuids[] = $last;
+            } else {
+                $pathPrefixes[] = $sel;
+            }
+        }
+        return [array_values(array_unique($pathPrefixes)), array_values(array_unique($uuids))];
     }
 
     /**
@@ -452,6 +367,10 @@ class HelioviewerController extends Controller
      * Route: POST /helioviewer/events/from/{from}/to/{to}
      * Body: { "paths": ["HEK>>Flare", "CCMC>>DONKI>>CME"] }
      *
+     * A path whose last >>-segment is a UUID (frontend selections carry these,
+     * e.g. "HEK>>Flare>><uuid>") selects that single event by id; it still has
+     * to overlap the time range.
+     *
      * @param Request  $request  PSR-7 request
      * @param Response $response PSR-7 response
      * @param array    $args     Route arguments: from, to
@@ -496,30 +415,34 @@ class HelioviewerController extends Controller
             return $this->error($response, 'Invalid JSON body', 400);
         }
 
-        $pathPrefixes = $json['paths'] ?? [];
+        $paths = $json['paths'] ?? [];
 
-        if (!is_array($pathPrefixes)) {
+        if (!is_array($paths)) {
             return $this->error($response, 'paths must be an array', 400);
         }
 
         // Filter empty paths
-        $pathPrefixes = array_filter(
-            array_map('trim', $pathPrefixes),
+        $paths = array_filter(
+            array_map('trim', $paths),
             fn($p) => $p !== ''
         );
 
-        if (empty($pathPrefixes)) {
+        if (empty($paths)) {
             return $this->error($response, 'At least one path prefix is required', 400);
         }
 
+        // Frontend selections may carry "path>>uuid" entries — split those off
+        // as id selectors.
+        [$pathPrefixes, $uuids] = $this->classifySelections($paths);
+
         try {
-            $events = $this->eventRepository->findByPathPrefixesAndTimeRange($pathPrefixes, $from, $to);
+            $events = $this->eventRepository->findByPathPrefixesAndTimeRange($pathPrefixes, $from, $to, $uuids);
 
             // Format events for Helioviewer (custom format per source)
             $formattedEvents = array_map(fn($e) => $this->formatEventForHelioviewerEventTimeline($e), $events);
 
             return $this->json($response, [
-                'paths' => $pathPrefixes,
+                'paths' => array_values($paths),
                 'from' => $from,
                 'to' => $to,
                 'count' => count($formattedEvents),
@@ -555,8 +478,10 @@ class HelioviewerController extends Controller
             'event_starttime' => date('Y-m-d H:i:s', $event->start),
             'event_endtime' => date('Y-m-d H:i:s', $event->end),
             'event_peaktime' => $event->peak ? date('Y-m-d H:i:s', $event->peak) : null,
-            'hv_hpc_x' => $event->hv_hpc_x,
-            'hv_hpc_y' => $event->hv_hpc_y,
+            // The arcsec snapshot, not the stored center: hv_hpc_x/y are DEGREES
+            // for stonyhurst and carrington rows, and the client reads this as arcsec.
+            'hv_hpc_x' => $event->x_hpc ?? $event->hv_hpc_x,
+            'hv_hpc_y' => $event->y_hpc ?? $event->hv_hpc_y,
             'url' => $event->getUrl(),
             'source_url' => $event->getUrl() . '/source',
             'modifier' => 0,
@@ -621,7 +546,54 @@ class HelioviewerController extends Controller
             $formatted['event_type'] = $source['event_type'] ?? $event->legacy_type;
         }
 
+        if ($event->source_id === JsonSource::WSA) {
+            // Path: WSA>>{product}>>{input_map}[>>R{n}] for coronal holes and
+            // WSA>>{product}>>{sat}>>{input_map} for footpoints — product names the
+            // concept, the levels below it identify the "method" (the FRM role elsewhere).
+            $pathParts = explode('>>', $event->path);
+
+            $formatted['kb_archivid'] = $event->remote_id ?? $uuid;
+            $formatted['frm_name'] = implode(' ', array_slice($pathParts, 2)) ?: 'WSA';
+            $formatted['frm_specificid'] = '';
+            $formatted['concept'] = $pathParts[1] ?? $event->label;
+            $formatted['hv_labels_formatted'] = $this->wsaLabelsFromView($uuid, $event->path);
+            // 'CH' (Coronal Hole) / 'MC' (Magnetic Connectivity) — without this the
+            // helioviewer API renders the series as event_type "UNK".
+            $formatted['event_type'] = $event->legacy_type;
+        }
+
         return $formatted;
+    }
+
+    /**
+     * Tooltip rows for a WSA event, read off its stored view. The client shows
+     * the first entry as the tooltip heading, so the forecast comes first; every
+     * value is a string because the client runs replace() on each one.
+     *
+     * @param string $uuid Event id
+     * @param string $path The event's path; its second level names the product
+     * @return array<string, string> Label => value, in display order
+     */
+    private function wsaLabelsFromView(string $uuid, string $path): array
+    {
+        $views   = $this->jsonStorage->loadById($uuid, 'views') ?: [];
+        $content = $views[0]['content'] ?? [];
+        $product = explode('>>', $path)[1] ?? '';
+
+        $keys = $product === 'Coronal Hole'
+            ? ['Forecast time', 'Input map', 'Realization', 'Forecast window', 'Contours']
+            : ['Target (sat)', 'Connectivity probability', 'Forecast time', 'Input map', 'Advanced days', 'Forecast window'];
+
+        $labels = [];
+        foreach ($keys as $key) {
+            $value = $content[$key] ?? null;
+            if ($value === null || $value === '' || $value === 'n/a') {
+                continue;
+            }
+            $labels[$key] = (string) $value;
+        }
+
+        return $labels;
     }
 
     /**

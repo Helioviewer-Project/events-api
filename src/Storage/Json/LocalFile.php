@@ -69,7 +69,19 @@ class LocalFile implements JsonStorageInterface
 
         // Store JSON data
         file_put_contents($fullPath, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-        
+
         return $fullPath;
+    }
+
+    /**
+     * Delete a stored file. Missing files are not an error.
+     *
+     * @param string $path File path
+     */
+    public function delete(string $path): void
+    {
+        if (file_exists($path)) {
+            unlink($path);
+        }
     }
 }

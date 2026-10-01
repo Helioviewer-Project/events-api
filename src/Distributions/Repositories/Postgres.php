@@ -322,6 +322,57 @@ class Postgres implements RepositoryInterface
     }
 
     /**
+     * {@inheritdoc}
+     */
+    public function countByPathTree(array $paths): int
+    {
+        $total = 0;
+        foreach ($paths as $path) {
+            $total += $this->inPathTree(Distribution::query(), $path)->count();
+        }
+
+        return $total;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function deleteByPathTree(array $paths): int
+    {
+        try {
+            $deleted = 0;
+            foreach ($paths as $path) {
+                $deleted += $this->inPathTree(Distribution::query(), $path)->delete();
+            }
+
+            return $deleted;
+        } catch (\Exception $e) {
+            throw new \RuntimeException(
+                "Failed to delete distributions for path tree: " . $e->getMessage(),
+                (int) $e->getCode(),
+                $e
+            );
+        }
+    }
+
+    /**
+     * Restrict a query to one path and everything nested under it.
+     *
+     * @param Builder $query Query to constrain
+     * @param string $path Event path
+     * @return Builder The constrained query
+     */
+    private function inPathTree(Builder $query, string $path): Builder
+    {
+        $nested = str_replace(['\\', '%', '_'], ['\\\\', '\%', '\_'], $path) . '>>%';
+
+        return $query->where(function (Builder $inner) use ($path, $nested) {
+            $inner->where('path', $path)
+                  ->orWhere('path', 'LIKE', $nested);
+        });
+    }
+
+    /**
      * Get all Distribution models for all bucket sizes an event overlaps with.
      * Uses firstOrCreate to find existing or create new records in the database.
      *

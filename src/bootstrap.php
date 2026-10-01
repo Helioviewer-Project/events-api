@@ -73,6 +73,8 @@ use Helioviewer\EventsApi\Storage\RedisCache;
 use Helioviewer\EventsApi\Utils\CachedHttpClient;
 use Helioviewer\EventsApi\Coordinator\HttpCoordinator;
 use Helioviewer\EventsApi\Coordinator\CoordinateRotator;
+use Helioviewer\EventsApi\Coordinator\FailoverCoordinator;
+use Helioviewer\EventsApi\Coordinator\HPC\HPCResolver;
 use Helioviewer\EventsApi\Storage\Json\LocalFile;
 use Helioviewer\EventsApi\Storage\Json\ShardedLocalFile;
 use Helioviewer\EventsApi\Jsoc\HarpService;
@@ -102,6 +104,15 @@ function pre($m): void {
 // === CONSTANTS ===
 if (!defined('HV_COORDINATOR_URL')) {
     define('HV_COORDINATOR_URL', $_ENV['HV_COORDINATOR_URL'] ?? 'https://api.helioviewer.org/coordinate');
+}
+
+// The in-stack fallback, used when the primary is unreachable. The port is part
+// of the URL because the image moved it: coordinator 3.2.0 ran `fastapi run
+// --port 80`, 4.0.0 runs `--port 8000`. Pulling a newer image therefore silently
+// takes the fallback offline unless this matches, and a dead fallback only shows
+// up at the moment the primary is already failing.
+if (!defined('HV_COORDINATOR_FALLBACK_URL')) {
+    define('HV_COORDINATOR_FALLBACK_URL', $_ENV['HV_COORDINATOR_FALLBACK_URL'] ?? 'http://coordinator:8000');
 }
 
 
@@ -243,10 +254,12 @@ $sentry = $sentryEnabled
 // HTTP and external services
 $httpClient = new CachedHttpClient(null, $redisCache, 120, 'http_client:', $logger); // 2 minute cache
 $coordinator = new HttpCoordinator($httpClient, $logger);
-$backup_coordinator = new HttpCoordinator($httpClient, $logger, 'http://coordinator');
+$backup_coordinator = new HttpCoordinator($httpClient, $logger, HV_COORDINATOR_FALLBACK_URL);
 $harpService = new HarpService($httpClient, $redisCache, $logger);
 $noaaService = new NoaaService($httpClient, $redisCache, $logger);
-$coordinateRotator = new CoordinateRotator($coordinator, $backup_coordinator, $logger, $redisCache, $sentry);
+$failoverCoordinator = new FailoverCoordinator($coordinator, $backup_coordinator, $logger, $sentry);
+$hpcResolver = HPCResolver::createDefault($failoverCoordinator, $logger);
+$coordinateRotator = new CoordinateRotator($failoverCoordinator, $hpcResolver, $logger, $redisCache);
 $distributionRepository = new DistributionPostgres($redisCache, $logger);
 
 // Initialize container with all services
@@ -254,6 +267,7 @@ $distributionRepository = new DistributionPostgres($redisCache, $logger);
     // Core services
     'cache' => $redisCache,
     'coordinateRotator' => $coordinateRotator,
+    'hpcResolver' => $hpcResolver,
     'jsonStorage' => $jsonStorage,
     'failureStorage' => $failureStorage,
     'eventRepository' => $eventRepository,

@@ -11,7 +11,6 @@ use Helioviewer\EventsApi\Sentry\ClientInterface as SentryClientInterface;
  * HEK Flare (FL) Event Processor
  *
  * Specialized processor for HEK Flare events.
- * Overrides timeline to use peak time for coordinate_time.
  * Handles different FRM sources: SEC standard, Flare Detective, SWPC.
  *
  * @package    Helioviewer\EventsApi\Events\Processors\HEK
@@ -26,25 +25,19 @@ class FlareProcessor extends EventTypeProcessor
     }
 
     /**
-     * Get timeline data for Flare events.
-     * Uses peak time for coordinate_time instead of start time.
+     * Flares use peak time for their coordinates. This is the behaviour
+     * production was validated with; start and peak differ by under two
+     * minutes for most flares, so it is rarely visible either way.
      *
      * @param array $rawRecord Raw event data from HEK
-     * @return array ['start' => int, 'peak' => int, 'end' => int, 'coordinate_time' => int]
+     * @param int $start event_starttime
+     * @param int $peak event_peaktime, or start when absent
+     * @param int $end event_endtime
+     * @return int
      */
-    protected function getTimeLine(array $rawRecord): array
+    protected function coordinateTime(array $rawRecord, int $start, int $peak, int $end): int
     {
-        $start = strtotime($rawRecord['event_starttime']);
-        $peakTime = !empty($rawRecord['event_peaktime']) ? strtotime($rawRecord['event_peaktime']) : false;
-        $peak = ($peakTime !== false && $peakTime > 0) ? $peakTime : $start;
-        $end = strtotime($rawRecord['event_endtime']);
-
-        return [
-            'start'           => $start,
-            'peak'            => $peak,
-            'end'             => $end,
-            'coordinate_time' => $peak,  // Flare: use peak time for coordinates
-        ];
+        return $peak;
     }
 
     /**

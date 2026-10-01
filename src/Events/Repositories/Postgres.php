@@ -218,7 +218,7 @@ class Postgres implements RepositoryInterface
         return Event::where(function ($q) use ($pathPrefixes, $uuids) {
             foreach ($pathPrefixes as $prefix) {
                 $q->orWhere('path', '=', $prefix);
-                $q->orWhere('path', 'LIKE', $prefix . '>>%');
+                $q->orWhere('path', 'LIKE', $this->nestedPathPattern($prefix));
             }
             if (!empty($uuids)) {
                 $q->orWhereIn('id', $uuids);
@@ -541,7 +541,7 @@ class Postgres implements RepositoryInterface
         return Event::where(function (Builder $query) use ($pathPrefixes) {
                 foreach ($pathPrefixes as $prefix) {
                     $query->orWhere('path', '=', $prefix);
-                    $query->orWhere('path', 'LIKE', $prefix . '>>%');
+                    $query->orWhere('path', 'LIKE', $this->nestedPathPattern($prefix));
                 }
             })
             ->orderBy('start')
@@ -567,7 +567,7 @@ class Postgres implements RepositoryInterface
         return Event::where(function (Builder $query) use ($pathPrefixes) {
             foreach ($pathPrefixes as $prefix) {
                 $query->orWhere('path', '=', $prefix);
-                $query->orWhere('path', 'LIKE', $prefix . '>>%');
+                $query->orWhere('path', 'LIKE', $this->nestedPathPattern($prefix));
             }
         })->count();
     }
@@ -577,20 +577,27 @@ class Postgres implements RepositoryInterface
      *
      * An event overlaps with [start, end] if: event.start < end AND event.end > start
      *
-     * @param array<string> $pathPrefixes Array of path prefixes to match
+     * @param array<string> $pathPrefixes Prefixes; each matches `path = prefix` or `path LIKE 'prefix>>%'`
      * @param int $start Start timestamp (Unix)
      * @param int $end End timestamp (Unix)
      * @return array<Event> Array of matching Event objects ordered by start time
      */
-    public function findByPathPrefixesAndTimeRange(array $pathPrefixes, int $start, int $end): array
+    public function findByPathPrefixesAndTimeRange(array $pathPrefixes, int $start, int $end, array $uuids = []): array
     {
-        if (empty($pathPrefixes)) {
+        if (empty($pathPrefixes) && empty($uuids)) {
             return [];
         }
 
-        return Event::where(function (Builder $query) use ($pathPrefixes) {
+        return Event::where(function (Builder $query) use ($pathPrefixes, $uuids) {
                 foreach ($pathPrefixes as $prefix) {
-                    $query->orWhere('path', 'LIKE', $prefix . '%');
+                    // The node itself, plus everything nested under it — never a
+                    // sibling that merely starts with the same characters, or
+                    // `…>>AGONG>>R1` would also return R10 and R11.
+                    $query->orWhere('path', '=', $prefix);
+                    $query->orWhere('path', 'LIKE', $this->nestedPathPattern($prefix));
+                }
+                if (!empty($uuids)) {
+                    $query->orWhereIn('id', $uuids);
                 }
             })
             ->where('start', '<', $end)
@@ -598,6 +605,95 @@ class Postgres implements RepositoryInterface
             ->orderBy('start')
             ->get()
             ->all();
+    }
+
+    /**
+     * Count the events sitting under each given path tree.
+     *
+     * @param array<string> $paths Event paths
+     * @return array<string,int> Requested path => number of events under it
+     */
+    public function countByPathTree(array $paths): array
+    {
+        $counts = [];
+        foreach ($paths as $path) {
+            $counts[$path] = $this->inPathTree(Event::query()->without('regions'), $path)->count();
+        }
+
+        return $counts;
+    }
+
+    /**
+     * Hand the ids of every event under the given path trees to a callback,
+     * one batch at a time.
+     *
+     * Batches walk forward by id, so a callback that deletes what it receives
+     * does not make the walk skip rows.
+     *
+     * @param array<string> $paths Event paths
+     * @param int $chunkSize Ids per batch
+     * @param callable $callback Receives array<string> of event UUIDs
+     */
+    public function eachIdInPathTree(array $paths, int $chunkSize, callable $callback): void
+    {
+        foreach ($paths as $path) {
+            $this->inPathTree(Event::query()->without('regions'), $path)
+                ->select('id')
+                ->orderBy('id')
+                ->chunkById($chunkSize, function (Collection $events) use ($callback) {
+                    $callback($events->pluck('id')->all());
+                });
+        }
+    }
+
+    /**
+     * Delete events by id. Region links go with them (FK cascade).
+     *
+     * @param array<string> $ids Event UUIDs
+     * @return int Number of events deleted
+     */
+    public function deleteByIds(array $ids): int
+    {
+        if (empty($ids)) {
+            return 0;
+        }
+
+        return Event::whereIn('id', $ids)->delete();
+    }
+
+    /**
+     * LIKE pattern matching everything nested under a path.
+     *
+     * The wildcards are escaped first: `_` matches any single character in LIKE
+     * and real paths contain it (EGSO_SFC, SWPC_REALTIME), and `%` arrives from
+     * request bodies, where an unescaped one would match every path.
+     *
+     * @param string $path Path whose children should match
+     * @return string LIKE pattern
+     */
+    private function nestedPathPattern(string $path): string
+    {
+        return str_replace(['\\', '%', '_'], ['\\\\', '\%', '\_'], $path) . '>>%';
+    }
+
+    /**
+     * Restrict a query to one path and everything nested under it.
+     *
+     * Matches the path exactly or as a '<path>>>' prefix, so a sibling that
+     * merely starts with the same characters is left alone.
+     *
+     * @param Builder $query Query to constrain
+     * @param string $path Event path
+     * @return Builder The constrained query
+     */
+    private function inPathTree(Builder $query, string $path): Builder
+    {
+        $nested = $this->nestedPathPattern($path);
+
+        return $query->where(function (Builder $inner) use ($path, $nested) {
+            $inner->where('path', $path)
+                  ->orWhere('path', 'LIKE', $nested);
+        });
     }
 
     /**

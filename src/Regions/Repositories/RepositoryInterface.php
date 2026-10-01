@@ -86,4 +86,15 @@ interface RepositoryInterface
      * @return array Array of RegionCoordinate objects
      */
     public function getCoordinatesInTimeRange(int $regionId, TimeRange $timeRange): array;
+
+    /**
+     * Delete every region left with no events. Their coordinates go too
+     * (FK cascade).
+     *
+     * Regions are shared between sources, so one only falls out of use once
+     * the last event referencing it is gone.
+     *
+     * @return int Number of regions deleted
+     */
+    public function deleteOrphaned(): int;
 }

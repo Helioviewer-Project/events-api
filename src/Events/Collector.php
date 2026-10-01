@@ -40,6 +40,17 @@ use Helioviewer\EventsApi\Events\Processors\CCMC\DonkiCmeProcessor;
 use Helioviewer\EventsApi\Events\Processors\CCMC\FlareScoreboard\Processor as FlareScoreboardProcessor;
 use Helioviewer\EventsApi\Events\Processors\CCMC\FlareScoreboard\DaffProcessor;
 use Helioviewer\EventsApi\Events\Processors\CCMC\FlareScoreboard\AssaProcessor;
+// WSA sources + processors
+use Helioviewer\EventsApi\Events\Sources\WSA\Source as WsaSource;
+use Helioviewer\EventsApi\Events\Sources\WSA\CoronalHole as WsaCoronalHole;
+use Helioviewer\EventsApi\Events\Sources\WSA\Footpoint as WsaFootpoint;
+use Helioviewer\EventsApi\Events\Processors\WSA\CoronalHoleProcessor as WsaCoronalHoleProcessor;
+use Helioviewer\EventsApi\Events\Processors\WSA\FootpointProcessor as WsaFootpointProcessor;
+use Helioviewer\EventsApi\Utils\CachedHttpClient;
+use Helioviewer\EventsApi\Coordinator\HPC\HPCResolver;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Psr\SimpleCache\CacheInterface;
+use GuzzleHttp\Client as GuzzleClient;
 
 /**
  * Event Collection Service
@@ -85,6 +96,8 @@ class Collector
      * @param JsonStorageInterface $json_storage Storage service for raw JSON data
      * @param JsonStorageInterface $failure_storage Storage service for failure data (non-sharded)
      * @param LoggerInterface|null $logger Logger for recording collection activities
+     * @param SentryClientInterface|null $sentry Sentry client
+     * @param HPCResolver|null $hpcResolver Fills x_hpc/y_hpc/footprint_hpc on new/changed events (no-op when null)
      */
     public function __construct(
         private RepositoryInterface $repository,
@@ -93,7 +106,8 @@ class Collector
         private JsonStorageInterface $json_storage,
         private JsonStorageInterface $failure_storage,
         private ?LoggerInterface $logger = null,
-        private ?SentryClientInterface $sentry = null
+        private ?SentryClientInterface $sentry = null,
+        private ?HPCResolver $hpcResolver = null
     ) {
         $this->logger = $logger ?? new \Psr\Log\NullLogger();
         $this->sentry = $sentry ?? new SentryVoidClient([]);
@@ -126,10 +140,12 @@ class Collector
         \Helioviewer\EventsApi\Jsoc\HarpService $harpService,
         \Helioviewer\EventsApi\Jsoc\NoaaService $noaaService,
         ?LoggerInterface $logger = null,
-        ?SentryClientInterface $sentry = null
+        ?SentryClientInterface $sentry = null,
+        ?HPCResolver $hpcResolver = null,
+        ?CacheInterface $cache = null
     ): self {
         // Create collector instance
-        $collector = new self($repository, $regionRepository, $distributionRepository, $json_storage, $failure_storage, $logger, $sentry);
+        $collector = new self($repository, $regionRepository, $distributionRepository, $json_storage, $failure_storage, $logger, $sentry, $hpcResolver);
         
         // === SOURCES ===
         $collector->addSource('HEK', new HEKSource($httpClient));
@@ -180,8 +196,16 @@ class Collector
             $collector->addProcessor(new HEKEventTypeProcessor($eventType, $logger, $sentryForProcessors));
         }
 
-        $collector->addSource('CCMC>>DONKI>>CME', new DonkiCmeSource($httpClient));
-        $collector->addSource('CCMC>>DONKI>>Solar Flares', new DonkiFlareSource($httpClient));
+        // CCMC collection is switched off (2026-09-30): CCMC moved its public
+        // endpoints — kauai.ccmc.gsfc.nasa.gov/DONKI/WS/get/* now redirects to an
+        // HTML announcement with HTTP 200, and the FlareScoreboard HAPI moved to
+        // ccmc.gsfc.nasa.gov/flare-scoreboard/hapi/ as a HAPI 3.0 server with a
+        // different time syntax. Stored CCMC events stay served and reprocessable
+        // (the processors below remain registered); only fetching stops until the
+        // sources are pointed at the new endpoints and the DONKI model-page scrape
+        // (helioviewer/event-interface) has a working replacement.
+        // $collector->addSource('CCMC>>DONKI>>CME', new DonkiCmeSource($httpClient));
+        // $collector->addSource('CCMC>>DONKI>>Solar Flares', new DonkiFlareSource($httpClient));
 
         // Prediction models
         $predictionModels = [
@@ -199,10 +223,11 @@ class Collector
             'AEffort_REGIONS' => 'AEffort',
         ];
 
-        foreach ($predictionModels as $modelId => $modelName) {
-            $collector->addSource("CCMC>>Solar Flare Predictions>>$modelName",
-                new FlareScoreboardSource($modelId, $modelName, $httpClient));
-        }
+        // Off with the rest of CCMC, see above.
+        // foreach ($predictionModels as $modelId => $modelName) {
+        //     $collector->addSource("CCMC>>Solar Flare Predictions>>$modelName",
+        //         new FlareScoreboardSource($modelId, $modelName, $httpClient));
+        // }
 
         // === PROCESSORS ===
         // DONKI processors don't need coordinate resolution (coordinates in raw data)
@@ -220,10 +245,32 @@ class Collector
         // FlareScoreboard processor reads coordinates directly from fields (no resolvers needed)
         $flareScoreboardProcessor = new FlareScoreboardProcessor($logger, $sentryForProcessors);
         $collector->addProcessor($flareScoreboardProcessor);
-        
+
+        // === WSA ===
+        // Needs its own HTTP client: CCMC answers 403 to the default user agent, so the
+        // browser headers are baked into the inner Guzzle (they apply because Guzzle merges
+        // client-default headers into header-less PSR-18 requests). The cache also carries
+        // the ~1-day capabilities cache the sources keep.
+        $wsaClient = new CachedHttpClient(
+            new GuzzleClient([
+                'timeout'         => 60.0,
+                'connect_timeout' => 5.0,
+                'headers'         => WsaSource::HEADERS,
+            ]),
+            $cache,
+            3600,
+            'wsa_http:',
+            $logger
+        );
+
+        $collector->addSource('WSA>>Coronal Hole', new WsaCoronalHole($wsaClient, $cache));
+        $collector->addSource('WSA>>Magnetic Connectivity', new WsaFootpoint($wsaClient, $cache));
+        $collector->addProcessor(new WsaCoronalHoleProcessor($logger, $sentryForProcessors));
+        $collector->addProcessor(new WsaFootpointProcessor($logger, $sentryForProcessors));
+
         return $collector;
     }
-    
+
     /**
      * Register a data source for event collection with a specific path.
      *
@@ -287,10 +334,10 @@ class Collector
      * @param array<string, mixed> $rawRecord  Raw source record
      * @param SourceInterface      $source     The source it came from
      * @param string               $pathPrefix Path prefix to prepend (e.g. "HEK")
-     * @param bool                 $reprocess  When true, skip updating
-     *                                         distributions AND skip rewriting
+     * @param bool                 $reprocess  When true, skip rewriting
      *                                         sources/<uuid>.json (the input).
-     *                                         Defaults to false (normal collect).
+     *                                         Distributions are kept in step
+     *                                         either way. Defaults to false.
      * @return Event|null The saved Event, or null if no processor matched.
      * @throws InvalidEventException | CoordinateResolutionException
      *         Let the caller handle (write failure JSONs, log, etc.)
@@ -334,6 +381,29 @@ class Collector
         // Handle upsert logic: find existing event or create new one
         $existingEvent = $this->repository->findByRemoteId($event->remote_id);
 
+        // Fill the native-HPC snapshot when the coordinates changed, or when the stored
+        // row was never resolved (predates the migration, or an earlier resolve failed
+        // while the coordinator was down) — the regular sync self-heals those rows.
+        // Fields are nulled first so a resolver failure lands the row back on the
+        // backfill worklist instead of keeping a stale snapshot.
+        $snapshotRebuilt = $event->coordinatesDifferFrom($existingEvent)
+            || $existingEvent?->footprint_hpc === null;
+
+        if ($snapshotRebuilt) {
+            $event->x_hpc = null;
+            $event->y_hpc = null;
+            $event->footprint_hpc = null;
+
+            // Nulling is unconditional, resolving is not: with no resolver the
+            // row lands on the backfill worklist (footprint_hpc IS NULL) rather
+            // than keeping a snapshot built from the coordinates it just
+            // replaced. That is what a bulk reprocess wants — resolving here is
+            // one coordinator round trip per event.
+            if ($this->hpcResolver !== null) {
+                $this->hpcResolver->resolve(new EloquentCollection([$event]));
+            }
+        }
+
         if ($existingEvent) {
             // Check if time/path changed for distribution update
             $distributionChanged = (
@@ -342,18 +412,44 @@ class Collector
                 $existingEvent->path !== $event->path
             );
 
-            // Remove old distribution counts if time/path changed
-            if (!$reprocess && $distributionChanged) {
-                $this->logger->debug("Distribution update needed: time/path changed");
+            // Remove old distribution counts if time/path changed. This runs on
+            // reprocess too: a replayed rule that moves start/end (WSA's active
+            // window) must move the bucket counts with it, and when nothing
+            // moved the delta is skipped anyway.
+            if ($distributionChanged) {
+                $this->logger->info(sprintf(
+                    'Distribution update | %s | %s | start %s -> %s | end %s -> %s%s',
+                    $existingEvent->id,
+                    $event->path,
+                    gmdate('Y-m-d H:i', $existingEvent->start), gmdate('Y-m-d H:i', $event->start),
+                    gmdate('Y-m-d H:i', $existingEvent->end), gmdate('Y-m-d H:i', $event->end),
+                    $existingEvent->path !== $event->path ? " | path was {$existingEvent->path}" : ''
+                ));
                 $this->distributionRepository->removeEvent($existingEvent);
             }
 
             // Update existing event with new data
             $existingEvent->fill($event->toArray());
+
+            // toArray() drops $hidden, and the whole native-HPC snapshot is
+            // hidden — so fill() silently leaves the stored row's old snapshot
+            // in place, however far the coordinates have just moved. Carry the
+            // three fields across by hand, including when they are null: null
+            // is what puts the row on the backfill worklist.
+            //
+            // Only when this pass actually rebuilt them. Otherwise $event is a
+            // freshly processed model that never had a snapshot, and copying
+            // its nulls would discard a perfectly good stored one.
+            if ($snapshotRebuilt) {
+                $existingEvent->x_hpc = $event->x_hpc;
+                $existingEvent->y_hpc = $event->y_hpc;
+                $existingEvent->footprint_hpc = $event->footprint_hpc;
+            }
+
             $savedEvent = $this->repository->save($existingEvent);
 
             // Add new distribution counts if time/path changed
-            if (!$reprocess && $distributionChanged) {
+            if ($distributionChanged) {
                 $this->distributionRepository->addEvent($savedEvent);
             }
 
@@ -363,9 +459,7 @@ class Collector
             $savedEvent = $this->repository->save($event);
 
             // Add to distributions
-            if (!$reprocess) {
-                $this->distributionRepository->addEvent($savedEvent);
-            }
+            $this->distributionRepository->addEvent($savedEvent);
 
             $action = "Created";
         }
@@ -448,15 +542,35 @@ class Collector
      *
      * @param TimeRange $range Time range for data collection
      * @param int $chunkInterval Number of days per processing chunk (default: 1)
+     * @param array<string> $sourceNames Collect only from these sources, matched
+     *                                   case-insensitively against getName();
+     *                                   empty means every registered source
      *
      * @return int Total number of events collected (not the events themselves to save memory)
      */
-    public function collect(TimeRange $range, int $chunkInterval = 1): int
+    public function collect(TimeRange $range, int $chunkInterval = 1, array $sourceNames = []): int
     {
         $totalEventCount = 0;
 
-        // Process all registered sources
-        $sourcesToProcess = $this->sources;
+        // Every registered source, or just the named ones
+        $sourcesToProcess = $this->selectSources($sourceNames);
+
+        if (!empty($sourceNames)) {
+            // A name matching nothing would otherwise look like a clean run
+            // that simply found no events.
+            $matched = array_map(fn(SourceInterface $source) => strtolower($source->getName()), $sourcesToProcess);
+            foreach (array_diff(array_map('strtolower', $sourceNames), $matched) as $unknown) {
+                $this->logger->warning("Unknown source '{$unknown}' — run 'make sources' for the list");
+            }
+
+            if (empty($sourcesToProcess)) {
+                $this->logger->warning("No source selected, nothing to collect");
+                return 0;
+            }
+
+            $this->logger->info("Collecting from " . count($sourcesToProcess) . " of " .
+                                count($this->sources) . " sources");
+        }
 
         // Process in chunks based on interval
         $chunks = $range->splitByInterval($chunkInterval);
@@ -548,6 +662,31 @@ class Collector
         $this->logger->info("Collection finished | {$totalEventCount} events | {$totalDuration}s total | {$eventsPerSecond} events/s | {$avgPerEvent}ms/event");
 
         return $totalEventCount;
+    }
+
+    /**
+     * Registered sources whose name appears in the given list, matched
+     * case-insensitively against getName(). An empty list selects every source.
+     *
+     * Shared with callers that want to show what a filter will do before the
+     * run starts, so the report and the run cannot disagree.
+     *
+     * @param array<string> $sourceNames Source names
+     *
+     * @return array<string, SourceInterface> Registered path => source
+     */
+    public function selectSources(array $sourceNames): array
+    {
+        if (empty($sourceNames)) {
+            return $this->sources;
+        }
+
+        $wanted = array_map('strtolower', $sourceNames);
+
+        return array_filter(
+            $this->sources,
+            fn(SourceInterface $source) => in_array(strtolower($source->getName()), $wanted, true)
+        );
     }
 
     /**

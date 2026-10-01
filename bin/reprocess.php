@@ -12,7 +12,7 @@ declare(strict_types=1);
  *   3. Runs the full processing pipeline via Collector::processRawRecord(reprocess=true)
  *      which upserts the event row, rewrites views/<uuid>.json and links/<uuid>.json,
  *      and updates region associations.
- *      Distributions are NOT touched (rebuild via `make distribution-build` if needed).
+ *      Distribution counts follow when start/end/path change.
  *      Sources JSON is NOT rewritten (it IS the input).
  *
  * Usage (via make):
@@ -20,16 +20,21 @@ declare(strict_types=1);
  *   make reprocess APPLY=1                                 # apply, all events
  *   make reprocess PATHS="CCMC>>Solar Flare Predictions"   # dry run, filtered
  *   make reprocess PATHS="HEK,HEK>>Flare" APPLY=1          # apply, filtered
+ *   make reprocess PATHS="HEK" APPLY=1 RESOLVE=0           # bulk: defer the snapshot
  *
  * Env vars consumed:
- *   PATHS  - comma-separated path prefixes; empty = all events
- *   APPLY  - truthy value (e.g. 1) enables writes; unset/empty/0/false = dry run
+ *   PATHS   - comma-separated path prefixes; empty = all events
+ *   APPLY   - truthy value (e.g. 1) enables writes; unset/empty/0/false = dry run
+ *   RESOLVE - 0 clears the HPC snapshot of every changed event instead of
+ *             rebuilding it, leaving the rows for `make backfill-hpc`, which
+ *             batches its coordinator calls. Use it for anything large.
  */
 
 ini_set('memory_limit', '2G');
 
 require __DIR__ . '/../src/bootstrap.php';
 
+use Helioviewer\EventsApi\Utils\Env;
 use Helioviewer\EventsApi\Utils\Container;
 use Helioviewer\EventsApi\Utils\SignalHandler;
 use Helioviewer\EventsApi\Events\Collector as EventCollector;
@@ -37,14 +42,15 @@ use Helioviewer\EventsApi\Events\Collector as EventCollector;
 SignalHandler::setup();
 
 // === ENV-BASED ARG PARSING ===
-$pathFilter = $_ENV['PATHS'] ?? getenv('PATHS') ?: '';
-$applyRaw = $_ENV['APPLY'] ?? getenv('APPLY') ?: '';
-$apply = $applyRaw !== '' && $applyRaw !== '0' && strcasecmp($applyRaw, 'false') !== 0;
+$pathPrefixes = Env::list('PATHS');
+$apply = Env::flag('APPLY');
 
-$pathPrefixes = [];
-if (trim($pathFilter) !== '') {
-    $pathPrefixes = array_filter(array_map('trim', explode(',', $pathFilter)), fn($s) => $s !== '');
-}
+// RESOLVE=0 clears each changed event's HPC snapshot without rebuilding it.
+// Collector resolves one event per coordinator round trip, which is fine for a
+// handful of rows and hopeless for millions; the cleared rows are exactly the
+// backfill-hpc worklist, and that batches properly. Default stays on so a
+// normal reprocess still leaves every row fully resolved.
+$resolve = Env::flag('RESOLVE', true);
 
 // === SERVICES ===
 $container = Container::getInstance();
@@ -61,7 +67,9 @@ $logger = $container['logger'];
 $collector = EventCollector::createStandard(
     $eventRepository, $regionRepository, $distributionRepository,
     $jsonStorage, $failureStorage, $httpClient, $harpService, $noaaService,
-    $logger
+    $logger,
+    hpcResolver: $resolve ? $container['hpcResolver'] : null,
+    cache: $container['cache']
 );
 
 $sources = $collector->getSources();
@@ -72,6 +80,9 @@ $filterDesc = empty($pathPrefixes) ? 'all events' : 'paths: ' . implode(', ', $p
 $logger->info("Starting reprocess [{$mode}] - {$filterDesc}");
 if (!$apply) {
     $logger->info("DRY RUN: no DB writes, no JSON writes. Pass 'do' to apply.");
+}
+if (!$resolve) {
+    $logger->info("RESOLVE=0: changed events have their HPC snapshot cleared, not rebuilt. Run `make backfill-hpc` after.");
 }
 
 $pageSize = 1000;

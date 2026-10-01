@@ -52,7 +52,12 @@ class EventTypeProcessor extends BaseProcessor
 
     /**
      * Get timeline data from raw record.
-     * Can be overridden by subclasses for event-specific behavior.
+     *
+     * coordinate_time is the instant the producer's coordinates describe, and
+     * that is a per-producer convention — see coordinateTime(). It matters
+     * because a row is rotated from coordinate_time to the requested time, so
+     * a wrong epoch is rotated straight into the answer at about 13.2 deg/day:
+     * four hours is 60 arcsec at disc centre.
      *
      * @param array $rawRecord Raw event data from HEK
      * @return array ['start' => int, 'peak' => int, 'end' => int, 'coordinate_time' => int]
@@ -77,8 +82,29 @@ class EventTypeProcessor extends BaseProcessor
             'start'           => $start,
             'peak'            => $peak,
             'end'             => $end,
-            'coordinate_time' => $start,  // Default: use start time
+            'coordinate_time' => $this->coordinateTime($rawRecord, $start, $peak, $end),
         ];
+    }
+
+    /**
+     * The instant the producer's coordinates describe.
+     *
+     * HEK derives every event's heliographic fields at event_starttime, so
+     * hgc_x minus hgs_x always equals L0(start) — that proves HEK's conversion
+     * time, not the producer's measurement time, which is the producer's own
+     * convention. The subclasses whose producers deviate from start override
+     * this: ARProcessor and CHProcessor (SPoCA reports at end), FlareProcessor
+     * (peak) and EFProcessor (older module versions at peak).
+     *
+     * @param array $rawRecord Raw event data from HEK
+     * @param int $start event_starttime
+     * @param int $peak event_peaktime, or start when absent
+     * @param int $end event_endtime
+     * @return int
+     */
+    protected function coordinateTime(array $rawRecord, int $start, int $peak, int $end): int
+    {
+        return $start;
     }
 
     /**
@@ -221,11 +247,84 @@ class EventTypeProcessor extends BaseProcessor
     }
 
     /**
-     * Parse HEK hpc_boundcc polygon string into array of points.
+     * The coordinate system this record is stored in, and the fields that go
+     * with it.
+     *
+     * HEK ships every event in three or four systems, but only one of them is
+     * what the producer submitted — event_coordsys names it, and HEK derived
+     * the rest. That distinction decides everything here: a position submitted
+     * as a flat picture coordinate has already lost which side of the Sun it
+     * came from, so its heliographic copy is a back-conversion that always
+     * lands on the near side. Across the whole archive, 0 of 1,042,918 such
+     * events classify as far side. Storing those as degrees would buy no
+     * visibility flag and would lose accuracy off the limb, so they keep the
+     * arcsec they arrived in.
+     *
+     * Carrington-declared records are stored as stonyhurst too: HEK fills
+     * hgs_x for them at full coverage, both systems describe the same point,
+     * and stonyhurst puts its wrap on the far side and reports far-side
+     * straight off the row.
+     *
+     * @param array $rawRecord Raw event data from HEK
+     * @return array{system: string, x: float, y: float, boundary: string}
+     */
+    protected function coordinates(array $rawRecord): array
+    {
+        $declared = $rawRecord['event_coordsys'] ?? '';
+        $heliographic = $declared === 'UTC-HGS-TOPO' || $declared === 'UTC-HGC-TOPO';
+
+        // Mirrors Event::hasUsableDegrees(). Storing 'stonyhurst' on degrees
+        // that method would reject leaves hv_hpc_x holding degrees the rotator
+        // then reads as arcsec — a tiny blob at disc centre.
+        $lon = $rawRecord['hgs_x'] ?? null;
+        $lat = $rawRecord['hgs_y'] ?? null;
+        $usable = is_numeric($lon) && is_numeric($lat) && $lat >= -90 && $lat <= 90;
+
+        if ($heliographic && $usable) {
+            return [
+                'system'   => 'stonyhurst',
+                'x'        => (float) $lon,
+                'y'        => (float) $lat,
+                // Never fall back to hpc_boundcc here: an arcsec outline under a
+                // degree centre would be shifted as though it were degrees.
+                'boundary' => (string) ($rawRecord['hgs_boundcc'] ?? ''),
+            ];
+        }
+
+        // Declared heliographic but the degrees will not support it, so the row
+        // silently keeps arcsec and never gets a far-side flag. Rare enough to
+        // be worth a line each: a reprocess of the whole archive turned up
+        // 7,118 of these, and without this they were invisible — the run
+        // reported no failures because nothing had failed.
+        if ($heliographic) {
+            $this->logger->warning(sprintf(
+                'HEK | %s declared %s but hgs_x/hgs_y are unusable (%s, %s) | storing arcsec',
+                $rawRecord['kb_archivid'] ?? '?',
+                $declared,
+                var_export($lon, true),
+                var_export($lat, true)
+            ));
+        }
+
+        return [
+            'system'   => 'helioprojective',
+            'x'        => (float) ($rawRecord['hpc_x'] ?? 0),
+            'y'        => (float) ($rawRecord['hpc_y'] ?? 0),
+            'boundary' => (string) ($rawRecord['hpc_boundcc'] ?? ''),
+        ];
+    }
+
+    /**
+     * Parse a HEK boundary polygon string into array of points. The units are
+     * whichever system coordinates() picked — degrees for stonyhurst rows,
+     * arcsec for helioprojective ones.
      *
      * HEK format: "POLYGON((x1 y1,x2 y2,x3 y3,...))"
      *
-     * @param string $boundcc The hpc_boundcc string from HEK
+     * Returns ONE polygon; process() wraps it into the canonical
+     * list-of-polygons footprint shape ([[{x,y},…]]).
+     *
+     * @param string $boundcc The boundary string from HEK
      * @return array Array of {x, y} points: [{x,y}, {x,y}, ...]
      */
     protected function parseFootprint(string $boundcc): array
@@ -265,11 +364,12 @@ class EventTypeProcessor extends BaseProcessor
      */
     public function process(array $rawRecord, SourceInterface $source): Event
     {
-        // Get timeline (can be overridden by subclasses)
         $timeline = $this->getTimeLine($rawRecord);
 
-        // Parse footprint from hpc_boundcc
-        $footprint = $this->parseFootprint($rawRecord['hpc_boundcc'] ?? '');
+        // Store what the producer actually submitted; see coordinates().
+        $coords = $this->coordinates($rawRecord);
+
+        $footprint = $this->parseFootprint($coords['boundary']);
         if (!empty($footprint)) {
             $pointCount = count($footprint);
             $this->logger->info("Footprint created | {$pointCount} points | {$rawRecord['event_type']} | {$rawRecord['kb_archivid']}");
@@ -283,10 +383,11 @@ class EventTypeProcessor extends BaseProcessor
             'peak'              => $timeline['peak'],
             'end'               => $timeline['end'],
             'coordinate_time'   => $timeline['coordinate_time'],
-            'hv_hpc_x'          => (float) ($rawRecord['hpc_x'] ?? 0),
-            'hv_hpc_y'          => (float) ($rawRecord['hpc_y'] ?? 0),
-            'coordinate_system' => 'helioprojective',
-            'footprint'         => $footprint,
+            'hv_hpc_x'          => $coords['x'],
+            'hv_hpc_y'          => $coords['y'],
+            'coordinate_system' => $coords['system'],
+            // Canonical footprint shape: a LIST of polygons ([[{x,y},…]]) — HEK has one.
+            'footprint'         => empty($footprint) ? [] : [$footprint],
             'label'             => $this->getLabel($rawRecord),
             'short_label'       => $this->getLabel($rawRecord),
             'legacy_version'    => $rawRecord['frm_specificid'] ?? null,
