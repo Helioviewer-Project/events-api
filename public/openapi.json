@@ -1,0 +1,719 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Helioviewer Events API",
+    "version": "1.0.0",
+    "description": "Solar event data from HEK, CCMC (DONKI, Flare Scoreboard), WSA and RHESSI in one event model. Positions are served in helioprojective arcsec, rotated to the requested observation time; a footprint vertex behind the Sun carries `\"visible\": false`.\n\n`/api/v2/...` is an alias of `/api/v1/...`.",
+    "license": {
+      "name": "Apache-2.0",
+      "url": "https://www.apache.org/licenses/LICENSE-2.0"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://events.helioviewer.org"
+    }
+  ],
+  "tags": [
+    {
+      "name": "events",
+      "description": "Public event API"
+    },
+    {
+      "name": "regions"
+    },
+    {
+      "name": "meta"
+    },
+    {
+      "name": "helioviewer",
+      "description": "Routes shaped for helioviewer.org; public claims should rely on /api/v1."
+    }
+  ],
+  "paths": {
+    "/api/v1/events/{source}/observation/{timestamp}": {
+      "get": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Events active at an instant",
+        "description": "Every event of the source active at `timestamp`, centres and footprints rotated to it, with labels, views, links and the raw source record.",
+        "parameters": [
+          {
+            "name": "source",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "HEK",
+                "CCMC",
+                "WSA",
+                "RHESSI"
+              ]
+            },
+            "description": "Event source (case-insensitive)."
+          },
+          {
+            "name": "timestamp",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Observation time: ISO 8601 (`2026-09-18T12:00:00Z`, with or without Z/ms/offset), space-separated, Unix seconds, or anything PHP strtotime accepts.",
+            "example": "2026-09-18T12:00:00Z"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of events",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Event"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/events/{uuid}": {
+      "get": {
+        "tags": [
+          "events"
+        ],
+        "summary": "One event",
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "example": "019c39ef-af3f-72e3-8dbd-9c7e2c41815d"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The event",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Event"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/events/{uuid}/source": {
+      "get": {
+        "tags": [
+          "events"
+        ],
+        "summary": "The raw record the event was built from, untouched",
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "example": "019c39ef-af3f-72e3-8dbd-9c7e2c41815d"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Raw source record (shape depends on the source)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/events/recents": {
+      "get": {
+        "tags": [
+          "events"
+        ],
+        "summary": "The 100 most recently stored events",
+        "responses": {
+          "200": {
+            "description": "List of events",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Event"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/regions": {
+      "get": {
+        "tags": [
+          "regions"
+        ],
+        "summary": "All linked active regions (NOAA, HARP) with event counts",
+        "responses": {
+          "200": {
+            "description": "Regions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/regions/{organization}/{external_id}": {
+      "get": {
+        "tags": [
+          "regions"
+        ],
+        "summary": "One region and its events",
+        "parameters": [
+          {
+            "name": "organization",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "NOAA",
+                "HARP"
+              ]
+            }
+          },
+          {
+            "name": "external_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "13664"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Region with events",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/stats": {
+      "get": {
+        "tags": [
+          "meta"
+        ],
+        "summary": "Archive statistics per source and path",
+        "responses": {
+          "200": {
+            "description": "Stats",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/failures": {
+      "get": {
+        "tags": [
+          "meta"
+        ],
+        "summary": "Pre-built report of records that failed to process",
+        "responses": {
+          "200": {
+            "description": "Failure report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Report not built yet"
+          }
+        }
+      }
+    },
+    "/helioviewer/events/{source}/observation/{timestamp}": {
+      "get": {
+        "tags": [
+          "helioviewer"
+        ],
+        "summary": "Events at an instant, legacy tree format",
+        "description": "Grouped by event type and detection method. **WSA is not implemented here** (400); use `/api/v1/events/WSA/observation/{timestamp}`.",
+        "parameters": [
+          {
+            "name": "source",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "HEK",
+                "CCMC",
+                "RHESSI"
+              ]
+            },
+            "description": "Event source (case-insensitive)."
+          },
+          {
+            "name": "timestamp",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Observation time: ISO 8601 (`2026-09-18T12:00:00Z`, with or without Z/ms/offset), space-separated, Unix seconds, or anything PHP strtotime accepts.",
+            "example": "2026-09-18T12:00:00Z"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Legacy tree",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/helioviewer/events/from/{from}/to/{to}": {
+      "post": {
+        "tags": [
+          "helioviewer"
+        ],
+        "summary": "Events by path prefixes over a time range (timeline)",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Unix seconds (10 digits).",
+            "example": 1789603200
+          },
+          {
+            "name": "to",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Unix seconds (10 digits), greater than `from`.",
+            "example": 1789689600
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Paths"
+              },
+              "example": {
+                "paths": [
+                  "HEK>>Flare",
+                  "WSA>>Coronal Hole>>GONGZ"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Flat list with timeline fields (x, x2 in ms, event_type, frm_name, hv_labels_formatted; hv_hpc_x/y in arcsec)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/helioviewer/distributions/size/{size}/from/{from}/to/{to}": {
+      "post": {
+        "tags": [
+          "helioviewer"
+        ],
+        "summary": "Event counts per time bucket",
+        "parameters": [
+          {
+            "name": "size",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "30m",
+                "h",
+                "D",
+                "W",
+                "M",
+                "Y"
+              ]
+            }
+          },
+          {
+            "name": "from",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Unix seconds (10 digits).",
+            "example": 1789603200
+          },
+          {
+            "name": "to",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Unix seconds (10 digits), greater than `from`.",
+            "example": 1789689600
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Paths"
+              },
+              "example": {
+                "paths": [
+                  "HEK>>Flare",
+                  "CCMC>>DONKI>>CME"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Buckets with counts per legacy event type",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/helioviewer/events/frames_with_selections": {
+      "post": {
+        "tags": [
+          "helioviewer"
+        ],
+        "summary": "Movie frames: each event once, a per-frame delta",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "timestamps",
+                  "selections"
+                ],
+                "properties": {
+                  "timestamps": {
+                    "type": "array",
+                    "maxItems": 150,
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "selections": {
+                    "type": "array",
+                    "maxItems": 200,
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Path prefixes, or `...>>{uuid}` for a single event"
+                  }
+                }
+              },
+              "example": {
+                "timestamps": [
+                  "2026-09-18T12:00:00Z",
+                  "2026-09-18T13:00:00Z"
+                ],
+                "selections": [
+                  "WSA>>Coronal Hole>>GONGZ",
+                  "HEK>>Active Region"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "`events` (static, arcsec snapshot) and `timestamps` (per frame: dx, dy, visible)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Paths": {
+        "type": "object",
+        "required": [
+          "paths"
+        ],
+        "properties": {
+          "paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Path prefixes, e.g. `HEK>>Flare`; an entry ending in `>>{uuid}` selects one event"
+          }
+        }
+      },
+      "Vertex": {
+        "type": "object",
+        "properties": {
+          "x": {
+            "type": "number"
+          },
+          "y": {
+            "type": "number"
+          },
+          "visible": {
+            "type": "boolean",
+            "description": "Present (and false) only when the vertex is behind the Sun"
+          }
+        }
+      },
+      "Event": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUIDv7, time-ordered"
+          },
+          "path": {
+            "type": "string",
+            "example": "HEK>>Active Region>>SPoCA"
+          },
+          "remote_id": {
+            "type": "string"
+          },
+          "start": {
+            "type": "string"
+          },
+          "peak": {
+            "type": "string"
+          },
+          "end": {
+            "type": "string"
+          },
+          "coordinate_time": {
+            "type": "string",
+            "description": "The instant the producer's position describes"
+          },
+          "coordinate_system": {
+            "type": "string",
+            "enum": [
+              "helioprojective",
+              "stonyhurst",
+              "carrington"
+            ]
+          },
+          "hv_hpc_x": {
+            "type": "number",
+            "description": "arcsec, rotated to the requested time"
+          },
+          "hv_hpc_y": {
+            "type": "number"
+          },
+          "footprint": {
+            "type": "array",
+            "description": "List of polygons",
+            "items": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/Vertex"
+              }
+            }
+          },
+          "visible": {
+            "type": "boolean",
+            "description": "Whether the centre faces Earth at the requested time"
+          },
+          "label": {
+            "type": "string"
+          },
+          "short_label": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "description": "Legacy event type, e.g. AR, FL, CH, MC"
+          },
+          "views": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "link": {
+            "type": "object"
+          },
+          "source": {
+            "type": "object",
+            "description": "The raw record"
+          },
+          "url": {
+            "type": "string"
+          },
+          "source_url": {
+            "type": "string"
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "responses": {
+      "Error": {
+        "description": "Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      }
+    }
+  }
+}

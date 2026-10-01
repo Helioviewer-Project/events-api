@@ -123,6 +123,8 @@ $app->get('/plan', [$pageController, 'planPage']);
 
 $app->get('/exceptions', [$failuresController, 'page']);
 
+$app->get('/api-docs', [$pageController, 'openApiPage']);
+
 $app->get('/', [$pageController, 'home']);
 
 // Run application

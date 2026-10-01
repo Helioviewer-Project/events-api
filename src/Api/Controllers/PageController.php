@@ -65,7 +65,7 @@ class PageController extends Controller
             padding: 20px;
         }
         .main-container {
-            max-width: 800px;
+            max-width: 1200px;
             margin: 0 auto;
         }
         header {
@@ -125,15 +125,22 @@ class PageController extends Controller
             padding: 40px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.1);
         }
+        .page-title {
+            color: #333;
+            margin-bottom: 30px;
+            margin-top: 0;
+            border-bottom: none;
+            padding-bottom: 0;
+        }
         .version {
             color: #666;
             font-size: 14px;
             margin-bottom: 30px;
         }
         h2 {
-            color: #d35400;
+            color: #333;
             margin-top: 30px;
-            border-bottom: 2px solid #f0f0f0;
+            border-bottom: 2px solid #e67e22;
             padding-bottom: 10px;
         }
         h3 {
@@ -304,11 +311,12 @@ class PageController extends Controller
                 <a href="/" class="nav-button active">Home</a>
                 <a href="/stats" class="nav-button">Statistics Dashboard</a>
                 <a href="/active-regions" class="nav-button">Active Regions</a>
-                <a href="/exceptions" class="nav-button">Source Exceptions</a>
+                <a href="/api-docs" class="nav-button">OpenAPI</a>
             </div>
         </header>
 
         <div class="container">
+            <h2 class="page-title">API Documentation</h2>
             <p class="version">Version 2.0</p>
 
             <p>Welcome to the Helioviewer Events API. This API provides access to solar event data from multiple sources.</p>
@@ -741,7 +749,7 @@ data = response.<span class="fn">json</span>()</code></pre>
                 <tr><th>Path</th><th>Description</th></tr>
                 <tr><td><a href="/stats"><code>/stats</code></a></td><td>Statistics dashboard</td></tr>
                 <tr><td><a href="/active-regions"><code>/active-regions</code></a></td><td>Active regions search tool</td></tr>
-                <tr><td><a href="/exceptions"><code>/exceptions</code></a></td><td>Browse source exceptions (invalid events, coordinate errors, etc.)</td></tr>
+                <tr><td><a href="/api-docs"><code>/api-docs</code></a></td><td>OpenAPI reference with Swagger UI (<a href="/openapi.json">openapi.json</a>)</td></tr>
             </table>
 
             <h2>Documentation</h2>
@@ -752,6 +760,144 @@ data = response.<span class="fn">json</span>()</code></pre>
 </html>
 HTML;
 
+        $response->getBody()->write($html);
+        return $response->withHeader('Content-Type', 'text/html');
+    }
+
+    /**
+     * OpenAPI reference: Swagger UI rendered inside the site's own header,
+     * navigation and card, reading public/openapi.json.
+     */
+    public function openApiPage(Request $request, Response $response): Response
+    {
+        $html = <<<'HTML'
+<!DOCTYPE html>
+<html>
+<head>
+    <title>OpenAPI - Helioviewer Events API</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14/swagger-ui.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .main-container { max-width: 1200px; margin: 0 auto; }
+        header { text-align: center; color: white; margin-bottom: 30px; padding: 20px; }
+        .header-content { display: flex; align-items: center; justify-content: center; gap: 20px; margin-bottom: 10px; }
+        .logo { width: 60px; height: 60px; }
+        header h1 { font-size: 2.5rem; margin: 0; text-shadow: 2px 2px 4px rgba(0,0,0,0.2); color: white; }
+        .subtitle { font-size: 1.1rem; opacity: 0.9; color: white; }
+        .nav-buttons { display: flex; justify-content: center; gap: 15px; margin-top: 20px; flex-wrap: wrap; }
+        .nav-button { display: inline-block; background: rgba(255,255,255,0.2); color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none; transition: background 0.3s; }
+        .nav-button:hover { background: rgba(255,255,255,0.3); }
+        .nav-button.active { background: rgba(255,255,255,0.35); font-weight: bold; }
+        .container { background: white; border-radius: 12px; padding: 30px 30px 40px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
+
+        /* Swagger UI, in the site's theme */
+        .swagger-ui, .swagger-ui .info .title, .swagger-ui .opblock-tag, .swagger-ui .opblock .opblock-summary-description,
+        .swagger-ui .model-title, .swagger-ui table thead tr th, .swagger-ui .parameter__name, .swagger-ui .btn {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        .swagger-ui .wrapper { padding: 0; max-width: none; }
+        .swagger-ui .info { margin: 0 0 20px; }
+        /* titles: the same as "Latest Regions" on the Active Regions page */
+        .swagger-ui .info .title, .swagger-ui .opblock-tag {
+            font-size: 1.5rem; font-weight: bold; color: #333;
+            border-bottom: 2px solid #e67e22; padding: 0 0 10px; margin: 30px 0 20px;
+        }
+        .swagger-ui .information-container { display: none; }   /* spec URL, description, licence: not shown */
+        .swagger-ui .info .title small { background: #888; }
+        .swagger-ui .info a, .swagger-ui a.nostyle, .swagger-ui .info .link { color: #d35400; }
+        .swagger-ui .scheme-container { display: none; }      /* one fixed server: no selector */
+        .swagger-ui .opblock-tag a.nostyle, .swagger-ui .opblock-tag a.nostyle span { color: #333; }
+        .swagger-ui .opblock-tag small { color: #666; font-size: 13px; font-weight: 400; }
+        .swagger-ui .opblock-tag svg { fill: #333; }
+        /* endpoint rows: the same as the home page's collapsible endpoints */
+        .swagger-ui .opblock,
+        .swagger-ui .opblock.opblock-get, .swagger-ui .opblock.opblock-post {
+            background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; box-shadow: none; margin: 8px 0;
+        }
+        .swagger-ui .opblock.is-open { border-color: #d35400; }
+        .swagger-ui .opblock .opblock-summary,
+        .swagger-ui .opblock.opblock-get .opblock-summary, .swagger-ui .opblock.opblock-post .opblock-summary {
+            border: none; padding: 8px 12px;
+        }
+        .swagger-ui .opblock .opblock-summary:hover { background: #e9ecef; border-radius: 8px; }
+        /* method badges: the same as .method-badge on the home page */
+        .swagger-ui .opblock .opblock-summary-method {
+            background: #888; color: white; border-radius: 4px; padding: 2px 8px; min-width: 0;
+            font-size: 12px; font-weight: 700; text-shadow: none;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        .swagger-ui .opblock.opblock-get .opblock-summary-method { background: #888; }   /* .method-get */
+        .swagger-ui .opblock.opblock-post .opblock-summary-method { background: #666; }  /* .method-post */
+        .swagger-ui .opblock .opblock-summary-path, .swagger-ui .opblock .opblock-summary-path a {
+            font-family: 'Courier New', monospace; font-size: 14px; font-weight: 600; color: #333;
+        }
+        .swagger-ui .opblock .opblock-summary-description { color: #666; font-size: 13px; }
+        /* buttons and form fields: the same as the Active Regions search form */
+        .swagger-ui .btn {
+            background: #e67e22; color: white; border: none; border-radius: 6px;
+            padding: 10px 20px; font-size: 14px; font-weight: normal; box-shadow: none; cursor: pointer;
+        }
+        .swagger-ui .btn:hover { background: #c0392b; box-shadow: none; }
+        .swagger-ui .btn.execute { padding: 12px 24px; }
+        .swagger-ui .btn.cancel, .swagger-ui .btn.btn-clear { background: #7f8c8d; }
+        .swagger-ui .btn.cancel:hover, .swagger-ui .btn.btn-clear:hover { background: #5d6d6e; }
+        .swagger-ui .btn-group { gap: 10px; padding: 20px 0; }
+        .swagger-ui .btn-group .btn { border-radius: 6px; }
+        .swagger-ui input[type="text"], .swagger-ui input[type="number"], .swagger-ui input[type="email"],
+        .swagger-ui textarea, .swagger-ui select, .swagger-ui .parameters-col_description input {
+            width: 100%; max-width: 420px; padding: 10px; border: 1px solid #ddd; border-radius: 4px;
+            font-size: 14px; background: white; box-shadow: none; font-family: inherit;
+        }
+        .swagger-ui textarea { max-width: none; min-height: 120px; font-family: 'Courier New', monospace; }
+        .swagger-ui select { padding: 8px 10px; }
+        .swagger-ui input:focus, .swagger-ui textarea:focus, .swagger-ui select:focus { outline: none; border-color: #e67e22; }
+        .swagger-ui .opblock .opblock-section-header { background: #f8f9fa; box-shadow: none; border-radius: 6px 6px 0 0; }
+        .swagger-ui .opblock-body { background: white; border-radius: 0 0 8px 8px; }
+        .swagger-ui .parameters-container, .swagger-ui .responses-wrapper { background: #f8f9fa; }
+        .swagger-ui .parameter__name.required::after { color: #c0392b; }
+        .swagger-ui .opblock-control-arrow, .swagger-ui .expand-operation svg { fill: #2c3e50; }
+        .swagger-ui section.models { border-color: #e9ecef; border-radius: 8px; }
+        .swagger-ui .topbar { display: none; }
+        .page-title { color: #333; margin-bottom: 30px; }
+        .spec-link { color: #666; font-size: 13px; margin-bottom: 10px; }
+        .spec-link a { color: #d35400; }
+    </style>
+</head>
+<body>
+    <div class="main-container">
+        <header>
+            <div class="header-content">
+                <img src="https://helioviewer-project.github.io/event-tree/helioviewer-logo.png" alt="Helioviewer Logo" class="logo">
+                <h1>Helioviewer Events API</h1>
+            </div>
+            <div class="subtitle">OpenAPI Reference</div>
+            <div class="nav-buttons">
+                <a href="/" class="nav-button">Home</a>
+                <a href="/stats" class="nav-button">Statistics Dashboard</a>
+                <a href="/active-regions" class="nav-button">Active Regions</a>
+                <a href="/api-docs" class="nav-button active">OpenAPI</a>
+            </div>
+        </header>
+        <div class="container">
+            <h2 class="page-title">OpenAPI Reference</h2>
+            <p class="spec-link">Machine-readable spec: <a href="/openapi.json">openapi.json</a> (OpenAPI 3.0)</p>
+            <div id="swagger"></div>
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14/swagger-ui-bundle.js"></script>
+    <script>
+        SwaggerUIBundle({ url: '/openapi.json', dom_id: '#swagger', deepLinking: true, docExpansion: 'list', defaultModelsExpandDepth: 0 });
+    </script>
+</body>
+</html>
+HTML;
         $response->getBody()->write($html);
         return $response->withHeader('Content-Type', 'text/html');
     }
@@ -1006,7 +1152,7 @@ HTML;
                 <a href="/" class="nav-button">Home</a>
                 <a href="/stats" class="nav-button">Statistics Dashboard</a>
                 <a href="/active-regions" class="nav-button active">Active Regions</a>
-                <a href="/exceptions" class="nav-button">Source Exceptions</a>
+                <a href="/api-docs" class="nav-button">OpenAPI</a>
             </div>
         </header>
 
