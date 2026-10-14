@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Helioviewer\EventsApi\Events\ViewsAndLinks\DONKI;
 
 use Helioviewer\EventsApi\Exception\UpstreamFormatException;
+use Helioviewer\EventsApi\Exception\UpstreamUnavailableException;
 use Helioviewer\EventsApi\Sentry\ClientInterface as SentryClientInterface;
 use Helioviewer\EventsApi\Sentry\VoidClient as SentryVoidClient;
 use Helioviewer\EventsApi\Utils\CachedHttpClient;
@@ -16,13 +17,16 @@ use Psr\Log\NullLogger;
  * The image list (WSA-ENLIL gifs) of a DONKI model run, from the JSON API the
  * DONKI website itself uses — the run's public page no longer lists them.
  * Each run is read from CCMC once and kept in `donki_model_runs`; a run with
- * no images, or a failed read, is tried again after RETRY_AFTER. Any failure
- * returns no images.
+ * no images, or a failed read, is tried again after RETRY_AFTER. It never
+ * throws: any failure, CCMC's or the database's, returns the gifs already
+ * known (or none), so gifs cannot break a request or a collect.
  *
- * Anything other than a network hiccup — an HTTP error, or an answer not in
- * the expected shape — goes to Sentry (once per kind per process), since it
- * usually means CCMC changed this undocumented API.  Only new or failed runs
- * ever reach CCMC, so alerts stay few without any rate-limit store.
+ * Every failure is logged and goes to Sentry, once per kind per process: CCMC
+ * unreachable, down or limiting us (network errors; HTTP 429, 502, 503, 504 as
+ * UpstreamUnavailableException), CCMC answering in another shape or with another
+ * HTTP error (UpstreamFormatException, usually a change to this undocumented
+ * API), and database errors. Only new or failed runs ever reach CCMC, so alerts
+ * stay few.
  *
  * @package Helioviewer\EventsApi\Events\ViewsAndLinks\DONKI
  * @author  Kasim Necdet Percinel <kasim.n.percinel@nasa.gov>
@@ -31,6 +35,7 @@ class GifCollector
 {
     private const API = 'https://ccmc.gsfc.nasa.gov/DONKI/api/donki/nuggets/';
     private const RETRY_AFTER = 3600;
+    private const UNAVAILABLE = [429, 502, 503, 504];
 
     private LoggerInterface $logger;
     private SentryClientInterface $sentry;
@@ -55,6 +60,20 @@ class GifCollector
             return [];
         }
         $id = (int) $m[1];
+
+        try {
+            return $this->lookup($id, (int) $m[2]);
+        } catch (\Throwable $e) {
+            // The database, not CCMC: a request or a collect must not fail over gifs
+            $this->logger->warning("GifCollector | run {$id}: {$e->getMessage()}");
+            $this->alert($e);
+
+            return [];
+        }
+    }
+
+    private function lookup(int $id, int $linkVersion): array
+    {
         $stored = ModelRun::find($id);
         if ($stored && ($stored->status === ModelRun::FOUND || $stored->fetched_at > time() - self::RETRY_AFTER)) {
             return $stored->images;
@@ -62,7 +81,7 @@ class GifCollector
 
         $version = null;
         try {
-            $version = (int) $m[2] > 0 ? (int) $m[2] : $this->latestVersion($id);
+            $version = $linkVersion > 0 ? $linkVersion : $this->latestVersion($id);
             $run = $version === null ? null : $this->getJson(self::API . "enlil/{$id}/{$version}/");
             if ($run === null) {
                 // CCMC has no such run (removed or never published): a normal answer, not a change
@@ -77,15 +96,18 @@ class GifCollector
             $this->store($id, $version, $gifs, $gifs ? ModelRun::FOUND : ModelRun::NONE);
 
             return $gifs;
-        } catch (\Throwable $e) {
+        } catch (NetworkExceptionInterface | UpstreamUnavailableException | UpstreamFormatException $e) {
             $this->logger->warning("GifCollector | run {$id}: {$e->getMessage()}");
-            if (!$e instanceof NetworkExceptionInterface) {
-                $this->alert($e);
-            }
-            // keep a list read earlier rather than replacing it with a failure
-            $this->store($id, $version ?? $stored?->version, $stored?->images ?? [], ModelRun::FAILED);
+            $this->alert($e);
 
-            return $stored?->images ?? [];
+            // Another process may have stored the run meanwhile; never replace its gifs with a failure
+            $current = ModelRun::find($id);
+            if ($current?->status === ModelRun::FOUND) {
+                return $current->images;
+            }
+            $this->store($id, $version ?? $current?->version, $current?->images ?? [], ModelRun::FAILED);
+
+            return $current?->images ?? [];
         }
     }
 
@@ -101,11 +123,16 @@ class GifCollector
         }
     }
 
+    /**
+     * One atomic insert-or-update, so two processes storing the same new run
+     * at once cannot collide. upsert() skips model casts, hence the json_encode.
+     */
     private function store(int $id, ?int $version, array $gifs, string $status): void
     {
-        ModelRun::updateOrCreate(
-            ['run_id' => $id],
-            ['version' => $version, 'images' => $gifs, 'status' => $status, 'fetched_at' => time()]
+        ModelRun::upsert(
+            [['run_id' => $id, 'version' => $version, 'images' => json_encode($gifs), 'status' => $status, 'fetched_at' => time()]],
+            ['run_id'],
+            ['version', 'images', 'status', 'fetched_at']
         );
     }
 
@@ -131,6 +158,7 @@ class GifCollector
      * checked here.
      *
      * @return array|null Null on 404
+     * @throws UpstreamUnavailableException When CCMC is down or limiting us (429, 502, 503, 504)
      * @throws UpstreamFormatException On any other HTTP error, or a body that is not a JSON object
      */
     private function getJson(string $url): ?array
@@ -141,6 +169,9 @@ class GifCollector
             return null;
         }
         $body = (string) $response->getBody();
+        if (in_array($status, self::UNAVAILABLE, true)) {
+            throw new UpstreamUnavailableException("{$url}: HTTP {$status}");
+        }
         if ($status >= 400) {
             throw new UpstreamFormatException("{$url}: HTTP {$status}, " . substr($body, 0, 120));
         }
