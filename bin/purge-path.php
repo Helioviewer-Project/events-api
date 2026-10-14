@@ -4,8 +4,8 @@
 declare(strict_types=1);
 
 /**
- * Delete every trace of one or more event paths: sidecar JSONs
- * (sources/views/links), event rows, their region links, distribution buckets,
+ * Delete every trace of one or more event paths: raw source JSONs
+ * (sources/<uuid>.json), event rows, their region links, distribution buckets,
  * regions left with no events, and the failure records of the sources feeding
  * those paths.
  *
@@ -121,7 +121,7 @@ foreach ($sourceNames as $sourceName) {
 
 $logger->info('Sources feeding these paths: ' .
               (empty($sourceNames) ? 'none registered in the collector' : implode(', ', $sourceNames)));
-$logger->info("Totals | events: {$eventCount} | sidecars: " . ($eventCount * 3) .
+$logger->info("Totals | events: {$eventCount} | source records: {$eventCount}" .
               " | distribution buckets: {$distributionCount} | failure records: " . count($failureFiles));
 
 if (!$apply) {
@@ -129,21 +129,20 @@ if (!$apply) {
     exit(0);
 }
 
-// === Delete: sidecars first, then the rows that point at them ===
+// === Delete: source records first, then the rows that point at them ===
 $deletedEvents = 0;
-$deletedSidecars = 0;
+$deletedSources = 0;
 
 $eventRepository->eachIdInPathTree($paths, $chunkSize, function (array $ids) use (
-    $eventRepository, $jsonStorage, $logger, &$deletedEvents, &$deletedSidecars
+    $eventRepository, $jsonStorage, $logger, $sentry, &$deletedEvents, &$deletedSources
 ) {
     foreach ($ids as $id) {
-        foreach (['sources', 'views', 'links'] as $type) {
-            try {
-                $jsonStorage->delete("/u/apps/data/{$type}/{$id}.json");
-                $deletedSidecars++;
-            } catch (\Throwable $e) {
-                $logger->warning("Sidecar delete failed for {$type}/{$id}: {$e->getMessage()}");
-            }
+        try {
+            $jsonStorage->delete("/u/apps/data/sources/{$id}.json");
+            $deletedSources++;
+        } catch (\Throwable $e) {
+            $logger->warning("Source record delete failed for {$id}: {$e->getMessage()}");
+            $sentry->capture($e);
         }
     }
 
@@ -163,7 +162,7 @@ foreach ($failureFiles as $file) {
     $deletedFailures++;
 }
 
-$logger->info("Purge complete | events: {$deletedEvents} | sidecars: {$deletedSidecars} | " .
+$logger->info("Purge complete | events: {$deletedEvents} | source records: {$deletedSources} | " .
               "distribution buckets: {$deletedDistributions} | orphaned regions: {$deletedRegions} | " .
               "failure records: {$deletedFailures}");
 $logger->info("Run 'make cache-flush' to drop cached API responses for these paths.");

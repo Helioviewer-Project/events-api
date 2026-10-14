@@ -36,7 +36,7 @@ interface JsonStorageInterface
      * Store with explicit type and ID.
      *
      * @param string $id UUID or identifier
-     * @param string $type Type of data (sources, views, links)
+     * @param string $type Type of data (e.g. sources)
      * @param mixed $data JSON data (array or object)
      * 
      * @return string The full path where the file was stored

@@ -38,7 +38,7 @@ class ShardedLocalFile implements JsonStorageInterface
      * Get 5-level sharded path for a given ID
      * 
      * @param string $id UUID or identifier
-     * @param string $type Type of data (sources, views, links, etc.)
+     * @param string $type Type of data (sources, failures, etc.)
      * @return string Full path with 5-level sharding
      */
     private function getShardedPath(string $id, string $type): string
@@ -203,7 +203,7 @@ class ShardedLocalFile implements JsonStorageInterface
      * Store with explicit type and ID (alternative interface)
      * 
      * @param string $id UUID or identifier  
-     * @param string $type Type of data (sources, views, links)
+     * @param string $type Type of data (e.g. sources)
      * @param mixed $data JSON data (array or object)
      * @return string The full path where the file was stored
      */

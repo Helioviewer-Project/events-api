@@ -18,6 +18,7 @@ use Helioviewer\EventsApi\Coordinator\HPC\HPCResolver;
 use Helioviewer\EventsApi\Events\Event;
 use Helioviewer\EventsApi\Events\Sources\JsonSource;
 use Helioviewer\EventsApi\Sentry\ClientInterface as SentryClientInterface;
+use Helioviewer\EventsApi\Events\ViewsAndLinks\ViewsAndLinksFactory;
 
 /**
  * Abstract base controller with all dependencies
@@ -33,6 +34,7 @@ abstract class Controller
 
     // Storage services
     protected JsonStorageInterface $jsonStorage;
+    protected ViewsAndLinksFactory $viewsAndLinksFactory;
     protected JsonStorageInterface $failureStorage;
 
     // Coordinator services
@@ -59,6 +61,7 @@ abstract class Controller
         $this->distributionRepository = $container->get('distributionRepository');
 
         $this->jsonStorage = $container->get('jsonStorage');
+        $this->viewsAndLinksFactory = $container->get('viewsAndLinksFactory');
         $this->failureStorage = $container->get('failureStorage');
 
         $this->coordinateRotator = $container->get('coordinateRotator');
@@ -101,18 +104,18 @@ abstract class Controller
     }
 
     /**
-     * Enhance an event with sidecar JSONs, legacy aliases, computed
-     * legacy_id, and API URL helpers. Accepts either an Event model or a
-     * plain array (matches what the repositories return for batch reads).
+     * Enhance an event with its raw source record, views and link (built
+     * per request by the ViewsAndLinksFactory), legacy aliases, computed
+     * legacy_id, and API URL helpers.
      *
      * Per-event shape mirrors `Legacy::normalizeEvent` (used by the
      * `/helioviewer/events/...` endpoints) so consumers get a consistent
      * record across both APIs. Additively keeps the legacy `url` and
      * `source_url` helpers from the v1 contract.
      */
-    protected function enhanceEvent(Event|array $event): array
+    protected function enhanceEvent(Event $event): array
     {
-        $eventArray = is_array($event) ? $event : $event->toArray();
+        $eventArray = $event->toArray();
         $uuid       = $eventArray['id'] ?? null;
 
         // Format timestamps (existing v1 contract: space-separated)
@@ -128,30 +131,14 @@ abstract class Controller
         $eventArray['version']    = $eventArray['legacy_version'] ?? null;
         $eventArray['pin']        = $eventArray['legacy_pin']     ?? null;
 
-        // Sidecar JSONs (source/views/link)
+        // The raw source record; views and link are built from it on every request
         if ($uuid !== null) {
             $sourceData = $this->jsonStorage->load("/u/apps/data/sources/{$uuid}.json");
             $eventArray['source'] = $sourceData ?: null;
 
-            $viewsData = $this->jsonStorage->load("/u/apps/data/views/{$uuid}.json");
-            $eventArray['views'] = $viewsData ?: [];
-
-            $linksData = $this->jsonStorage->load("/u/apps/data/links/{$uuid}.json");
-            if (empty($linksData)) {
-                $linksData = [
-                    'url'  => Event::getUrlById($uuid),
-                    'text' => 'Helioviewer Event URL',
-                ];
-            }
-            $eventArray['link'] = $linksData;
-
-            // WSA views carry the event's own API urls; added here because the
-            // uuid does not exist yet when the processor builds them.
-            if (($eventArray['source_id'] ?? null) === JsonSource::WSA && isset($eventArray['views'][0]['content'])) {
-                $url = Event::getUrlById($uuid);
-                $eventArray['views'][0]['content']['EventsAPI URL'] = $url;
-                $eventArray['views'][0]['content']['EventsAPI Source URL'] = $url . '/source';
-            }
+            $viewsAndLinks = $this->viewsAndLinksFactory->build($eventArray, $eventArray['source']);
+            $eventArray['views'] = $viewsAndLinks['views'];
+            $eventArray['link']  = $viewsAndLinks['link'];
 
             if (($eventArray['source_id'] ?? null) === JsonSource::HEK) {
                 $eventArray['concept'] = $eventArray['source']['concept'] ?? null;

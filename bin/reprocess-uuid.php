@@ -8,8 +8,8 @@ declare(strict_types=1);
  * sources/<uuid>.json through the current processor code.
  *
  * The event row is updated in place (its remote_id is unchanged because the
- * source JSON is not modified), so the UUID is preserved. Distributions are not
- * touched and the source JSON is not rewritten (it is the input).
+ * source JSON is not modified), so the UUID is preserved. Distribution counts
+ * follow when start/end/path change; the source JSON is not rewritten (it is the input).
  *
  * Usage (direct):   php bin/reprocess-uuid.php <uuid> [<uuid> ...]
  * Usage (via make): make reprocess-uuid UUID="<uuid>,<uuid>"          # dry run

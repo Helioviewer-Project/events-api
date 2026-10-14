@@ -47,7 +47,7 @@ use Psr\Log\LoggerInterface;
  * @package    Helioviewer\EventsApi\Collector\Processors\CCMC
  * @author     Kasim Necdet Percinel <kasim.n.percinel@nasa.gov>
  * @since      1.0.0
- * @see        https://kauai.ccmc.gsfc.nasa.gov/DONKI/
+ * @see        https://ccmc.gsfc.nasa.gov/DONKI/
  * @see        EventProcessorInterface
  */
 class DonkiFlareProcessor extends BaseProcessor
@@ -220,15 +220,6 @@ class DonkiFlareProcessor extends BaseProcessor
         // Database operations (create/update) will be handled by Collector
         $event = new Event();
         $event->fill($eventData);
-        
-        // Add views and links data to be processed by Collector
-        if (isset($translatedEvent['views'])) {
-            $event->legacy_views = $translatedEvent['views'];
-        }
-        
-        if (isset($translatedEvent['link'])) {
-           $event->legacy_link = $translatedEvent['link'];
-        }
         
         // Add region info to event for Collector to process
         if ($regionInfo) {

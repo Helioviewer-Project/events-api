@@ -149,104 +149,6 @@ class EventTypeProcessor extends BaseProcessor
     }
 
     /**
-     * Get link for the event.
-     *
-     * @param array $rawRecord Raw event data from HEK
-     * @return array Link array with 'url' and 'text' keys, or empty array
-     */
-    protected function getLink(array $rawRecord): array
-    {
-        if (!empty($rawRecord['kb_archivid'])) {
-            return [
-                'url' => 'https://www.lmsal.com/hek/her?cmd=view-voevent&ivorn=' . $rawRecord['kb_archivid'],
-                'text' => 'HEK Archive Link'
-            ];
-        }
-
-        if (!empty($rawRecord['frm_url'])) {
-            return [
-                'url' => $rawRecord['frm_url'],
-                'text' => 'Feature Recognition Method'
-            ];
-        }
-
-        return [];
-    }
-
-    /**
-     * Get views for the event.
-     *
-     * HEK Data Tab Filtering:
-     * | Name                         | Filter Logic to generate concept         | Example Fields inside concept                            |
-     * |------------------------------|------------------------------------------|----------------------------------------------------------|
-     * | $rawRecprd['concept']        | {type}_* OR event* OR concept OR kb_*    | ar_noaanum, event_starttime, concept, kb_archivid        |
-     * | Observation                  | obs_*                                    | obs_observatory, obs_instrument, obs_channelid           |
-     * | Recognition Method           | frm_*                                    | frm_name, frm_specificid, frm_contact                    |
-     * | References                   | refs array                               | ref_name, ref_url                                        |
-     * | All                          | Everything EXCEPT hv_* and refs          | All source HEK data                                      |
-     *
-     * @param array $rawRecord Raw event data from HEK
-     * @return array Array of view objects with 'name' and 'content' keys
-     */
-    protected function getViews(array $rawRecord): array
-    {
-        $views = [];
-        $eventType = $rawRecord['event_type'] ?? $this->eventType;
-        $typePrefix = strtolower($eventType) . '_';
-
-        // 1. Event Type view: {type}_* OR event* OR concept OR kb_*
-        $eventTypeContent = [];
-        foreach ($rawRecord as $key => $value) {
-            if (str_starts_with($key, $typePrefix) ||
-                str_starts_with($key, 'event') ||
-                $key === 'concept' ||
-                str_starts_with($key, 'kb_')) {
-                $eventTypeContent[$key] = $value;
-            }
-        }
-        if (!empty($eventTypeContent)) {
-            $views[] = ['name' => $rawRecord['concept'] ?? $eventType, 'content' => $eventTypeContent];
-        }
-
-        // 2. Observation view: obs_*
-        $obsContent = [];
-        foreach ($rawRecord as $key => $value) {
-            if (str_starts_with($key, 'obs_')) {
-                $obsContent[$key] = $value;
-            }
-        }
-        if (!empty($obsContent)) {
-            $views[] = ['name' => 'Observation', 'content' => $obsContent];
-        }
-
-        // 3. Recognition Method view: frm_*
-        $frmContent = [];
-        foreach ($rawRecord as $key => $value) {
-            if (str_starts_with($key, 'frm_')) {
-                $frmContent[$key] = $value;
-            }
-        }
-        if (!empty($frmContent)) {
-            $views[] = ['name' => 'Recognition Method', 'content' => $frmContent];
-        }
-
-        // 4. References view: refs array
-        if (!empty($rawRecord['refs']) && is_array($rawRecord['refs'])) {
-            $refsContent = [];
-            foreach ($rawRecord['refs'] as $ref) {
-                if (isset($ref['ref_name']) && isset($ref['ref_url'])) {
-                    $refsContent[$ref['ref_name']] = $ref['ref_url'];
-                }
-            }
-            if (!empty($refsContent)) {
-                $views[] = ['name' => 'References', 'content' => $refsContent];
-            }
-        }
-
-        return $views;
-    }
-
-    /**
      * The coordinate system this record is stored in, and the fields that go
      * with it.
      *
@@ -399,8 +301,6 @@ class EventTypeProcessor extends BaseProcessor
         $event->fill($eventData);
 
         // === JSON FILES ===
-        $event->legacy_views = $this->getViews($rawRecord);
-        $event->legacy_link = $this->getLink($rawRecord);
 
         // === REGION (optional) ===
         if (!empty($rawRecord['ar_noaanum'])) {

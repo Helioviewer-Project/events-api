@@ -50,7 +50,7 @@ class HelioviewerController extends Controller
         $rotatedEvents = $this->coordinateRotator->rotate($events, $parsedTimestamp);
 
         // Use Legacy formatter to format events
-        $legacyResponse = new LegacyEventResponse($this->jsonStorage);
+        $legacyResponse = new LegacyEventResponse($this->jsonStorage, $this->viewsAndLinksFactory);
         $formattedEvents = $legacyResponse->formatEvents($source, $rotatedEvents->toArray(), true);
 
         return $this->json($response, $formattedEvents);

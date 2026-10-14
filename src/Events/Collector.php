@@ -47,6 +47,7 @@ use Helioviewer\EventsApi\Events\Sources\WSA\Footpoint as WsaFootpoint;
 use Helioviewer\EventsApi\Events\Processors\WSA\CoronalHoleProcessor as WsaCoronalHoleProcessor;
 use Helioviewer\EventsApi\Events\Processors\WSA\FootpointProcessor as WsaFootpointProcessor;
 use Helioviewer\EventsApi\Utils\CachedHttpClient;
+use Helioviewer\EventsApi\Events\ViewsAndLinks\DONKI\GifCollector as DonkiGifCollector;
 use Helioviewer\EventsApi\Coordinator\HPC\HPCResolver;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Psr\SimpleCache\CacheInterface;
@@ -196,16 +197,8 @@ class Collector
             $collector->addProcessor(new HEKEventTypeProcessor($eventType, $logger, $sentryForProcessors));
         }
 
-        // CCMC collection is switched off (2026-09-30): CCMC moved its public
-        // endpoints — kauai.ccmc.gsfc.nasa.gov/DONKI/WS/get/* now redirects to an
-        // HTML announcement with HTTP 200, and the FlareScoreboard HAPI moved to
-        // ccmc.gsfc.nasa.gov/flare-scoreboard/hapi/ as a HAPI 3.0 server with a
-        // different time syntax. Stored CCMC events stay served and reprocessable
-        // (the processors below remain registered); only fetching stops until the
-        // sources are pointed at the new endpoints and the DONKI model-page scrape
-        // (helioviewer/event-interface) has a working replacement.
-        // $collector->addSource('CCMC>>DONKI>>CME', new DonkiCmeSource($httpClient));
-        // $collector->addSource('CCMC>>DONKI>>Solar Flares', new DonkiFlareSource($httpClient));
+        $collector->addSource('CCMC>>DONKI>>CME', new DonkiCmeSource($httpClient));
+        $collector->addSource('CCMC>>DONKI>>Solar Flares', new DonkiFlareSource($httpClient));
 
         // Prediction models
         $predictionModels = [
@@ -223,7 +216,10 @@ class Collector
             'AEffort_REGIONS' => 'AEffort',
         ];
 
-        // Off with the rest of CCMC, see above.
+        // Flare Scoreboard collection is off: the HAPI server at iswa.ccmc.gsfc.nasa.gov
+        // dropped DAFFS_REGIONS (404 on every run), and moving to CCMC's new server
+        // (ccmc.gsfc.nasa.gov/flare-scoreboard/hapi: other query parameters and columns)
+        // gets its own branch. Stored predictions stay served; the processor below stays registered.
         // foreach ($predictionModels as $modelId => $modelName) {
         //     $collector->addSource("CCMC>>Solar Flare Predictions>>$modelName",
         //         new FlareScoreboardSource($modelId, $modelName, $httpClient));
@@ -232,7 +228,11 @@ class Collector
         // === PROCESSORS ===
         // DONKI processors don't need coordinate resolution (coordinates in raw data)
         $collector->addProcessor(new DonkiFlareProcessor($logger, $sentryForProcessors));
-        $collector->addProcessor(new DonkiCmeProcessor($logger, $sentryForProcessors));
+        $collector->addProcessor(new DonkiCmeProcessor(
+            $logger,
+            $sentryForProcessors,
+            new DonkiGifCollector($httpClient, $logger, $sentryForProcessors)
+        ));
 
         // DAFF processor uses direct service integration (no resolvers)
         $daffProcessor = new DaffProcessor($harpService, $noaaService, $logger, $sentryForProcessors);
@@ -325,7 +325,7 @@ class Collector
 
     /**
      * Process a single raw record: run it through the first matching processor,
-     * upsert the event, write attached JSONs (sources/views/links), attach
+     * upsert the event, write its raw record (sources/<uuid>.json), attach
      * regions, and optionally update distributions.
      *
      * Used by collect() for freshly-fetched records and by bin/reprocess.php
@@ -371,12 +371,10 @@ class Collector
             $event->path = $pathPrefix . '>>' . $event->path;
         }
 
-        // Store views, link, and region info temporarily before DB save
-        $tempViews = $event->legacy_views;
-        $tempLink = $event->legacy_link;
+        // Keep region info aside; it is not a column
         $tempRegionInfo = $event->region_info ?? null;
         $tempRegionsInfo = $event->regions_info ?? null;
-        unset($event->legacy_views, $event->legacy_link, $event->region_info, $event->regions_info);
+        unset($event->region_info, $event->regions_info);
 
         // Handle upsert logic: find existing event or create new one
         $existingEvent = $this->repository->findByRemoteId($event->remote_id);
@@ -469,23 +467,6 @@ class Collector
         // Save raw source data using sharded storage (skip in reprocess mode — it IS the input)
         if (!$reprocess) {
             $this->json_storage->storeById($uuid, 'sources', $rawRecord);
-        }
-
-        // Save views data using sharded storage
-        if (!empty($tempViews)) {
-            $this->json_storage->storeById($uuid, 'views', $tempViews);
-        }
-
-        // Save link data using sharded storage
-        if (!empty($tempLink)) {
-            $this->json_storage->storeById($uuid, 'links', $tempLink);
-        } else {
-            // Create default link structure when tempLink is empty
-            $defaultLink = [
-                'url' => $savedEvent->getUrl(),
-                'text' => 'Helioviewer Events API JSON'
-            ];
-            $this->json_storage->storeById($uuid, 'links', $defaultLink);
         }
 
         // Handle region associations (single or multiple)

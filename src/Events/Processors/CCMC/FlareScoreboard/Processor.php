@@ -11,7 +11,6 @@ use Helioviewer\EventsApi\Sentry\ClientInterface as SentryClientInterface;
 use Helioviewer\EventsApi\Events\Sources\JsonSource;
 use Helioviewer\EventsApi\Events\Sources\SourceInterface;
 use Helioviewer\EventsApi\Exception\CoordinateResolutionException;
-use HelioviewerEventInterface\Translator\FlarePrediction;
 use HelioviewerEventInterface\Util\LocationParser;
 
 /**
@@ -320,13 +319,6 @@ class Processor extends BaseProcessor
             'legacy_version' => null,
             'legacy_type' => 'FP',     // Flare Prediction type
             'legacy_pin' => 'FP',      // Flare Prediction pin type
-            'legacy_views' => [
-                [
-                    'name' => 'Flare Prediction',
-                    'content' => $rawRecord
-                ]
-            ],
-            'legacy_link' => null
         ];
         
         // Step 5: Merge base data with additional data
@@ -335,14 +327,6 @@ class Processor extends BaseProcessor
         // Step 6: Create and fill Event object
         $event = new Event();
         $event->fill($eventData);
-        
-        // Step 7: Handle legacy views and link separately
-        if (isset($additionalData['legacy_views'])) {
-            $event->legacy_views = $additionalData['legacy_views'];
-        }
-        if (isset($additionalData['legacy_link'])) {
-            $event->legacy_link = $additionalData['legacy_link'];
-        }
         
         // Add regions info to event for Collector to process
         if (!empty($regionsInfo)) {

@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Helioviewer\EventsApi\Regions\Repositories;
 
+use Helioviewer\EventsApi\Events\Event;
 use Helioviewer\EventsApi\Regions\Region;
+use Illuminate\Database\Eloquent\Collection;
 use Helioviewer\EventsApi\Regions\RegionCoordinate;
 use Helioviewer\EventsApi\Utils\TimeRange;
 
@@ -90,16 +92,6 @@ class Postgres implements RepositoryInterface
     }
 
     /**
-     * Get all regions.
-     *
-     * @return array Array of all Region objects
-     */
-    public function getAll(): array
-    {
-        return Region::all()->all();
-    }
-
-    /**
      * Get total count of regions.
      *
      * @return int Total number of regions
@@ -161,5 +153,40 @@ class Postgres implements RepositoryInterface
     public function deleteOrphaned(): int
     {
         return Region::whereDoesntHave('events')->delete();
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * One query: a join + GROUP BY returning Region models. Eloquent's
+     * withCount()/withMax() give the same rows but as two correlated
+     * subqueries per region, about 10x slower on 3.7k regions.
+     */
+    public function getAllWithEventStats(): Collection
+    {
+        return Region::query()
+            ->select('regions.*')
+            ->selectRaw('COUNT(event_regions.event_id) AS event_count, MAX(events.start) AS latest_event_start')
+            ->leftJoin('event_regions', 'regions.id', '=', 'event_regions.region_id')
+            ->leftJoin('events', 'event_regions.event_id', '=', 'events.id')
+            ->groupBy('regions.id')
+            ->orderBy('regions.organization')
+            ->orderBy('regions.external_id')
+            ->get();
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function findEvents(Region $region, int $limit = 2000): Collection
+    {
+        return Event::query()
+            ->select('events.*')
+            ->join('event_regions', 'events.id', '=', 'event_regions.event_id')
+            ->where('event_regions.region_id', $region->id)
+            ->orderBy('events.start', 'desc')
+            ->orderBy('events.id', 'desc')
+            ->limit($limit)
+            ->get();
     }
 }

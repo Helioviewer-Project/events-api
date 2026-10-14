@@ -28,7 +28,7 @@ class CoronalHole extends Source
      * all six, and AGONG's realizations arrive in one `real=all` reply: 78
      * requests a day become 2. It is still recorded in the raw
      * record and the remote_id (a constant segment) so coronal-hole ids stay
-     * parallel to the footpoint ids and the sidecar keeps the provenance.
+     * parallel to the footpoint ids and the stored source record keeps the provenance.
      */
     private const SAT = 'SWPC_REALTIME';
 

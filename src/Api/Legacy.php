@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Helioviewer\EventsApi\Api;
 
-use Helioviewer\EventsApi\Events\Event;
+use Helioviewer\EventsApi\Events\ViewsAndLinks\ViewsAndLinksFactory;
 use Helioviewer\EventsApi\Events\Sources\JsonSource;
 use Helioviewer\EventsApi\Storage\Json\LocalFile;
 use Helioviewer\EventsApi\Storage\Json\JsonStorageInterface;
@@ -28,8 +28,9 @@ class Legacy
      * Constructor
      * 
      * @param JsonStorageInterface $json_storage Storage service for loading JSON files
+     * @param ViewsAndLinksFactory $viewsAndLinksFactory Builds each event's views and link from its raw record
      */
-    public function __construct(JsonStorageInterface $json_storage)
+    public function __construct(JsonStorageInterface $json_storage, private ViewsAndLinksFactory $viewsAndLinksFactory)
     {
         // Load the dictionary from the configuration file
         $this->dictionary = require __DIR__ . '/event_paths_dictionary.php';
@@ -132,30 +133,10 @@ class Legacy
                     $sourceData = $this->storage->loadById($uuid, 'sources');
                     $eventArray['source'] = $sourceData ?: null;
                     
-                    // Load views JSON data using sharded storage
-                    $viewsData = $this->storage->loadById($uuid, 'views');
-                    $eventArray['views'] = $viewsData ?: [];
-                    
-                    // Load links JSON data using sharded storage
-                    $linksData = $this->storage->loadById($uuid, 'links');
-
-                    // If no link exists, create a default link to the event URL
-                    if (empty($linksData)) {
-                        $linksData = [
-                            'url' => Event::getUrlById($uuid),
-                            'text' => 'Helioviewer Event URL'
-                        ];
-                    }
-
-                    $eventArray['link'] = $linksData;
-
-                    // WSA views carry the event's own API urls; added here because the
-                    // uuid does not exist yet when the processor builds them.
-                    if (($eventArray['source_id'] ?? null) === JsonSource::WSA && isset($eventArray['views'][0]['content'])) {
-                        $url = Event::getUrlById($uuid);
-                        $eventArray['views'][0]['content']['EventsAPI URL'] = $url;
-                        $eventArray['views'][0]['content']['EventsAPI Source URL'] = $url . '/source';
-                    }
+                    // Views and link, built from the raw record on every request
+                    $viewsAndLinks = $this->viewsAndLinksFactory->build(['id' => $uuid] + $eventArray, $eventArray['source']);
+                    $eventArray['views'] = $viewsAndLinks['views'];
+                    $eventArray['link']  = $viewsAndLinks['link'];
 
                     // Add concept for HEK events
                     if (($eventArray['source_id'] ?? null) === JsonSource::HEK) {

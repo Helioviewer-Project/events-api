@@ -10,8 +10,8 @@ declare(strict_types=1);
  *   1. Loads sources/<uuid>.json
  *   2. Finds the matching source (by path prefix) and processor
  *   3. Runs the full processing pipeline via Collector::processRawRecord(reprocess=true)
- *      which upserts the event row, rewrites views/<uuid>.json and links/<uuid>.json,
- *      and updates region associations.
+ *      which upserts the event row and updates region associations
+ *      (views and links are built per request, nothing to rewrite).
  *      Distribution counts follow when start/end/path change.
  *      Sources JSON is NOT rewritten (it IS the input).
  *

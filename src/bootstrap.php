@@ -71,6 +71,8 @@ use Monolog\Formatter\LineFormatter;
 // Services
 use Helioviewer\EventsApi\Storage\RedisCache;
 use Helioviewer\EventsApi\Utils\CachedHttpClient;
+use Helioviewer\EventsApi\Events\ViewsAndLinks\ViewsAndLinksFactory;
+use Helioviewer\EventsApi\Events\ViewsAndLinks\DONKI\GifCollector as DonkiGifCollector;
 use Helioviewer\EventsApi\Coordinator\HttpCoordinator;
 use Helioviewer\EventsApi\Coordinator\CoordinateRotator;
 use Helioviewer\EventsApi\Coordinator\FailoverCoordinator;
@@ -275,6 +277,11 @@ $distributionRepository = new DistributionPostgres($redisCache, $logger);
     'distributionRepository' => $distributionRepository,
     'logger' => $logger,
     'sentry' => $sentry,
+    'viewsAndLinksFactory' => new ViewsAndLinksFactory(
+        $logger,
+        $sentry,
+        new DonkiGifCollector($httpClient, $logger, $sentry)
+    ),
 
     // HTTP and external services
     'httpClient' => $httpClient,

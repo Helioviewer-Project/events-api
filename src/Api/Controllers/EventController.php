@@ -16,7 +16,7 @@ class EventController extends Controller
     {
         try {
             $events = $this->eventRepository->getRecent(100);
-            $enhancedEvents = array_map(fn($e) => $this->enhanceEvent($e), $events);
+            $enhancedEvents = $events->map(fn($e) => $this->enhanceEvent($e));
             return $this->json($response, $enhancedEvents);
 
         } catch (\Exception $e) {
@@ -45,6 +45,7 @@ class EventController extends Controller
         try {
             $parsedTimestamp = TimestampParser::parseTimestamp($timestamp);
         } catch (\InvalidArgumentException $e) {
+            $this->sentry->capture($e);
             return $this->error($response, 'Invalid timestamp or date format: ' . $e->getMessage(), 400);
         }
 
@@ -57,7 +58,7 @@ class EventController extends Controller
         $rotatedEvents = $this->coordinateRotator->rotate($events, $parsedTimestamp);
 
         // Format events
-        $formattedEvents = $rotatedEvents->map(fn($event) => $this->enhanceEvent($event))->values()->toArray();
+        $formattedEvents = $rotatedEvents->map(fn($event) => $this->enhanceEvent($event));
 
         return $this->json($response, $formattedEvents);
 

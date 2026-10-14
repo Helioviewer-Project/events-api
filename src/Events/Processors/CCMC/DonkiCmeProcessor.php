@@ -10,8 +10,7 @@ use Helioviewer\EventsApi\Events\Sources\JsonSource;
 use Helioviewer\EventsApi\Events\Sources\SourceInterface;
 use Helioviewer\EventsApi\Exception\CoordinateResolutionException;
 use Helioviewer\EventsApi\Sentry\ClientInterface as SentryClientInterface;
-use GuzzleHttp\Exception\GuzzleException;
-use HelioviewerEventInterface\Translator\DonkiCme as EventInterfaceDonkiCme;
+use Helioviewer\EventsApi\Events\ViewsAndLinks\DONKI\GifCollector as DonkiGifCollector;
 use HelioviewerEventInterface\Util\LocationParser;
 use Psr\Log\LoggerInterface;
 
@@ -37,23 +36,87 @@ use Psr\Log\LoggerInterface;
  * - CME parameter data including speed, direction, and associated phenomena
  *
  * Coordinate System Transformations:
- * - Uses existing HelioviewerEventInterface translator for coordinate conversion
+ * - Reads the source location (e.g. N10W20) as Stonyhurst coordinates
  * - Maintains compatibility with legacy Helioviewer coordinate representation
  * - Preserves original DONKI coordinate metadata for reference
  *
  * @package    Helioviewer\EventsApi\Collector\Processors\CCMC
  * @author     Kasim Necdet Percinel <kasim.n.percinel@nasa.gov>
  * @since      1.0.0
- * @see        https://kauai.ccmc.gsfc.nasa.gov/DONKI/
+ * @see        https://ccmc.gsfc.nasa.gov/DONKI/
  * @see        EventProcessorInterface
  */
 class DonkiCmeProcessor extends BaseProcessor
 {
     public function __construct(
         ?LoggerInterface $logger = null,
-        ?SentryClientInterface $sentry = null
+        ?SentryClientInterface $sentry = null,
+        private ?DonkiGifCollector $donkiGifCollector = null
     ) {
         parent::__construct($logger, $sentry);
+    }
+
+    /**
+     * The multi-line label, kept to event-interface's DonkiCme rules: the most
+     * accurate analysis' type, half angle and speed (else the start date), plus
+     * "Modeled" when that analysis has model runs.
+     */
+    private function label(array $rawRecord, int $startTime): string
+    {
+        $analysis = $this->mostAccurateAnalysis($rawRecord);
+        if (!$this->hasLocation($rawRecord, $analysis)) {
+            return 'CME ' . ($rawRecord['activityID'] ?? '');
+        }
+        if (!$analysis) {
+            return gmdate('Y-m-d H:i:s', $startTime);
+        }
+
+        return "Type: {$analysis['type']}\nHalf Angle: {$analysis['halfAngle']}&deg;\n{$analysis['speed']} km/s"
+            . (empty($analysis['enlilList']) ? '' : "\nModeled");
+    }
+
+    /**
+     * The one-line label, with the same rules as label().
+     */
+    private function shortLabel(array $rawRecord, int $startTime): string
+    {
+        $analysis = $this->mostAccurateAnalysis($rawRecord);
+        if (!$this->hasLocation($rawRecord, $analysis)) {
+            return 'CME';
+        }
+        if (!$analysis) {
+            return gmdate('Y-m-d H:i:s', $startTime);
+        }
+
+        return "Type: {$analysis['type']} {$analysis['halfAngle']}&deg; {$analysis['speed']} km/s"
+            . (empty($analysis['enlilList']) ? '' : ' Modeled');
+    }
+
+    /**
+     * Whether the CME can be placed: the most accurate analysis' latitude and
+     * longitude, or without one, a source location. Without it, both labels
+     * fall back to plain "CME" text.
+     */
+    private function hasLocation(array $rawRecord, ?array $analysis): bool
+    {
+        return $analysis
+            ? isset($analysis['latitude'], $analysis['longitude'])
+            : trim((string) ($rawRecord['sourceLocation'] ?? '')) !== '';
+    }
+
+    /**
+     * The first analysis marked most accurate. Labels use this one, unlike
+     * selectBestAnalysis(), which prefers the leading edge.
+     */
+    private function mostAccurateAnalysis(array $rawRecord): ?array
+    {
+        foreach (($rawRecord['cmeAnalyses'] ?? []) as $analysis) {
+            if (!empty($analysis['isMostAccurate'])) {
+                return $analysis;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -232,7 +295,7 @@ class DonkiCmeProcessor extends BaseProcessor
      * Processes and transforms raw DONKI CME data into standardized Event model
      *
      * This method performs the complete transformation pipeline for DONKI CME data:
-     * 1. Uses the existing HelioviewerEventInterface translator for initial processing
+     * 1. Builds the label and short label from the most accurate analysis
      * 2. Extracts and normalizes temporal data (start, peak, end times)
      * 3. Transforms coordinate data to Helioviewer coordinate system
      * 4. Generates unique identifiers and response hashes for deduplication
@@ -241,47 +304,29 @@ class DonkiCmeProcessor extends BaseProcessor
      *
      * Coordinate Handling:
      * - CME events typically don't have specific coordinate locations like flares
-     * - Uses translated coordinate values from the event interface translator
-     * - Peak time is set to start time as CMEs don't have a distinct peak phase
+     * - Coordinates come from the record's source location (extractCoordinates)
+     * - Peak time is time21_5 of the best analysis, or the start time without one
      *
      * @param array           $rawRecord The raw CME event data from DONKI
      * @param SourceInterface $source    The source instance (should be DONKI_CME)
      *
      * @return Event The processed (unpersisted) Event model instance
      *
-     * @throws \Exception If the event interface translator fails
+     * @throws \Exception If startTime is not a valid date
      */
     public function process(array $rawRecord, SourceInterface $source): Event
     {
         // Extract coordinates using our own logic
         $coordinates = $this->extractCoordinates($rawRecord);
         
-        // Use existing event interface translator to transform raw DONKI data
-        // This handles labeling and view generation
-        try {
-            $translatedEvent = EventInterfaceDonkiCme::buildTranslatedCME($rawRecord);
-        } catch (GuzzleException $e) {
-            // The translator scrapes each WSA-ENLIL model's DONKI page for gif
-            // links; a dead/500ing model page must not kill this record (nor the
-            // whole collect chunk it is part of). Retry without the model runs —
-            // the event survives with its CME/analysis views, just without model
-            // tabs until the page recovers.
-            $this->logger->warning("DonkiCmeProcessor | model-page scrape failed for {$rawRecord['activityID']}: {$e->getMessage()} | retrying without model runs");
-            $sanitized = $rawRecord;
-            if (isset($sanitized['cmeAnalyses']) && is_array($sanitized['cmeAnalyses'])) {
-                // Iterate the array itself — a by-reference foreach over the
-                // `?? []` temporary would mutate a copy and strip nothing.
-                foreach ($sanitized['cmeAnalyses'] as &$analysis) {
-                    unset($analysis['enlilList']);
-                }
-                unset($analysis);
-            }
-            $translatedEvent = EventInterfaceDonkiCme::buildTranslatedCME($sanitized);
-        }
+        $startTime = (new \DateTimeImmutable($rawRecord['startTime']))->getTimestamp();
+
+        // Read and keep the model-run images now, so the first request is not the one paying for it
+        $this->donkiGifCollector?->warm($rawRecord);
 
         // Default values
-        $endTime = strtotime($translatedEvent['end']); // Default end time from translatedEvent
-        $peakTime = strtotime($translatedEvent['start']); // Default peak time is start time
+        $endTime = $startTime + 86400; // Default end time is one day after start
+        $peakTime = $startTime; // Default peak time is start time
         
         // Calculate peak and end times from cmeAnalyses if available
         if (isset($rawRecord['cmeAnalyses']) && is_array($rawRecord['cmeAnalyses'])) {
@@ -289,7 +334,6 @@ class DonkiCmeProcessor extends BaseProcessor
 
             if ($analysis && isset($analysis['time21_5'])) {
                 $time21_5 = strtotime($analysis['time21_5']);
-                $startTime = strtotime($translatedEvent['start']);
 
                 // Only use time21_5 if it's valid and not earlier than start time
                 if ($time21_5 !== false && $time21_5 > 0 && $time21_5 >= $startTime) {
@@ -306,7 +350,7 @@ class DonkiCmeProcessor extends BaseProcessor
                     }
 
                 } else {
-                    $this->logger->warning("CME: time21_5 not valid for event times calculation - time21_5: '{$analysis['time21_5']}' ({$time21_5}), start: '{$translatedEvent['start']}' ({$startTime})");
+                    $this->logger->warning("CME: time21_5 not valid for event times calculation - time21_5: '{$analysis['time21_5']}' ({$time21_5}), start: '{$rawRecord['startTime']}' ({$startTime})");
                 }
             }
         }
@@ -315,18 +359,18 @@ class DonkiCmeProcessor extends BaseProcessor
         $eventData = [
             'source_id' => JsonSource::CCMC,
             'path' => '',
-            'start' => strtotime($translatedEvent['start']),
+            'start' => $startTime,
             'peak' => $peakTime, // Peak time is time21_5 when CME reaches 21.5 Rs (or start time as fallback)
             'end' => $endTime,
             'coordinate_time' => $coordinates['coordinate_time'],
             'hv_hpc_x' => $coordinates['longitude'], // Map longitude to HPC X coordinate
             'hv_hpc_y' => $coordinates['latitude'],  // Map latitude to HPC Y coordinate
             'coordinate_system' => 'stonyhurst',
-            'label' => $translatedEvent['label'],
-            'short_label' => $translatedEvent['short_label'] ?? $translatedEvent['label'],
-            'legacy_version' => $translatedEvent['version'] ?? null,
-            'legacy_type' => $translatedEvent['type'] ?? 'CE',
-            'legacy_pin' => $translatedEvent['type'] ?? 'CE', // Default to 'CE' for Coronal Ejection
+            'label' => $this->label($rawRecord, $startTime),
+            'short_label' => $this->shortLabel($rawRecord, $startTime),
+            'legacy_version' => $rawRecord['catalog'] ?? null,
+            'legacy_type' => 'CE',
+            'legacy_pin' => 'CE', // CE for Coronal Ejection
         ];
         
         // Extract region information for later processing
@@ -354,15 +398,6 @@ class DonkiCmeProcessor extends BaseProcessor
         // Database operations (create/update) will be handled by Collector
         $event = new Event();
         $event->fill($eventData);
-        
-        // Add views and links data to be processed by Collector
-        if (isset($translatedEvent['views'])) {
-            $event->legacy_views = $this->fixIswaGifLinks($translatedEvent['views']);
-        }
-        
-        if (isset($translatedEvent['link'])) {
-            $event->legacy_link = $translatedEvent['link'];
-        }
 
         // Add region info to event for Collector to process
         if ($regionInfo) {
@@ -370,35 +405,5 @@ class DonkiCmeProcessor extends BaseProcessor
         }
 
         return $event;
-    }
-
-    /**
-     * Rewrite ISWA gif links in the translated views to the redirect API.
-     *
-     * The WSA-ENLIL model gifs scraped off DONKI model pages point at ISWA's
-     * old direct-download form (https://iswa.gsfc.nasa.gov/downloads/<file>.gif),
-     * which no longer serves the files. They must go through the redirect API:
-     * https://iswa.gsfc.nasa.gov/api/redirect?filename=<file>.gif
-     *
-     * @param array $views Translated views (list of ['name','content',…] tabs)
-     * @return array Views with rewritten gif URLs
-     */
-    private function fixIswaGifLinks(array $views): array
-    {
-        foreach ($views as &$view) {
-            if (!isset($view['content']) || !is_array($view['content'])) {
-                continue;
-            }
-            foreach ($view['content'] as &$value) {
-                if (is_string($value)
-                    && preg_match('#^https?://(iswa(?:\.ccmc)?\.gsfc\.nasa\.gov)/downloads/([^/?\s]+\.gif)$#i', $value, $match)) {
-                    $value = "https://{$match[1]}/api/redirect?filename=" . $match[2];
-                }
-            }
-            unset($value);
-        }
-        unset($view);
-
-        return $views;
     }
 }

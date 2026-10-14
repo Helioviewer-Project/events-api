@@ -149,9 +149,9 @@ interface RepositoryInterface
      *
      * @param int $limit Maximum number of events to return (default: 100)
      *
-     * @return array<Event> Array of the most recent Event objects
+     * @return Collection<int, Event> The most recent events
      */
-    public function getRecent(int $limit = 100): array;
+    public function getRecent(int $limit = 100): Collection;
 
     /**
      * Retrieve a page of events ordered by start time (oldest first).

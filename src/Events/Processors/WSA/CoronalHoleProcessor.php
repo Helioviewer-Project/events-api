@@ -38,7 +38,6 @@ class CoronalHoleProcessor extends Processor
         // All boundary contours of the window → footprint as a LIST of polygons,
         // each polygon a list of {x:lon, y:lat} points (Carrington degrees).
         $footprint   = [];
-        $totalPoints = 0;
         $largest     = null;
         $largestArea = -1.0;
         foreach (($rawRecord['contours'] ?? []) as $contour) {
@@ -53,7 +52,6 @@ class CoronalHoleProcessor extends Processor
                 $polygon[] = ['x' => (float) $lon[$i], 'y' => (float) $lat[$i]];
             }
             $footprint[] = $polygon;
-            $totalPoints += $n;
             $area = $this->polygonArea($polygon);
             if ($area > $largestArea) {
                 $largestArea = $area;
@@ -100,23 +98,6 @@ class CoronalHoleProcessor extends Processor
             'legacy_type'       => 'CH',
             'legacy_pin'        => 'CH',
         ]);
-
-        $event->legacy_views = [[
-            'name'    => 'WSA Coronal Hole',
-            'content' => [
-                'Product'           => 'Coronal Hole boundaries',
-                'Input map'         => $inputMap,
-                'Realization'       => $inputMap === 'AGONG' ? $real : 'n/a',
-                'Forecast time'     => $rawRecord['forecast_time'] ?? null,
-                'Forecast window'   => $this->forecastWindow($rawRecord),
-                'Contours'          => count($footprint),
-                'Boundary points'   => $totalPoints,
-                'Coordinate system' => 'Helio-Carrington',
-                'WSA Dashboard'     => self::DASHBOARD_URL,
-                'Community Tools'   => self::DASHBOARD_COMMUNITY_URL,
-            ],
-        ]];
-        $event->legacy_link = $this->dashboardLink();
 
         return $event;
     }

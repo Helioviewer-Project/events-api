@@ -12,7 +12,8 @@ use Helioviewer\EventsApi\Events\Processors\BaseProcessor;
  * Coronal holes and footpoints differ in geometry (multi-contour hole maps vs
  * single probability contours) and in how they pick a pin, but they come from
  * the same dashboard and describe the same kind of forecast window — so the
- * window timeline, the dashboard links and the forecast wording live here.
+ * window timeline and the forecast wording live here. Their detail view and
+ * dashboard link are built per request by ViewsAndLinks\WsaViews.
  *
  * @package Helioviewer\EventsApi\Events\Processors\WSA
  * @author  Kasim Necdet Percinel <kasim.n.percinel@nasa.gov>
@@ -20,9 +21,6 @@ use Helioviewer\EventsApi\Events\Processors\BaseProcessor;
  */
 abstract class Processor extends BaseProcessor
 {
-    protected const DASHBOARD_URL = 'https://ccmc.gsfc.nasa.gov/wsa-dashboard/';
-    protected const DASHBOARD_COMMUNITY_URL = 'https://ccmc.gsfc.nasa.gov/community-tools/WSA-Dashboard/';
-
     /** Seconds a WSA event stays active either side of its forecast_time. */
     protected const ACTIVE_HALF_WIDTH = 12 * 3600;
 
@@ -62,31 +60,5 @@ abstract class Processor extends BaseProcessor
     protected function forecastTag(int $peak): string
     {
         return 'Forecast: ' . gmdate('Y-m-d H:i', $peak);
-    }
-
-    /**
-     * The forecast window as shown in the detail view, e.g. "<start> to <end>".
-     *
-     * @param array $rawRecord Raw WSA record
-     * @return string|null Null when the record carries no window
-     */
-    protected function forecastWindow(array $rawRecord): ?string
-    {
-        $range = $rawRecord['forecast_range'] ?? [];
-
-        return is_array($range) ? implode(' to ', $range) : null;
-    }
-
-    /**
-     * Link stored in the event's links sidecar.
-     *
-     * @return array{url:string,text:string}
-     */
-    protected function dashboardLink(): array
-    {
-        return [
-            'url'  => self::DASHBOARD_URL,
-            'text' => 'CCMC WSA Dashboard',
-        ];
     }
 }

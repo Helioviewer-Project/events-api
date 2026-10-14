@@ -341,10 +341,10 @@ class Postgres implements RepositoryInterface
      *
      * @param int $limit Maximum number of events to return (default: 100)
      *
-     * @return array<Event> Array of the most recent Event objects,
-     *                      ordered by creation time (newest first)
+     * @return Collection<int, Event> The most recent events, ordered by
+     *                                update time (newest first)
      */
-    public function getRecent(int $limit = 100): array
+    public function getRecent(int $limit = 100): Collection
     {
         // Query most recent events across all sources
         // Uses updated_at first, then id to break ties for more granular ordering
@@ -354,7 +354,7 @@ class Postgres implements RepositoryInterface
             ->limit($limit)
             ->get();
 
-        return $events->toArray();
+        return $events;
     }
 
     /**
