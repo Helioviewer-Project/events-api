@@ -58,6 +58,23 @@ if (!is_dir('/u/apps/data/scheduler')) {
     mkdir('/u/apps/data/scheduler', 0777, true);
 }
 
+// onlyOne() keeps a job's lock file until the job finishes normally, so a run
+// that throws leaves it behind and blocks the job for good. A lock older than
+// the job could ever run is treated as left over: the job runs, and we hear about it.
+$staleAfter = function (string $job, int $seconds) use ($logger, $sentry): callable {
+    return function (int $lockTime) use ($job, $seconds, $logger, $sentry): bool {
+        $age = time() - $lockTime;
+        if ($age <= $seconds) {
+            return false;
+        }
+        $message = "[{$job}] Lock from " . gmdate('Y-m-d H:i:s', $lockTime) . " UTC is older than {$seconds}s, running anyway";
+        $logger->warning($message);
+        $sentry->message($message);
+
+        return true;
+    };
+};
+
 // Schedule collection job (every 6 minutes) - collects today's events
 $scheduler->call(function() use ($eventCollector, $logger, $sentry) {
     $sentry->withTransaction('scheduler.every_6_minutes', 'cron', function() use ($eventCollector, $logger, $sentry) {
@@ -91,7 +108,7 @@ $scheduler->call(function() use ($eventCollector, $logger, $sentry) {
     });
 }, [], 'every_6_minutes_collection')
     ->everyMinute(6)                      // Run every 6 minutes
-    ->onlyOne()  // Prevent overlapping with explicit lock directory
+    ->onlyOne(null, $staleAfter('EVERY 6 MINUTES', 3600))  // Prevent overlapping; a lock older than 1h is left over
     ->before(function() use ($logger) {
         $logger->info("[EVERY 6 MINUTES] Starting scheduled collection");
     })
@@ -132,7 +149,7 @@ $scheduler->call(function() use ($eventCollector, $logger, $sentry) {
     });
 }, [], 'daily_previous_day_2am_collection')
     ->daily('02:00')  // Run at 02:00 (2 AM)
-    ->onlyOne()
+    ->onlyOne(null, $staleAfter('DAILY 2AM', 6 * 3600))
     ->before(function() use ($logger) {
         $logger->info("[DAILY 2AM] Starting daily collection for yesterday and today");
     })
@@ -174,7 +191,7 @@ $scheduler->call(function() use ($eventCollector, $logger, $sentry) {
     });
 }, [], 'weekly_monday_1am_utc_collection')
     ->weekly(1, 1, 0)  // weekday 1 = Monday, 01:00
-    ->onlyOne()
+    ->onlyOne(null, $staleAfter('WEEKLY MON 1AM UTC', 12 * 3600))
     ->before(function() use ($logger) {
         $logger->info("[WEEKLY MON 1AM UTC] Starting scheduled collection");
     })
@@ -216,7 +233,7 @@ $scheduler->call(function() use ($eventCollector, $logger, $sentry) {
     });
 }, [], 'monthly_first_3am_utc_collection')
     ->monthly('*', 1, 3, 0)  // every month, day 1, 03:00
-    ->onlyOne()
+    ->onlyOne(null, $staleAfter('MONTHLY 1ST 3AM UTC', 24 * 3600))
     ->before(function() use ($logger) {
         $logger->info("[MONTHLY 1ST 3AM UTC] Starting scheduled collection");
     })
@@ -255,7 +272,7 @@ $scheduler->call(function() use ($logger, $sentry) {
     });
 }, [], 'failure_report_every_2h')
     ->at('5 */2 * * *')  // every 2 hours at minute 5 (offset from on-the-hour collection jobs)
-    ->onlyOne()
+    ->onlyOne(null, $staleAfter('FAILURE REPORT 2H', 3600))
     ->before(function() use ($logger) {
         $logger->info("[FAILURE REPORT 2H] Starting scheduled rebuild");
     })

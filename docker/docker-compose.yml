@@ -38,7 +38,9 @@ services:
   scheduler:
     <<: *phpfpm-common
     container_name: eventsapi-scheduler
-    command: bash -c "while true; do php /u/apps/site/bin/scheduler.php; sleep 60; done"
+    # Only this container runs the jobs, so at start any lock is left over from a
+    # run killed by a stop or a machine restart; clear them or the jobs never run again.
+    command: bash -c "rm -f /u/apps/data/scheduler/*.lock; while true; do php /u/apps/site/bin/scheduler.php; sleep 60; done"
 
   postgres:
     image: postgres:15-alpine
