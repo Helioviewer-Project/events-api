@@ -255,6 +255,11 @@ $sentry = $sentryEnabled
 
 // HTTP and external services
 $httpClient = new CachedHttpClient(null, $redisCache, 120, 'http_client:', $logger); // 2 minute cache
+// DONKI model-run lookups can run inside an API request, so they get short timeouts
+$donkiHttpClient = new CachedHttpClient(
+    new \GuzzleHttp\Client(['connect_timeout' => 2.0, 'timeout' => 5.0, 'headers' => ['Accept' => 'application/json']]),
+    $redisCache, 120, 'donki_gif_collector_http:', $logger
+);
 $coordinator = new HttpCoordinator($httpClient, $logger);
 $backup_coordinator = new HttpCoordinator($httpClient, $logger, HV_COORDINATOR_FALLBACK_URL);
 $harpService = new HarpService($httpClient, $redisCache, $logger);
@@ -280,7 +285,7 @@ $distributionRepository = new DistributionPostgres($redisCache, $logger);
     'viewsAndLinksFactory' => new ViewsAndLinksFactory(
         $logger,
         $sentry,
-        new DonkiGifCollector($httpClient, $logger, $sentry)
+        new DonkiGifCollector($donkiHttpClient, $logger, $sentry)
     ),
 
     // HTTP and external services

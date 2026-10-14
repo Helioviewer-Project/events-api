@@ -231,7 +231,15 @@ class Collector
         $collector->addProcessor(new DonkiCmeProcessor(
             $logger,
             $sentryForProcessors,
-            new DonkiGifCollector($httpClient, $logger, $sentryForProcessors)
+            // Short timeouts: the same lookup also runs inside API requests
+            new DonkiGifCollector(
+                new CachedHttpClient(
+                    new GuzzleClient(['connect_timeout' => 2.0, 'timeout' => 5.0, 'headers' => ['Accept' => 'application/json']]),
+                    $cache, 120, 'donki_gif_collector_http:', $logger
+                ),
+                $logger,
+                $sentryForProcessors
+            )
         ));
 
         // DAFF processor uses direct service integration (no resolvers)

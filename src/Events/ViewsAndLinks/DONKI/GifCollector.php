@@ -17,7 +17,9 @@ use Psr\Log\NullLogger;
  * The image list (WSA-ENLIL gifs) of a DONKI model run, from the JSON API the
  * DONKI website itself uses — the run's public page no longer lists them.
  * Each run is read from CCMC once and kept in `donki_model_runs`; a run with
- * no images, or a failed read, is tried again after RETRY_AFTER. It never
+ * no images, or a failed read, is tried again after RETRY_AFTER. Collecting a
+ * CME (warm()) also asks CCMC for each stored run's current version and reads
+ * the gifs again only when it changed; API requests never ask. It never
  * throws: any failure, CCMC's or the database's, returns the gifs already
  * known (or none), so gifs cannot break a request or a collect.
  *
@@ -54,7 +56,7 @@ class GifCollector
      * @param string|null $runLink A run's DONKI link, e.g. https://…/DONKI/view/WSA-ENLIL/48651/-1
      * @return list<array{name: string, url: string}> The run's gifs as CCMC lists them: group name ("Inner Planets", "Timelines") and URL
      */
-    public function forRun(?string $runLink): array
+    public function forRun(?string $runLink, bool $checkVersion = false): array
     {
         if ($runLink === null || !preg_match('#/WSA-ENLIL/(\d+)/(-?\d+)#', $runLink, $m)) {
             return [];
@@ -62,7 +64,7 @@ class GifCollector
         $id = (int) $m[1];
 
         try {
-            return $this->lookup($id, (int) $m[2]);
+            return $this->lookup($id, (int) $m[2], $checkVersion);
         } catch (\Throwable $e) {
             // The database, not CCMC: a request or a collect must not fail over gifs
             $this->logger->warning("GifCollector | run {$id}: {$e->getMessage()}");
@@ -72,16 +74,23 @@ class GifCollector
         }
     }
 
-    private function lookup(int $id, int $linkVersion): array
+    private function lookup(int $id, int $linkVersion, bool $checkVersion): array
     {
         $stored = ModelRun::find($id);
-        if ($stored && ($stored->status === ModelRun::FOUND || $stored->fetched_at > time() - self::RETRY_AFTER)) {
+        $found = $stored?->status === ModelRun::FOUND;
+        // A link to the latest version (-1) of a found run is only re-asked when collecting
+        $recheck = $found && $checkVersion && $linkVersion <= 0;
+        if ($stored && !$recheck && ($found || $stored->fetched_at > time() - self::RETRY_AFTER)) {
             return $stored->images;
         }
 
         $version = null;
         try {
             $version = $linkVersion > 0 ? $linkVersion : $this->latestVersion($id);
+            if ($found && ($version === null || $version === $stored->version)) {
+                // Same version, or CCMC no longer lists the run: keep what we have
+                return $stored->images;
+            }
             $run = $version === null ? null : $this->getJson(self::API . "enlil/{$id}/{$version}/");
             if ($run === null) {
                 // CCMC has no such run (removed or never published): a normal answer, not a change
@@ -112,13 +121,14 @@ class GifCollector
     }
 
     /**
-     * Read and keep the gifs of every model run of a raw DONKI CME record.
+     * Read and keep the gifs of every model run of a raw DONKI CME record,
+     * picking up a newer version of a run already stored.
      */
     public function warm(array $cme): void
     {
         foreach (($cme['cmeAnalyses'] ?? []) as $analysis) {
             foreach (($analysis['enlilList'] ?? []) as $run) {
-                $this->forRun($run['link'] ?? null);
+                $this->forRun($run['link'] ?? null, true);
             }
         }
     }
