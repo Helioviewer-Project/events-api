@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Helioviewer\EventsApi\Regions\Repositories;
 
+use Helioviewer\EventsApi\Events\Event;
 use Helioviewer\EventsApi\Regions\Region;
+use Illuminate\Database\Eloquent\Collection;
 use Helioviewer\EventsApi\Regions\RegionCoordinate;
 use Helioviewer\EventsApi\Utils\TimeRange;
 
@@ -56,13 +58,6 @@ interface RepositoryInterface
     public function findByIds(array $regionIds): array;
 
     /**
-     * Get all regions.
-     *
-     * @return array Array of all Region objects
-     */
-    public function getAll(): array;
-
-    /**
      * Get total count of regions.
      *
      * @return int Total number of regions
@@ -97,4 +92,21 @@ interface RepositoryInterface
      * @return int Number of regions deleted
      */
     public function deleteOrphaned(): int;
+
+    /**
+     * Every region with its event count and the start of its latest event,
+     * ordered by organization then external id.
+     *
+     * @return Collection<int, Region> Each carries `event_count` and `latest_event_start`
+     */
+    public function getAllWithEventStats(): Collection;
+
+    /**
+     * The events linked to a region, newest first.
+     *
+     * @param Region $region The region
+     * @param int    $limit  Maximum number of events
+     * @return Collection<int, Event>
+     */
+    public function findEvents(Region $region, int $limit = 2000): Collection;
 }

@@ -50,7 +50,7 @@ class HelioviewerController extends Controller
         $rotatedEvents = $this->coordinateRotator->rotate($events, $parsedTimestamp);
 
         // Use Legacy formatter to format events
-        $legacyResponse = new LegacyEventResponse($this->jsonStorage);
+        $legacyResponse = new LegacyEventResponse($this->jsonStorage, $this->viewsAndLinksFactory);
         $formattedEvents = $legacyResponse->formatEvents($source, $rotatedEvents->toArray(), true);
 
         return $this->json($response, $formattedEvents);
@@ -556,44 +556,37 @@ class HelioviewerController extends Controller
             $formatted['frm_name'] = implode(' ', array_slice($pathParts, 2)) ?: 'WSA';
             $formatted['frm_specificid'] = '';
             $formatted['concept'] = $pathParts[1] ?? $event->label;
-            $formatted['hv_labels_formatted'] = $this->wsaLabelsFromView($uuid, $event->path);
+
+            // Tooltip rows, from the raw record. The client shows the first entry as
+            // the heading, so the forecast leads; every value is a string because the
+            // client runs replace() on each one. Empty values are left out.
+            $range  = $source['forecast_range'] ?? null;
+            $window = is_array($range) ? implode(' to ', $range) : null;
+            $prob   = $source['probability'] ?? null;
+            $inputMap = $source['input_map'] ?? null;
+            $rows = ($pathParts[1] ?? '') === 'Coronal Hole'
+                ? [
+                    'Forecast time'   => $source['forecast_time'] ?? null,
+                    'Input map'       => $inputMap,
+                    'Realization'     => $inputMap === 'AGONG' ? ($source['real'] ?? 0) : null,
+                    'Forecast window' => $window,
+                    'Contours'        => count($event->footprint ?? []),
+                ]
+                : [
+                    'Target (sat)'             => $source['sat'] ?? null,
+                    'Connectivity probability' => $prob !== null ? round((float) $prob * 100, 2) . '%' : null,
+                    'Forecast time'            => $source['forecast_time'] ?? null,
+                    'Input map'                => $inputMap,
+                    'Advanced days'            => $source['adv'] ?? null,
+                    'Forecast window'          => $window,
+                ];
+            $formatted['hv_labels_formatted'] = array_map('strval', array_filter($rows, fn($v) => $v !== null && $v !== ''));
             // 'CH' (Coronal Hole) / 'MC' (Magnetic Connectivity) — without this the
             // helioviewer API renders the series as event_type "UNK".
             $formatted['event_type'] = $event->legacy_type;
         }
 
         return $formatted;
-    }
-
-    /**
-     * Tooltip rows for a WSA event, read off its stored view. The client shows
-     * the first entry as the tooltip heading, so the forecast comes first; every
-     * value is a string because the client runs replace() on each one.
-     *
-     * @param string $uuid Event id
-     * @param string $path The event's path; its second level names the product
-     * @return array<string, string> Label => value, in display order
-     */
-    private function wsaLabelsFromView(string $uuid, string $path): array
-    {
-        $views   = $this->jsonStorage->loadById($uuid, 'views') ?: [];
-        $content = $views[0]['content'] ?? [];
-        $product = explode('>>', $path)[1] ?? '';
-
-        $keys = $product === 'Coronal Hole'
-            ? ['Forecast time', 'Input map', 'Realization', 'Forecast window', 'Contours']
-            : ['Target (sat)', 'Connectivity probability', 'Forecast time', 'Input map', 'Advanced days', 'Forecast window'];
-
-        $labels = [];
-        foreach ($keys as $key) {
-            $value = $content[$key] ?? null;
-            if ($value === null || $value === '' || $value === 'n/a') {
-                continue;
-            }
-            $labels[$key] = (string) $value;
-        }
-
-        return $labels;
     }
 
     /**

@@ -34,7 +34,7 @@ use Helioviewer\EventsApi\Exception\InvalidEventException;
  * - Source region identification using EUV observations
  * - Earth impact modeling using ensemble propagation techniques
  *
- * API Endpoint: https://kauai.ccmc.gsfc.nasa.gov/DONKI/WS/get/CME
+ * API Endpoint: https://ccmc.gsfc.nasa.gov/DONKI-API/get/CME
  * Data Format: Direct JSON array of CME event objects
  * Time Range: Supports date-based queries with startDate/endDate parameters
  * Update Frequency: Near real-time with retrospective quality improvements
@@ -68,7 +68,7 @@ use Helioviewer\EventsApi\Exception\InvalidEventException;
  * @author     Kasim Necdet Percinel <kasim.n.percinel@nasa.gov>
  * @since      1.0.0
  * @link       https://ccmc.gsfc.nasa.gov/tools/DONKI/ DONKI Database
- * @link       https://kauai.ccmc.gsfc.nasa.gov/DONKI/WS/get/CME DONKI CME API
+ * @link       https://ccmc.gsfc.nasa.gov/DONKI-API/get/CME DONKI CME API
  */
 class DonkiCmeSource extends JsonSource
 {
@@ -95,7 +95,7 @@ class DonkiCmeSource extends JsonSource
      * in YYYY-MM-DD format to constrain the query period for CME events.
      *
      * URL Structure:
-     * - Base: https://kauai.ccmc.gsfc.nasa.gov/DONKI/WS/get/CME
+     * - Base: https://ccmc.gsfc.nasa.gov/DONKI-API/get/CME
      * - Parameters: startDate and endDate in YYYY-MM-DD format
      * - Example: /CME?startDate=2023-01-01&endDate=2023-01-31
      *
@@ -122,7 +122,7 @@ class DonkiCmeSource extends JsonSource
         $startDate = $range->getStartDate();
         $endDate = $range->getEndDate();
 
-        return "https://kauai.ccmc.gsfc.nasa.gov/DONKI/WS/get/CME?"
+        return "https://ccmc.gsfc.nasa.gov/DONKI-API/get/CME?"
              . "startDate=" . $startDate
              . "&endDate=" . $endDate;
     }

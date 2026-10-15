@@ -127,17 +127,6 @@ class RhessiSeeder extends AbstractSeed
             // Save raw source data using sharded storage
             $this->json_storage->storeById($uuid, 'sources', $rawEvent);
 
-            // Save link data using sharded storage
-            $this->json_storage->storeById($uuid, 'links', [
-                'url' => $rawEvent['link'],
-                'text' => 'Full analysis'
-            ]);
-
-            // Save views data with raw event including full link URL
-            $this->json_storage->storeById($uuid, 'views', [[
-                'name' => 'Main',
-                'content' => $rawEvent,
-            ]]);
 
             // Handle region association
             if ($regionId !== 0) {

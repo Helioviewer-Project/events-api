@@ -23,11 +23,12 @@ try {
     // Get services from container
     $repository = $container['eventRepository'];
     $storage = $container['jsonStorage'];
+    $viewsAndLinksFactory = $container['viewsAndLinksFactory'];
     
     // Get the recent events
     $recentEvents = $repository->getRecent($limit);
     
-    if (empty($recentEvents)) {
+    if ($recentEvents->isEmpty()) {
         echo "No events found in the database.\n";
         exit(0);
     }
@@ -37,8 +38,7 @@ try {
     // Convert events to array format and include JSON data
     $eventsData = [];
     foreach ($recentEvents as $event) {
-        // Check if it's an Event model or array
-        $eventArray = $event;
+        $eventArray = $event->toArray();
         
         // Convert timestamps to readable format for display
         // The timestamps are numeric (Unix timestamps)
@@ -56,17 +56,10 @@ try {
             $eventArray['source'] = $sourceData;
         }
         
-        // Load views JSON data using sharded storage
-        $viewsData = $storage->loadById($uuid, 'views');
-        if ($viewsData) {
-            $eventArray['views'] = $viewsData;
-        }
-        
-        // Load links JSON data using sharded storage
-        $linksData = $storage->loadById($uuid, 'links');
-        if ($linksData) {
-            $eventArray['links'] = $linksData;
-        }
+        // Views and link, built from the raw record
+        $viewsAndLinks = $viewsAndLinksFactory->build($eventArray, $sourceData ?: null);
+        $eventArray['views'] = $viewsAndLinks['views'];
+        $eventArray['link'] = $viewsAndLinks['link'];
         
         $eventsData[] = $eventArray;
     }

@@ -9,7 +9,7 @@ use Helioviewer\EventsApi\Events\Event;
 use Helioviewer\EventsApi\Events\Sources\JsonSource;
 use Helioviewer\EventsApi\Events\Sources\SourceInterface;
 use HelioviewerEventInterface\Translator\DonkiFlare as EventInterfaceDonkiFlare;
-use HelioviewerEventInterface\Util\LocationParser;
+use Helioviewer\EventsApi\Utils\StonyhurstLocation;
 use Helioviewer\EventsApi\Exception\CoordinateResolutionException;
 use Helioviewer\EventsApi\Exception\InvalidEventException;
 use Helioviewer\EventsApi\Sentry\ClientInterface as SentryClientInterface;
@@ -47,7 +47,7 @@ use Psr\Log\LoggerInterface;
  * @package    Helioviewer\EventsApi\Collector\Processors\CCMC
  * @author     Kasim Necdet Percinel <kasim.n.percinel@nasa.gov>
  * @since      1.0.0
- * @see        https://kauai.ccmc.gsfc.nasa.gov/DONKI/
+ * @see        https://ccmc.gsfc.nasa.gov/DONKI/
  * @see        EventProcessorInterface
  */
 class DonkiFlareProcessor extends BaseProcessor
@@ -60,7 +60,8 @@ class DonkiFlareProcessor extends BaseProcessor
     }
 
     /**
-     * Extract coordinates from Flare raw record using sourceLocation
+     * Extract coordinates from Flare raw record using sourceLocation, read
+     * strictly by StonyhurstLocation (1–3 longitude digits, in range).
      * 
      * @param array $rawRecord The raw Flare data
      * @return array Array with latitude, longitude, and coordinate_time
@@ -69,36 +70,25 @@ class DonkiFlareProcessor extends BaseProcessor
     private function extractCoordinates(array $rawRecord): array
     {
         // Extract from sourceLocation
-        if (isset($rawRecord['sourceLocation']) && !empty(trim($rawRecord['sourceLocation']))) {
-            $location = trim($rawRecord['sourceLocation']);
-            
-            // Use LocationParser to parse Stonyhurst coordinates (e.g., "N15W30")
-            if (strlen($location) >= 6) {
-                $coordinates = LocationParser::ParseText($location);
-                $latitude = (float) $coordinates[0];
-                $longitude = (float) $coordinates[1];
-                
-                // Validate the parsed coordinates
-                if (LocationParser::IsValidLatitudeLongitude($latitude, $longitude)) {
-                    // For flares, coordinate_time is typically the peak time
-                    $coordinateTime = isset($rawRecord['peakTime']) 
-                        ? strtotime($rawRecord['peakTime'])
-                        : strtotime($rawRecord['beginTime']); // Fallback to beginTime
-                        
-                    return [
-                        'latitude' => $latitude,
-                        'longitude' => $longitude,
-                        'coordinate_time' => $coordinateTime,
-                        'source' => 'sourceLocation'
-                    ];
-                } else {
-                    $this->logger->debug("Flare sourceLocation coordinates invalid: lat={$latitude}, lon={$longitude} from location='{$location}'");
-                }
-            } else {
-                $this->logger->debug("Flare sourceLocation too short (< 6 chars): '{$location}'");
-            }
+        $location = trim((string) ($rawRecord['sourceLocation'] ?? ''));
+        $position = StonyhurstLocation::parse($location);
+        if ($position !== null) {
+            // For flares, coordinate_time is typically the peak time
+            $coordinateTime = isset($rawRecord['peakTime'])
+                ? strtotime($rawRecord['peakTime'])
+                : strtotime($rawRecord['beginTime']); // Fallback to beginTime
+
+            return [
+                'latitude' => $position[0],
+                'longitude' => $position[1],
+                'coordinate_time' => $coordinateTime,
+                'source' => 'sourceLocation'
+            ];
         }
-        
+        if ($location !== '') {
+            $this->logger->debug("Flare sourceLocation unreadable or out of range: '{$location}'");
+        }
+
         throw new CoordinateResolutionException("No valid coordinates found in Flare record - missing or invalid sourceLocation");
     }
 
@@ -220,15 +210,6 @@ class DonkiFlareProcessor extends BaseProcessor
         // Database operations (create/update) will be handled by Collector
         $event = new Event();
         $event->fill($eventData);
-        
-        // Add views and links data to be processed by Collector
-        if (isset($translatedEvent['views'])) {
-            $event->legacy_views = $translatedEvent['views'];
-        }
-        
-        if (isset($translatedEvent['link'])) {
-           $event->legacy_link = $translatedEvent['link'];
-        }
         
         // Add region info to event for Collector to process
         if ($regionInfo) {

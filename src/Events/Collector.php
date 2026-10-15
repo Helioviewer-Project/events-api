@@ -47,6 +47,7 @@ use Helioviewer\EventsApi\Events\Sources\WSA\Footpoint as WsaFootpoint;
 use Helioviewer\EventsApi\Events\Processors\WSA\CoronalHoleProcessor as WsaCoronalHoleProcessor;
 use Helioviewer\EventsApi\Events\Processors\WSA\FootpointProcessor as WsaFootpointProcessor;
 use Helioviewer\EventsApi\Utils\CachedHttpClient;
+use Helioviewer\EventsApi\Events\ViewsAndLinks\DONKI\GifCollector as DonkiGifCollector;
 use Helioviewer\EventsApi\Coordinator\HPC\HPCResolver;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Psr\SimpleCache\CacheInterface;
@@ -196,16 +197,8 @@ class Collector
             $collector->addProcessor(new HEKEventTypeProcessor($eventType, $logger, $sentryForProcessors));
         }
 
-        // CCMC collection is switched off (2026-09-30): CCMC moved its public
-        // endpoints — kauai.ccmc.gsfc.nasa.gov/DONKI/WS/get/* now redirects to an
-        // HTML announcement with HTTP 200, and the FlareScoreboard HAPI moved to
-        // ccmc.gsfc.nasa.gov/flare-scoreboard/hapi/ as a HAPI 3.0 server with a
-        // different time syntax. Stored CCMC events stay served and reprocessable
-        // (the processors below remain registered); only fetching stops until the
-        // sources are pointed at the new endpoints and the DONKI model-page scrape
-        // (helioviewer/event-interface) has a working replacement.
-        // $collector->addSource('CCMC>>DONKI>>CME', new DonkiCmeSource($httpClient));
-        // $collector->addSource('CCMC>>DONKI>>Solar Flares', new DonkiFlareSource($httpClient));
+        $collector->addSource('CCMC>>DONKI>>CME', new DonkiCmeSource($httpClient));
+        $collector->addSource('CCMC>>DONKI>>Solar Flares', new DonkiFlareSource($httpClient));
 
         // Prediction models
         $predictionModels = [
@@ -223,7 +216,10 @@ class Collector
             'AEffort_REGIONS' => 'AEffort',
         ];
 
-        // Off with the rest of CCMC, see above.
+        // Flare Scoreboard collection is off: the HAPI server at iswa.ccmc.gsfc.nasa.gov
+        // dropped DAFFS_REGIONS (404 on every run), and moving to CCMC's new server
+        // (ccmc.gsfc.nasa.gov/flare-scoreboard/hapi: other query parameters and columns)
+        // gets its own branch. Stored predictions stay served; the processor below stays registered.
         // foreach ($predictionModels as $modelId => $modelName) {
         //     $collector->addSource("CCMC>>Solar Flare Predictions>>$modelName",
         //         new FlareScoreboardSource($modelId, $modelName, $httpClient));
@@ -232,7 +228,19 @@ class Collector
         // === PROCESSORS ===
         // DONKI processors don't need coordinate resolution (coordinates in raw data)
         $collector->addProcessor(new DonkiFlareProcessor($logger, $sentryForProcessors));
-        $collector->addProcessor(new DonkiCmeProcessor($logger, $sentryForProcessors));
+        $collector->addProcessor(new DonkiCmeProcessor(
+            $logger,
+            $sentryForProcessors,
+            // Short timeouts: the same lookup also runs inside API requests
+            new DonkiGifCollector(
+                new CachedHttpClient(
+                    new GuzzleClient(['connect_timeout' => 2.0, 'timeout' => 5.0, 'headers' => ['Accept' => 'application/json']]),
+                    $cache, 120, 'donki_gif_collector_http:', $logger
+                ),
+                $logger,
+                $sentryForProcessors
+            )
+        ));
 
         // DAFF processor uses direct service integration (no resolvers)
         $daffProcessor = new DaffProcessor($harpService, $noaaService, $logger, $sentryForProcessors);
@@ -325,7 +333,7 @@ class Collector
 
     /**
      * Process a single raw record: run it through the first matching processor,
-     * upsert the event, write attached JSONs (sources/views/links), attach
+     * upsert the event, write its raw record (sources/<uuid>.json), attach
      * regions, and optionally update distributions.
      *
      * Used by collect() for freshly-fetched records and by bin/reprocess.php
@@ -371,12 +379,10 @@ class Collector
             $event->path = $pathPrefix . '>>' . $event->path;
         }
 
-        // Store views, link, and region info temporarily before DB save
-        $tempViews = $event->legacy_views;
-        $tempLink = $event->legacy_link;
+        // Keep region info aside; it is not a column
         $tempRegionInfo = $event->region_info ?? null;
         $tempRegionsInfo = $event->regions_info ?? null;
-        unset($event->legacy_views, $event->legacy_link, $event->region_info, $event->regions_info);
+        unset($event->region_info, $event->regions_info);
 
         // Handle upsert logic: find existing event or create new one
         $existingEvent = $this->repository->findByRemoteId($event->remote_id);
@@ -469,23 +475,6 @@ class Collector
         // Save raw source data using sharded storage (skip in reprocess mode — it IS the input)
         if (!$reprocess) {
             $this->json_storage->storeById($uuid, 'sources', $rawRecord);
-        }
-
-        // Save views data using sharded storage
-        if (!empty($tempViews)) {
-            $this->json_storage->storeById($uuid, 'views', $tempViews);
-        }
-
-        // Save link data using sharded storage
-        if (!empty($tempLink)) {
-            $this->json_storage->storeById($uuid, 'links', $tempLink);
-        } else {
-            // Create default link structure when tempLink is empty
-            $defaultLink = [
-                'url' => $savedEvent->getUrl(),
-                'text' => 'Helioviewer Events API JSON'
-            ];
-            $this->json_storage->storeById($uuid, 'links', $defaultLink);
         }
 
         // Handle region associations (single or multiple)
@@ -621,8 +610,14 @@ class Collector
                         'date_range' => $chunkRange->getStartDate() . " to " . $chunkRange->getEndDate(),
                     ]);
                     $this->sentry->capture($e);
-                } catch (\Exception $e) {
-                    $this->logger->critical("Failed to collect: {$e->getMessage()}");
+                } catch (\Throwable $e) {
+                    $this->logger->critical(sprintf(
+                        'Failed to collect | %s: %s at %s:%d',
+                        get_class($e),
+                        $e->getMessage(),
+                        $e->getFile(),
+                        $e->getLine()
+                    ));
                     $this->logger->debug("Exception details: " . get_class($e) . " - " . $e->getTraceAsString());
                     $this->sentry->setContext('SourceFailure', [
                         'source'     => $source->getName(),
@@ -711,10 +706,13 @@ class Collector
         $processedCount = 0;
         $seenRemoteIds = [];  // Track remote_ids within this batch
         $duplicateCount = 0;
+        $skipped = ['coordinate' => 0, 'invalid' => 0];
+        $errorCount = 0;
 
         foreach ($rawData as $index => $rawRecord) {
 
             $processorFound = false;
+            $previewRemoteId = null;
 
             // Find matching processor (for failure-handling context and dedup tracking)
             $matchingProcessor = null;
@@ -747,33 +745,13 @@ class Collector
                     }
 
                 } catch (InvalidEventException | CoordinateResolutionException $e) {
-
-                    $failureId = hash('sha256', json_encode($rawRecord)) . '.json';
-
-                    // Set path based on exception type
-                    $failurePath = match (true) {
-                        $e instanceof InvalidEventException => "/u/apps/data/failures/invalid_events/{$sourceName}/{$failureId}",
-                        $e instanceof CoordinateResolutionException => "/u/apps/data/failures/coordinate_errors/{$sourceName}/{$failureId}"
-                    };
-
-                    $apiUrl = rtrim($_ENV['APIURL'], '/');
-
-                    $failureURL = match (true) {
-                        $e instanceof InvalidEventException => "{$apiUrl}/static/failures/invalid_events/{$sourceName}/{$failureId}",
-                        $e instanceof CoordinateResolutionException => "{$apiUrl}/static/failures/coordinate_errors/{$sourceName}/{$failureId}"
-                    };
-
-                    // Save failure using hash of raw record
-                    $failureData = [
-                        'error' => $e->getMessage(),
-                        'source' => $sourceName,
-                        'raw_record' => $rawRecord,
-                        'timestamp' => time(),
-                        'exception_class' => get_class($e)
-                    ];
-
-                    // Store the failure and get the actual file path (using non-sharded storage)
-                    $storedPath = $this->failure_storage->store($failurePath, $failureData);
+                    $skipped[$e instanceof InvalidEventException ? 'invalid' : 'coordinate']++;
+                    $failureURL = $this->storeFailure(
+                        $e instanceof InvalidEventException ? 'invalid_events' : 'coordinate_errors',
+                        $sourceName,
+                        $rawRecord,
+                        $e
+                    );
 
                     // Log warning with exception details
                     $this->logger->warning((new \ReflectionClass($e))->getShortName() . " | {$e->getMessage()} | {$failureURL}");
@@ -781,6 +759,28 @@ class Collector
                     // Report to Sentry with context pointing at the stored failure record
                     $this->sentry->setContext('EventFailure', [
                         'source' => $sourceName,
+                        'failure_url' => $failureURL,
+                        'exception' => get_class($e),
+                    ]);
+                    $this->sentry->capture($e);
+                } catch (\Throwable $e) {
+                    // Anything else (a PHP warning on an odd record, a database error, ...):
+                    // record it and carry on, so one record cannot drop the rest of the chunk
+                    $errorCount++;
+                    $failureURL = $this->storeFailure('processing_errors', $sourceName, $rawRecord, $e);
+                    $this->logger->error(sprintf(
+                        'Record failed | %s | %s: %s at %s:%d | %s',
+                        $previewRemoteId ?? "{$sourceName} record #{$index}",
+                        get_class($e),
+                        $e->getMessage(),
+                        $e->getFile(),
+                        $e->getLine(),
+                        $failureURL
+                    ));
+                    $this->logger->debug("Record failed | trace: " . $e->getTraceAsString());
+                    $this->sentry->setContext('EventFailure', [
+                        'source' => $sourceName,
+                        'remote_id' => $previewRemoteId,
                         'failure_url' => $failureURL,
                         'exception' => get_class($e),
                     ]);
@@ -809,6 +809,33 @@ class Collector
             $this->logger->error("BATCH DUPLICATE SUMMARY: {$duplicateCount} duplicates found out of {$totalRawRecords} records ({$uniqueCount} unique remote_ids)");
         }
 
+        $problems = array_sum($skipped) + $errorCount + $duplicateCount;
+        $this->logger->log(
+            $problems > 0 ? 'warning' : 'info',
+            "Batch summary | records {$totalRawRecords} | saved {$processedCount} | " .
+            "skipped: no position {$skipped['coordinate']}, invalid {$skipped['invalid']} | " .
+            "errors {$errorCount} | duplicates {$duplicateCount}"
+        );
+
         return $processedCount;
+    }
+
+    /**
+     * Keep a record that could not be processed under failures/<type>/<source>/,
+     * named by the hash of the record, and return its public URL.
+     */
+    private function storeFailure(string $type, string $sourceName, array $rawRecord, \Throwable $e): string
+    {
+        $failureId = hash('sha256', json_encode($rawRecord)) . '.json';
+        $this->failure_storage->store("/u/apps/data/failures/{$type}/{$sourceName}/{$failureId}", [
+            'error' => $e->getMessage(),
+            'source' => $sourceName,
+            'raw_record' => $rawRecord,
+            'timestamp' => time(),
+            'exception_class' => get_class($e),
+            'where' => $e->getFile() . ':' . $e->getLine(),
+        ]);
+
+        return rtrim($_ENV['APIURL'] ?? '', '/') . "/static/failures/{$type}/{$sourceName}/{$failureId}";
     }
 }

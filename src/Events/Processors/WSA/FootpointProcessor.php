@@ -93,24 +93,6 @@ class FootpointProcessor extends Processor
             'legacy_pin'        => 'MC',
         ]);
 
-        $event->legacy_views = [[
-            'name'    => 'WSA Magnetic Connectivity',
-            'content' => [
-                'Product'                => 'Magnetic connectivity footpoint',
-                'Target (sat)'           => $sat,
-                'Input map'              => $inputMap,
-                'Advanced days'          => $adv,
-                'Connectivity probability' => $prob !== null ? round((float) $prob * 100, 2) . '%' : null,
-                'Forecast time'          => $rawRecord['forecast_time'] ?? null,
-                'Forecast window'        => $this->forecastWindow($rawRecord),
-                'Contour points'         => $n,
-                'Coordinate system'      => 'Helio-Carrington',
-                'WSA Dashboard'          => self::DASHBOARD_URL,
-                'Community Tools'        => self::DASHBOARD_COMMUNITY_URL,
-            ],
-        ]];
-        $event->legacy_link = $this->dashboardLink();
-
         return $event;
     }
 }

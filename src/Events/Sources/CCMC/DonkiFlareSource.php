@@ -24,7 +24,7 @@ use Helioviewer\EventsApi\Exception\InvalidEventException;
  * - Associated coronal mass ejections and other phenomena
  * - Real-time and historical data access
  *
- * API Endpoint: https://kauai.ccmc.gsfc.nasa.gov/DONKI/WS/get/FLR
+ * API Endpoint: https://ccmc.gsfc.nasa.gov/DONKI-API/get/FLR
  * Data Format: Direct JSON array of flare event objects
  * Time Range: Supports date-based queries with startDate/endDate parameters
  * Rate Limits: Reasonable usage expected for research purposes
@@ -49,7 +49,7 @@ use Helioviewer\EventsApi\Exception\InvalidEventException;
  * @author     Kasim Necdet Percinel <kasim.n.percinel@nasa.gov>
  * @since      1.0.0
  * @link       https://ccmc.gsfc.nasa.gov/tools/DONKI/ DONKI Database
- * @link       https://kauai.ccmc.gsfc.nasa.gov/DONKI/WS/get/FLR DONKI Flare API
+ * @link       https://ccmc.gsfc.nasa.gov/DONKI-API/get/FLR DONKI Flare API
  */
 class DonkiFlareSource extends JsonSource
 {
@@ -75,7 +75,7 @@ class DonkiFlareSource extends JsonSource
      * in YYYY-MM-DD format to constrain the query period.
      *
      * URL Structure:
-     * - Base: https://kauai.ccmc.gsfc.nasa.gov/DONKI/WS/get/FLR
+     * - Base: https://ccmc.gsfc.nasa.gov/DONKI-API/get/FLR
      * - Parameters: startDate and endDate in YYYY-MM-DD format
      * - Example: /FLR?startDate=2023-01-01&endDate=2023-01-31
      *
@@ -95,7 +95,7 @@ class DonkiFlareSource extends JsonSource
         $startDate = $range->getStartDate();
         $endDate = $range->getEndDate();
 
-        return "https://kauai.ccmc.gsfc.nasa.gov/DONKI/WS/get/FLR?"
+        return "https://ccmc.gsfc.nasa.gov/DONKI-API/get/FLR?"
              . "startDate=" . $startDate
              . "&endDate=" . $endDate;
     }

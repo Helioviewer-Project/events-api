@@ -154,12 +154,12 @@ $ccmc = [
     "CCMC>>DONKI>>CME" => [
         "name" => "CME",
         "contact" => "Space Weather Database of NOtifications, Knowledge, Information (DONKI)",
-        "url" => "https://kauai.ccmc.gsfc.nasa.gov/DONKI/"
+        "url" => "https://ccmc.gsfc.nasa.gov/DONKI/"
     ],
     "CCMC>>DONKI>>Solar Flares" => [
         "name" => "Solar Flares",
         "contact" => " ",
-        "url" => "https://kauai.ccmc.gsfc.nasa.gov/DONKI/"
+        "url" => "https://ccmc.gsfc.nasa.gov/DONKI/"
     ],
 
     // Solar Flare Predictions

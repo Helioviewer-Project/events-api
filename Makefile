@@ -117,7 +117,7 @@ collect:
 sources:
 	$(DOCKER_COMPOSE) run --rm --user $(shell id -u):$(shell id -g) phpfpm php bin/sources.php
 
-# Wipe an event path and everything attached to it: sidecar JSONs, event rows,
+# Wipe an event path and everything attached to it: source JSONs, event rows,
 # region links, distribution buckets, regions left with no events, and the
 # failure records of whichever sources feed that path. Dry run unless APPLY=1.
 #   make purge-path PATHS='CCMC>>Solar Flare Predictions>>ASSA'
@@ -173,7 +173,7 @@ cache-flush:
 
 # Rollback every migration, re-migrate, re-seed. This DROPS ALL TABLES — every
 # source goes, not one path — so it is a dry run unless APPLY=1.
-# Sidecar JSONs under storage/ are left behind; use purge-path for scoped work.
+# Source JSONs under storage/ are left behind; use purge-path for scoped work.
 reset:
 	@if [ "$(APPLY)" != "1" ]; then \
 	  echo ""; \
@@ -187,7 +187,7 @@ reset:
 	  echo "  distributions: $${3:-?}"; \
 	  echo ""; \
 	  echo "Only the re-seeded sources come back. Everything collected from an API"; \
-	  echo "has to be re-collected, and sidecar JSONs under storage/ are NOT removed,"; \
+	  echo "has to be re-collected, and source JSONs under storage/ are NOT removed,"; \
 	  echo "so they are left orphaned."; \
 	  echo ""; \
 	  echo "Nothing done. To go ahead: make reset APPLY=1"; \
@@ -253,7 +253,7 @@ help:
 	@echo "  sources               - List every registered source and the path it writes to"
 	@echo ""
 	@echo "Data Analysis & Maintenance:"
-	@echo "  purge-path            - Delete an event path and everything attached to it: sidecar"
+	@echo "  purge-path            - Delete an event path and everything attached to it: source"
 	@echo "                          JSONs, event rows, region links, distribution buckets,"
 	@echo "                          orphaned regions and the sources' failure records."
 	@echo "                          Matches the path and everything nested under it."
