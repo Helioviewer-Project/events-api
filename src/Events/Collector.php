@@ -610,8 +610,14 @@ class Collector
                         'date_range' => $chunkRange->getStartDate() . " to " . $chunkRange->getEndDate(),
                     ]);
                     $this->sentry->capture($e);
-                } catch (\Exception $e) {
-                    $this->logger->critical("Failed to collect: {$e->getMessage()}");
+                } catch (\Throwable $e) {
+                    $this->logger->critical(sprintf(
+                        'Failed to collect | %s: %s at %s:%d',
+                        get_class($e),
+                        $e->getMessage(),
+                        $e->getFile(),
+                        $e->getLine()
+                    ));
                     $this->logger->debug("Exception details: " . get_class($e) . " - " . $e->getTraceAsString());
                     $this->sentry->setContext('SourceFailure', [
                         'source'     => $source->getName(),
@@ -700,10 +706,13 @@ class Collector
         $processedCount = 0;
         $seenRemoteIds = [];  // Track remote_ids within this batch
         $duplicateCount = 0;
+        $skipped = ['coordinate' => 0, 'invalid' => 0];
+        $errorCount = 0;
 
         foreach ($rawData as $index => $rawRecord) {
 
             $processorFound = false;
+            $previewRemoteId = null;
 
             // Find matching processor (for failure-handling context and dedup tracking)
             $matchingProcessor = null;
@@ -736,33 +745,13 @@ class Collector
                     }
 
                 } catch (InvalidEventException | CoordinateResolutionException $e) {
-
-                    $failureId = hash('sha256', json_encode($rawRecord)) . '.json';
-
-                    // Set path based on exception type
-                    $failurePath = match (true) {
-                        $e instanceof InvalidEventException => "/u/apps/data/failures/invalid_events/{$sourceName}/{$failureId}",
-                        $e instanceof CoordinateResolutionException => "/u/apps/data/failures/coordinate_errors/{$sourceName}/{$failureId}"
-                    };
-
-                    $apiUrl = rtrim($_ENV['APIURL'], '/');
-
-                    $failureURL = match (true) {
-                        $e instanceof InvalidEventException => "{$apiUrl}/static/failures/invalid_events/{$sourceName}/{$failureId}",
-                        $e instanceof CoordinateResolutionException => "{$apiUrl}/static/failures/coordinate_errors/{$sourceName}/{$failureId}"
-                    };
-
-                    // Save failure using hash of raw record
-                    $failureData = [
-                        'error' => $e->getMessage(),
-                        'source' => $sourceName,
-                        'raw_record' => $rawRecord,
-                        'timestamp' => time(),
-                        'exception_class' => get_class($e)
-                    ];
-
-                    // Store the failure and get the actual file path (using non-sharded storage)
-                    $storedPath = $this->failure_storage->store($failurePath, $failureData);
+                    $skipped[$e instanceof InvalidEventException ? 'invalid' : 'coordinate']++;
+                    $failureURL = $this->storeFailure(
+                        $e instanceof InvalidEventException ? 'invalid_events' : 'coordinate_errors',
+                        $sourceName,
+                        $rawRecord,
+                        $e
+                    );
 
                     // Log warning with exception details
                     $this->logger->warning((new \ReflectionClass($e))->getShortName() . " | {$e->getMessage()} | {$failureURL}");
@@ -770,6 +759,28 @@ class Collector
                     // Report to Sentry with context pointing at the stored failure record
                     $this->sentry->setContext('EventFailure', [
                         'source' => $sourceName,
+                        'failure_url' => $failureURL,
+                        'exception' => get_class($e),
+                    ]);
+                    $this->sentry->capture($e);
+                } catch (\Throwable $e) {
+                    // Anything else (a PHP warning on an odd record, a database error, ...):
+                    // record it and carry on, so one record cannot drop the rest of the chunk
+                    $errorCount++;
+                    $failureURL = $this->storeFailure('processing_errors', $sourceName, $rawRecord, $e);
+                    $this->logger->error(sprintf(
+                        'Record failed | %s | %s: %s at %s:%d | %s',
+                        $previewRemoteId ?? "{$sourceName} record #{$index}",
+                        get_class($e),
+                        $e->getMessage(),
+                        $e->getFile(),
+                        $e->getLine(),
+                        $failureURL
+                    ));
+                    $this->logger->debug("Record failed | trace: " . $e->getTraceAsString());
+                    $this->sentry->setContext('EventFailure', [
+                        'source' => $sourceName,
+                        'remote_id' => $previewRemoteId,
                         'failure_url' => $failureURL,
                         'exception' => get_class($e),
                     ]);
@@ -798,6 +809,33 @@ class Collector
             $this->logger->error("BATCH DUPLICATE SUMMARY: {$duplicateCount} duplicates found out of {$totalRawRecords} records ({$uniqueCount} unique remote_ids)");
         }
 
+        $problems = array_sum($skipped) + $errorCount + $duplicateCount;
+        $this->logger->log(
+            $problems > 0 ? 'warning' : 'info',
+            "Batch summary | records {$totalRawRecords} | saved {$processedCount} | " .
+            "skipped: no position {$skipped['coordinate']}, invalid {$skipped['invalid']} | " .
+            "errors {$errorCount} | duplicates {$duplicateCount}"
+        );
+
         return $processedCount;
+    }
+
+    /**
+     * Keep a record that could not be processed under failures/<type>/<source>/,
+     * named by the hash of the record, and return its public URL.
+     */
+    private function storeFailure(string $type, string $sourceName, array $rawRecord, \Throwable $e): string
+    {
+        $failureId = hash('sha256', json_encode($rawRecord)) . '.json';
+        $this->failure_storage->store("/u/apps/data/failures/{$type}/{$sourceName}/{$failureId}", [
+            'error' => $e->getMessage(),
+            'source' => $sourceName,
+            'raw_record' => $rawRecord,
+            'timestamp' => time(),
+            'exception_class' => get_class($e),
+            'where' => $e->getFile() . ':' . $e->getLine(),
+        ]);
+
+        return rtrim($_ENV['APIURL'] ?? '', '/') . "/static/failures/{$type}/{$sourceName}/{$failureId}";
     }
 }

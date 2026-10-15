@@ -11,7 +11,7 @@ use Helioviewer\EventsApi\Events\Sources\SourceInterface;
 use Helioviewer\EventsApi\Exception\CoordinateResolutionException;
 use Helioviewer\EventsApi\Sentry\ClientInterface as SentryClientInterface;
 use Helioviewer\EventsApi\Events\ViewsAndLinks\DONKI\GifCollector as DonkiGifCollector;
-use HelioviewerEventInterface\Util\LocationParser;
+use Helioviewer\EventsApi\Utils\StonyhurstLocation;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -206,6 +206,10 @@ class DonkiCmeProcessor extends BaseProcessor
      * Priority order:
      * 1. sourceLocation string (using startTime for coordinate_time)
      * 2. Fallback to most accurate cmeAnalyses latitude/longitude (using time21_5 for coordinate_time)
+     *
+     * Both must read cleanly and lie within latitude ±90 / longitude ±180
+     * (StonyhurstLocation): DONKI writes 999 for an unknown analysis position
+     * and three-digit longitudes for the far side ("N12W120").
      * 
      * @param array $rawRecord The raw CME data
      * @return array Array with latitude, longitude, and coordinate_time
@@ -214,37 +218,26 @@ class DonkiCmeProcessor extends BaseProcessor
     private function extractCoordinates(array $rawRecord): array
     {
         // First try to parse sourceLocation
-        if (isset($rawRecord['sourceLocation']) && !empty(trim($rawRecord['sourceLocation']))) {
-            $location = trim($rawRecord['sourceLocation']);
-            
-            // Use LocationParser to parse Stonyhurst coordinates (e.g., "N15W30")
-            if (strlen($location) >= 6) {
-                $coordinates = LocationParser::ParseText($location);
-                $latitude = (float) $coordinates[0];
-                $longitude = (float) $coordinates[1];
-                
-                // Validate the parsed coordinates
-                if (LocationParser::IsValidLatitudeLongitude($latitude, $longitude)) {
-                    return [
-                        'latitude' => $latitude,
-                        'longitude' => $longitude,
-                        'coordinate_time' => strtotime($rawRecord['startTime']), // Use start time for sourceLocation
-                        'source' => 'sourceLocation'
-                    ];
-                } else {
-                    $this->logger->debug("CME sourceLocation coordinates invalid: lat={$latitude}, lon={$longitude} from location='{$location}'");
-                }
-            } else {
-                $this->logger->debug("CME sourceLocation too short (< 6 chars): '{$location}'");
+        $location = trim((string) ($rawRecord['sourceLocation'] ?? ''));
+        if ($location !== '') {
+            $position = StonyhurstLocation::parse($location);
+            if ($position !== null) {
+                return [
+                    'latitude' => $position[0],
+                    'longitude' => $position[1],
+                    'coordinate_time' => strtotime($rawRecord['startTime']), // Use start time for sourceLocation
+                    'source' => 'sourceLocation'
+                ];
             }
+            $this->logger->debug("CME sourceLocation unreadable or out of range: '{$location}'");
         }
         
         // Fallback to coordinates from best cmeAnalyses
         if (isset($rawRecord['cmeAnalyses']) && is_array($rawRecord['cmeAnalyses'])) {
             $analysis = $this->selectBestAnalysis($rawRecord['cmeAnalyses']);
-            
-            if ($analysis && isset($analysis['latitude']) && isset($analysis['longitude'])
-                && !is_null($analysis['latitude']) && !is_null($analysis['longitude'])) {
+            $position = $analysis ? StonyhurstLocation::fromLatLon($analysis['latitude'] ?? null, $analysis['longitude'] ?? null) : null;
+
+            if ($position !== null) {
 
                 // Validate and use time21_5 for coordinate_time when using cmeAnalyses
                 $coordinateTime = null;
@@ -263,15 +256,15 @@ class DonkiCmeProcessor extends BaseProcessor
                 }
 
                 return [
-                    'latitude' => (float) $analysis['latitude'],
-                    'longitude' => (float) $analysis['longitude'],
+                    'latitude' => $position[0],
+                    'longitude' => $position[1],
                     'coordinate_time' => $coordinateTime,
                     'source' => 'cmeAnalyses'
                 ];
             }
         }
         
-        throw new CoordinateResolutionException("No valid coordinates found in CME record - missing sourceLocation and cmeAnalyses");
+        throw new CoordinateResolutionException("No valid coordinates found in CME record - sourceLocation and best analysis missing, unreadable or out of range");
     }
 
     /**

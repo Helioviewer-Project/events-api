@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Helioviewer\EventsApi\Events\ViewsAndLinks\DONKI;
 
 use Helioviewer\EventsApi\Events\ViewsAndLinks\ViewBuilderInterface;
+use Helioviewer\EventsApi\Utils\StonyhurstLocation;
 use HelioviewerEventInterface\Util\Camel2Title;
 use HelioviewerEventInterface\Util\Subarray;
 
@@ -54,8 +55,9 @@ class CmeViews implements ViewBuilderInterface
     }
 
     /**
-     * Latitude and longitude from the most accurate analysis, or without one
-     * from the source location (e.g. "N10W20").
+     * Latitude and longitude from the most accurate analysis, or from the
+     * source location (e.g. "N10W20", "S8W110") when that analysis has none
+     * usable. Both are read strictly: DONKI writes 999 for an unknown position.
      *
      * @return array{0: float, 1: float}|null Null when the CME cannot be placed
      */
@@ -63,23 +65,15 @@ class CmeViews implements ViewBuilderInterface
     {
         foreach (($raw['cmeAnalyses'] ?? []) as $analysis) {
             if (!empty($analysis['isMostAccurate'])) {
-                return isset($analysis['latitude'], $analysis['longitude'])
-                    ? [(float) $analysis['latitude'], (float) $analysis['longitude']]
-                    : null;
+                $position = StonyhurstLocation::fromLatLon($analysis['latitude'] ?? null, $analysis['longitude'] ?? null);
+                if ($position !== null) {
+                    return $position;
+                }
+                break;
             }
         }
 
-        $source = (string) ($raw['sourceLocation'] ?? '');
-        if (trim($source) === '') {
-            return null;
-        }
-        $latitude = intval(substr($source, 1, 2));
-        $longitude = intval(substr($source, 4, 2));
-
-        return [
-            (float) ($source[0] === 'N' ? $latitude : -$latitude),
-            (float) (($source[3] ?? '') === 'E' ? -$longitude : $longitude),
-        ];
+        return StonyhurstLocation::parse($raw['sourceLocation'] ?? null);
     }
 
     private function cmeView(array $raw, array $location): array
