@@ -40,6 +40,7 @@ use Helioviewer\EventsApi\Events\Processors\CCMC\DonkiCmeProcessor;
 use Helioviewer\EventsApi\Events\Processors\CCMC\FlareScoreboard\Processor as FlareScoreboardProcessor;
 use Helioviewer\EventsApi\Events\Processors\CCMC\FlareScoreboard\DaffProcessor;
 use Helioviewer\EventsApi\Events\Processors\CCMC\FlareScoreboard\AssaProcessor;
+use Helioviewer\EventsApi\Events\Processors\CCMC\FlareScoreboard\SidcProcessor;
 // WSA sources + processors
 use Helioviewer\EventsApi\Events\Sources\WSA\Source as WsaSource;
 use Helioviewer\EventsApi\Events\Sources\WSA\CoronalHole as WsaCoronalHole;
@@ -203,7 +204,7 @@ class Collector
         // Prediction models, from CCMC's HAPI 3.0 server. Each one is switched on
         // only after it has been validated on its own (see public/flare-scoreboard-plan.html).
         $predictionModels = [
-            // 'SIDC_Operator_REGIONS' => 'SIDC Operator',
+            'SIDC_Operator_REGIONS' => 'SIDC Operator',
             // 'MAG4_LOS_FEr_REGIONS' => 'MAG4 LoS FEr',
             // 'MAG4_LOS_r_REGIONS' => 'MAG4 LoS r',
             // 'BoM_flare1_REGIONS' => 'Bureau of Meteorology',
@@ -250,6 +251,9 @@ class Collector
         // ASSA processor with custom coordinate extraction
         $assaProcessor = new AssaProcessor($logger, $sentryForProcessors, $noaaService);
         $collector->addProcessor($assaProcessor);
+
+        // SIDC positions come from the NOAA region lookup only (CCMC mirrors its longitudes)
+        $collector->addProcessor(new SidcProcessor($logger, $sentryForProcessors, $noaaService));
 
         // FlareScoreboard processor reads coordinates from fields, else looks the NOAA region up
         $flareScoreboardProcessor = new FlareScoreboardProcessor($logger, $sentryForProcessors, $noaaService);

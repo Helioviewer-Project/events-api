@@ -226,7 +226,11 @@ class FlareScoreboardSource extends JsonSource
         }
 
         // Transform HAPI format data into structured associative arrays
-        return $this->readHapi($jsonData, $rawData);
+        $records = $this->readHapi($jsonData, $rawData);
+
+        // Rows with no region and no position anywhere can never be placed (SIDC's
+        // Catania copies of a NOAA row); drop them here rather than fail them one by one
+        return array_values(array_filter($records, fn(array $r) => !self::isEmptyRegionRow($r)));
     }
     
     /**
@@ -329,5 +333,18 @@ class FlareScoreboardSource extends JsonSource
         }
 
         return is_numeric($value) && is_numeric($fill) && (float) $value === (float) $fill;
+    }
+
+    private static function isEmptyRegionRow(array $record): bool
+    {
+        foreach (['NOAA', 'Catania', 'Model'] as $prefix) {
+            foreach (['RegionId', 'LocationTime', 'Latitude', 'Longitude'] as $field) {
+                if (isset($record[$prefix . $field])) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
     }
 }

@@ -239,7 +239,7 @@ class Processor extends BaseProcessor
         }
 
         // No position in the record, only a NOAA region number (AMOS, NOAA, part of DAFFS)
-        $coordinates = $this->lookupNoaaRegion($rawRecord);
+        $coordinates = $this->readCoordinatesFromNOAARegion($rawRecord);
         if ($coordinates !== null) {
             return $coordinates;
         }
@@ -256,7 +256,7 @@ class Processor extends BaseProcessor
      * @param array $rawRecord The raw event data
      * @return array|null Coordinate data, or null without a region, a NoaaService or a JSOC answer
      */
-    protected function lookupNoaaRegion(array $rawRecord): ?array
+    protected function readCoordinatesFromNOAARegion(array $rawRecord): ?array
     {
         if ($this->noaaService === null || !isset($rawRecord['NOAARegionId']) || (int) $rawRecord['NOAARegionId'] <= 0) {
             return null;
