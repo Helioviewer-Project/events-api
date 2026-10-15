@@ -200,30 +200,31 @@ class Collector
         $collector->addSource('CCMC>>DONKI>>CME', new DonkiCmeSource($httpClient));
         $collector->addSource('CCMC>>DONKI>>Solar Flares', new DonkiFlareSource($httpClient));
 
-        // Prediction models
+        // Prediction models, from CCMC's HAPI 3.0 server. Each one is switched on
+        // only after it has been validated on its own (see public/flare-scoreboard-plan.html).
         $predictionModels = [
-            'SIDC_Operator_REGIONS' => 'SIDC Operator',
-            'BoM_flare1_REGIONS' => 'Bureau of Meteorology',
-            'ASSA_1_REGIONS' => 'ASSA',
-            'AMOS_v1_REGIONS' => 'AMOS',
-            'ASAP_1_REGIONS' => 'ASAP',
-            'MAG4_LOS_FEr_REGIONS' => 'MAG4 LoS FEr',
-            'MAG4_LOS_r_REGIONS' => 'MAG4 LoS r',
-            'DAFFS_REGIONS' => 'DAFFS',
-            'MAG4_SHARP_FE_REGIONS' => 'MAG4 Sharp FE',
-            'MAG4_SHARP_REGIONS' => 'MAG4 Sharp',
-            'MAG4_SHARP_HMI_REGIONS' => 'MAG4 Sharp HMI',
-            'AEffort_REGIONS' => 'AEffort',
+            // 'SIDC_Operator_REGIONS' => 'SIDC Operator',
+            // 'MAG4_LOS_FEr_REGIONS' => 'MAG4 LoS FEr',
+            // 'MAG4_LOS_r_REGIONS' => 'MAG4 LoS r',
+            // 'BoM_flare1_REGIONS' => 'Bureau of Meteorology',
+            // 'ASAP_1_REGIONS' => 'ASAP',
+            // 'AMOS_v1_REGIONS' => 'AMOS',
+            // 'DAFFS_REGIONS' => 'DAFFS',
+            // 'ASSA_1_REGIONS' => 'ASSA',
+            // Gone from CCMC's servers, to be removed:
+            // 'MAG4_SHARP_FE_REGIONS' => 'MAG4 Sharp FE',
+            // 'MAG4_SHARP_REGIONS' => 'MAG4 Sharp',
+            // 'MAG4_SHARP_HMI_REGIONS' => 'MAG4 Sharp HMI',
+            // 'AEffort_REGIONS' => 'AEffort',
+            // New on CCMC's server, to be added:
+            // 'NOAA_1_REGIONS' => 'NOAA',
+            // 'ASSA_24H_1_REGIONS' => 'ASSA 24h',
+            // 'MetOffice - Solar Region Summary_REGIONS' => 'Met Office',
         ];
-
-        // Flare Scoreboard collection is off: the HAPI server at iswa.ccmc.gsfc.nasa.gov
-        // dropped DAFFS_REGIONS (404 on every run), and moving to CCMC's new server
-        // (ccmc.gsfc.nasa.gov/flare-scoreboard/hapi: other query parameters and columns)
-        // gets its own branch. Stored predictions stay served; the processor below stays registered.
-        // foreach ($predictionModels as $modelId => $modelName) {
-        //     $collector->addSource("CCMC>>Solar Flare Predictions>>$modelName",
-        //         new FlareScoreboardSource($modelId, $modelName, $httpClient));
-        // }
+        foreach ($predictionModels as $modelId => $modelName) {
+            $collector->addSource("CCMC>>Solar Flare Predictions>>$modelName",
+                new FlareScoreboardSource($modelId, $modelName, $httpClient));
+        }
 
         // === PROCESSORS ===
         // DONKI processors don't need coordinate resolution (coordinates in raw data)
@@ -247,11 +248,11 @@ class Collector
         $collector->addProcessor($daffProcessor);
 
         // ASSA processor with custom coordinate extraction
-        $assaProcessor = new AssaProcessor($logger, $sentryForProcessors);
+        $assaProcessor = new AssaProcessor($logger, $sentryForProcessors, $noaaService);
         $collector->addProcessor($assaProcessor);
 
-        // FlareScoreboard processor reads coordinates directly from fields (no resolvers needed)
-        $flareScoreboardProcessor = new FlareScoreboardProcessor($logger, $sentryForProcessors);
+        // FlareScoreboard processor reads coordinates from fields, else looks the NOAA region up
+        $flareScoreboardProcessor = new FlareScoreboardProcessor($logger, $sentryForProcessors, $noaaService);
         $collector->addProcessor($flareScoreboardProcessor);
 
         // === WSA ===

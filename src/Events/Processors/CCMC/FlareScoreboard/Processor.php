@@ -11,6 +11,8 @@ use Helioviewer\EventsApi\Sentry\ClientInterface as SentryClientInterface;
 use Helioviewer\EventsApi\Events\Sources\JsonSource;
 use Helioviewer\EventsApi\Events\Sources\SourceInterface;
 use Helioviewer\EventsApi\Exception\CoordinateResolutionException;
+use Helioviewer\EventsApi\Exception\JsocException;
+use Helioviewer\EventsApi\Jsoc\NoaaService;
 use HelioviewerEventInterface\Util\LocationParser;
 
 /**
@@ -58,7 +60,8 @@ class Processor extends BaseProcessor
 {
     public function __construct(
         ?LoggerInterface $logger = null,
-        ?SentryClientInterface $sentry = null
+        ?SentryClientInterface $sentry = null,
+        protected ?NoaaService $noaaService = null
     ) {
         parent::__construct($logger, $sentry);
     }
@@ -234,10 +237,58 @@ class Processor extends BaseProcessor
                 return $coordinates;
             }
         }
-        
+
+        // No position in the record, only a NOAA region number (AMOS, NOAA, part of DAFFS)
+        $coordinates = $this->lookupNoaaRegion($rawRecord);
+        if ($coordinates !== null) {
+            return $coordinates;
+        }
+
         // No coordinates found in any field
         $this->logger->error("Failed to resolve coordinates from any field: " . implode(', ', $possibleFields));
         return null;
+    }
+
+    /**
+     * The NOAA region's last known position before the forecast window, from
+     * JSOC (NoaaService), for records that give a region number but no position.
+     *
+     * @param array $rawRecord The raw event data
+     * @return array|null Coordinate data, or null without a region, a NoaaService or a JSOC answer
+     */
+    protected function lookupNoaaRegion(array $rawRecord): ?array
+    {
+        if ($this->noaaService === null || !isset($rawRecord['NOAARegionId']) || (int) $rawRecord['NOAARegionId'] <= 0) {
+            return null;
+        }
+        // JSOC only knows 5-digit numbers; some models still send 4 (4548 = 14548)
+        $noaaId = (int) $rawRecord['NOAARegionId'];
+        $noaaId = $noaaId < 9000 ? $noaaId + 10000 : $noaaId;
+        $eventDateTime = $rawRecord['start_window'];
+
+        try {
+            $noaaData = $this->noaaService->getLastCoordinateForNoaa($noaaId, $eventDateTime);
+        } catch (JsocException $e) {
+            $this->logger->warning("NOAA region lookup failed for {$noaaId}: " . $e->getMessage());
+            $this->sentry->setContext('Jsoc', [
+                'service' => 'NoaaService',
+                'noaa_id' => $noaaId,
+                'event_datetime' => $eventDateTime,
+            ]);
+            $this->sentry->capture($e);
+            return null;
+        }
+        if (!$noaaData) {
+            $this->logger->debug("No position from NOAA service for region {$noaaId}");
+            return null;
+        }
+
+        return [
+            'latitude' => (float) $noaaData['latitude'],
+            'longitude' => (float) $noaaData['longitude'],
+            'coordinate_time' => $noaaData['location_time'] ?? $eventDateTime,
+            'source' => 'NOAA ' . $noaaId . '| JSOC NOAAService',
+        ];
     }
 
     /**

@@ -7,8 +7,6 @@ namespace Helioviewer\EventsApi\Events\Processors\CCMC\FlareScoreboard;
 use Helioviewer\EventsApi\Events\Sources\SourceInterface;
 use Helioviewer\EventsApi\Jsoc\HarpService;
 use Helioviewer\EventsApi\Jsoc\NoaaService;
-use Helioviewer\EventsApi\Exception\CoordinateResolutionException;
-use Helioviewer\EventsApi\Exception\JsocException;
 use Helioviewer\EventsApi\Sentry\ClientInterface as SentryClientInterface;
 
 /**
@@ -26,7 +24,6 @@ use Helioviewer\EventsApi\Sentry\ClientInterface as SentryClientInterface;
 class DaffProcessor extends Processor
 {
     private HarpService $harpService;
-    private NoaaService $noaaService;
     
     public function __construct(
         HarpService $harpService,
@@ -34,9 +31,8 @@ class DaffProcessor extends Processor
         ?\Psr\Log\LoggerInterface $logger = null,
         ?SentryClientInterface $sentry = null
     ) {
-        parent::__construct($logger, $sentry);
+        parent::__construct($logger, $sentry, $noaaService);
         $this->harpService = $harpService;
-        $this->noaaService = $noaaService;
     }
     /**
      * Determines if this processor can handle DAFF source data.
@@ -79,49 +75,10 @@ class DaffProcessor extends Processor
             ];
         }
         
-        // No HARP coordinates found, try parent implementation
+        // No HARP coordinates: the base order, which ends with the NOAA region lookup
         $this->logger->debug("DAFF: No HARP coordinates found, trying parent implementation");
-        $coordinates = parent::readCoordinates($rawRecord);
-        
-        if ($coordinates !== null) {
-            return $coordinates;
-        }
-        
-        // Parent failed, try NOAA service if NOAARegionId is available
-        if (isset($rawRecord['NOAARegionId'])) {
-            
-            $eventDateTime = $rawRecord['start_window'];
-            $this->logger->info("DAFF: Trying NOAA service for region {$rawRecord['NOAARegionId']} to find closest coordinates before {$eventDateTime}");
-            
-            $noaaId = (int) $rawRecord['NOAARegionId'];
 
-            try {
-                $noaaData = $this->noaaService->getLastCoordinateForNoaa($noaaId, $eventDateTime);
-            } catch (JsocException $e) {
-                $this->logger->warning("DAFF: JSOC NOAA service failed for region {$noaaId}: " . $e->getMessage());
-                $this->sentry->setContext('Jsoc', [
-                    'service' => 'NoaaService',
-                    'noaa_id' => $noaaId,
-                    'event_datetime' => $eventDateTime,
-                ]);
-                $this->sentry->capture($e);
-                $noaaData = null;
-            }
-            
-            if ($noaaData) {
-                $this->logger->info("DAFF: Found coordinates from NOAA service for region {$noaaId}");
-                return [
-                    'latitude' => (float) $noaaData['latitude'],
-                    'longitude' => (float) $noaaData['longitude'],
-                    'coordinate_time' => $noaaData['location_time'] ?? $eventDateTime,
-                    'source' => 'NOAA ' . $noaaId . '| JSOC NOAAService'
-                ];
-            } else {
-                $this->logger->debug("DAFF: No data found from NOAA service for region {$noaaId}");
-            }
-        }
-        
-        return null;
+        return parent::readCoordinates($rawRecord);
     }
     
     /**
