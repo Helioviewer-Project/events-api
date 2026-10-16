@@ -61,13 +61,13 @@ class ModelRegionProcessor extends Processor
             [$noaaId, $distance] = $this->nearestNoaa((float) $rawRecord['ModelLatitude'], (float) $rawRecord['ModelLongitude'], $at);
             $where = sprintf('Model %s (%s, %s) at %s', $rawRecord['ModelRegionId'] ?? '?', $rawRecord['ModelLatitude'], $rawRecord['ModelLongitude'], gmdate('Y-m-d H:i', $at));
             if ($noaaId !== null && $distance <= self::MATCH_DEGREES) {
-                $this->logger->info(sprintf('Position | %s → NOAA %d, %.1f° away', $where, $noaaId, $distance));
+                $this->logger->info(sprintf('Position | MATCH | %s → NOAA %d, %.1f° away', $where, $noaaId, $distance));
                 $coordinates = $this->readCoordinatesFromNOAARegion($noaaId, $rawRecord['start_window']);
                 if ($coordinates !== null) {
                     return $coordinates;
                 }
             } else {
-                $this->logger->info("Position | {$where} → no NOAA region within " . self::MATCH_DEGREES . '°'
+                $this->logger->info("Position | MATCH | {$where} → no NOAA region within " . self::MATCH_DEGREES . '°'
                     . ($noaaId === null ? ' (no NOAA regions that day)' : sprintf(' (nearest NOAA %d, %.1f°)', $noaaId, $distance)));
             }
         }

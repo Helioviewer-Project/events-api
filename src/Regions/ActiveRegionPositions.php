@@ -119,8 +119,9 @@ class ActiveRegionPositions
     private function chosen(int $noaaId, int $at, array $position, string $why): array
     {
         $hours = round(($at - strtotime($position['coordinate_time'])) / 3600, 1);
-        $this->logger->info(sprintf('Position | NOAA %d at %s ← %s (%.1f h earlier; %s) | (%s, %s)',
-            $noaaId, gmdate('Y-m-d H:i', $at), $position['source'], $hours, $why, $position['latitude'], $position['longitude']));
+        $this->logger->info(sprintf('Position | %s | NOAA %d at %s ← %s (%.1f h earlier; %s) | (%s, %s)',
+            $position['via'], $noaaId, gmdate('Y-m-d H:i', $at), gmdate('Y-m-d H:i', strtotime($position['coordinate_time'])),
+            $hours, $why, $position['latitude'], $position['longitude']));
 
         return $position;
     }
@@ -147,13 +148,15 @@ class ActiveRegionPositions
             }
         }
         if ($regions !== [] || $this->noaaService === null) {
-            $this->logger->debug('Matching | ' . count($regions) . ' NOAA regions from HEK SWPC before ' . gmdate('Y-m-d H:i', $at));
+            $this->logger->debug('Position | MATCH · HEK SWPC LIST · DB | ' . count($regions) . ' NOAA regions before ' . gmdate('Y-m-d H:i', $at));
             return $regions;
         }
 
         try {
-            $this->logger->info('Matching | no HEK SWPC records before ' . gmdate('Y-m-d H:i', $at) . ', using JSOC\'s NOAA list for ' . gmdate('Y-m-d', $at));
-            return $this->noaaService->getRegionsOnDate(gmdate('Y-m-d', $at));
+            $regions = $this->noaaService->getRegionsOnDate(gmdate('Y-m-d', $at), $cached);
+            $this->logger->info('Position | MATCH · JSOC LIST · ' . ($cached ? 'CACHED' : 'LIVE') . ' | no HEK SWPC records before '
+                . gmdate('Y-m-d H:i', $at) . ', ' . count($regions) . ' NOAA regions for ' . gmdate('Y-m-d', $at));
+            return $regions;
         } catch (JsocException $e) {
             $this->logger->warning("JSOC NOAA regions for " . gmdate('Y-m-d', $at) . " failed: " . $e->getMessage());
             return [];
@@ -222,6 +225,7 @@ class ActiveRegionPositions
             'longitude' => $position[1],
             'coordinate_time' => gmdate('Y-m-d\TH:i:s\Z', (int) $event->coordinate_time),
             'source' => $source . ' ' . gmdate('Y-m-d H:i', (int) $event->coordinate_time),
+            'via' => $source . ' · DB',
         ];
     }
 
@@ -249,6 +253,7 @@ class ActiveRegionPositions
             'longitude' => (float) $record['longitude'],
             'coordinate_time' => $record['location_time'],
             'source' => 'JSOC ' . $record['location_time'],
+            'via' => 'JSOC NOAA · ' . (!empty($record['cached']) ? 'CACHED' : 'LIVE'),
         ];
     }
 }

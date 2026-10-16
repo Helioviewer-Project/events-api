@@ -90,18 +90,20 @@ class NoaaService
         $cacheKey = "1bust_noaa_service_{$noaaNumber}";
 
         $records = null;
+        $cached = false;
 
         // Try to get JSOC records from cache first
         if ($this->cache) {
             $records = $this->cache->get($cacheKey);
             if ($records !== null) {
-                $this->logger->info("NoaaService: cache HIT for NOAA AR {$noaaNumber} (" . count($records) . " record(s)) — JSOC NOT queried");
+                $cached = true;
+                $this->logger->debug("NoaaService: cache HIT for NOAA AR {$noaaNumber} (" . count($records) . " record(s)) — JSOC NOT queried");
             }
         }
 
         // If not in cache, fetch from JSOC
         if ($records === null) {
-            $this->logger->info("NoaaService: cache MISS for NOAA AR {$noaaNumber} — querying JSOC");
+            $this->logger->debug("NoaaService: cache MISS for NOAA AR {$noaaNumber} — querying JSOC");
             $records = $this->jsoc->fetchNoaaActiveRegions($noaaNumber);
 
             // Cache the JSOC records
@@ -128,6 +130,7 @@ class NoaaService
             'location_time' => $this->formatJsocTime($closestRecord['ObservationTime']),
             'latitude' => (float) $closestRecord['LatitudeHG'],
             'longitude' => (float) ($closestRecord['LongitudeCM'] ?? 0.0),
+            'cached' => $cached,
         ];
         
         
@@ -137,14 +140,16 @@ class NoaaService
     /**
      * Every NOAA region in NOAA's Solar Region Summary for one date, from JSOC.
      *
-     * @param string $date Date in Y-m-d format
+     * @param string    $date   Date in Y-m-d format
+     * @param bool|null $cached Set to whether the answer came from the cache
      * @return array<int, array{latitude: float, longitude: float, time: int}> Keyed by NOAA number
      * @throws \Helioviewer\EventsApi\Exception\JsocException If JSOC query fails
      */
-    public function getRegionsOnDate(string $date): array
+    public function getRegionsOnDate(string $date, ?bool &$cached = null): array
     {
         $cacheKey = "noaa_service_regions_on_{$date}";
         $records = $this->cache?->get($cacheKey);
+        $cached = $records !== null;
         if ($records === null) {
             $records = $this->jsoc->fetchNoaaActiveRegionsOnDate($date) ?? [];
             $this->cache?->set($cacheKey, $records, $this->cacheTtl);

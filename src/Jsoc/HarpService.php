@@ -82,11 +82,13 @@ class HarpService
         $cacheKey = "harp_{$harpNumber}_{$date}_{$this->queryDays}d";
         
         $records = null;
+        $cached = false;
         
         // Try to get JSOC records from cache first
         if ($this->cache) {
             try {
                 $records = $this->cache->get($cacheKey);
+                $cached = $records !== null;
             } catch (\Exception $e) {
             }
         }
@@ -129,6 +131,7 @@ class HarpService
             'location_time' => $this->formatJsocTime($closestRecord['time']),
             'latitude' => $closestRecord['lat'],
             'longitude' => $closestRecord['long'],
+            'cached' => $cached,
         ];
         
         
