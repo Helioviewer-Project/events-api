@@ -662,6 +662,18 @@ class Postgres implements RepositoryInterface
     }
 
     /**
+     * {@inheritdoc}
+     */
+    public function findByPathBetween(string $path, int $from, int $to): Collection
+    {
+        return Event::where('path', $path)
+            ->whereBetween('start', [$from, $to])
+            ->with('regions')
+            ->orderBy('start')
+            ->get();
+    }
+
+    /**
      * LIKE pattern matching everything nested under a path.
      *
      * The wildcards are escaped first: `_` matches any single character in LIKE

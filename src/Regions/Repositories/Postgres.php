@@ -189,4 +189,42 @@ class Postgres implements RepositoryInterface
             ->limit($limit)
             ->get();
     }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function findEventsByPathsBetween(Region $region, array $paths, int $from, int $to): Collection
+    {
+        return $this->regionEvents($region)
+            ->whereIn('events.path', $paths)
+            ->whereBetween('events.start', [$from, $to])
+            ->orderBy('events.start', 'desc')
+            ->get();
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function findLatestEventByPath(Region $region, string $path, int $before): ?Event
+    {
+        return $this->regionEvents($region)
+            ->where('events.path', $path)
+            ->where('events.start', '<=', $before)
+            ->orderBy('events.start', 'desc')
+            ->first();
+    }
+
+    /**
+     * Query for the events linked to a region.
+     *
+     * @param Region $region The region
+     * @return \Illuminate\Database\Eloquent\Builder
+     */
+    private function regionEvents(Region $region): \Illuminate\Database\Eloquent\Builder
+    {
+        return Event::query()
+            ->select('events.*')
+            ->join('event_regions', 'events.id', '=', 'event_regions.event_id')
+            ->where('event_regions.region_id', $region->id);
+    }
 }

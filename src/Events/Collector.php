@@ -17,6 +17,7 @@ use Helioviewer\EventsApi\Events\Sources\JsonSource;
 use Helioviewer\EventsApi\Exception\CoordinateResolutionException;
 use Helioviewer\EventsApi\Exception\SourceException;
 use Helioviewer\EventsApi\Exception\InvalidEventException;
+use Helioviewer\EventsApi\Exception\SkippedRecordException;
 use Helioviewer\EventsApi\Sentry\ClientInterface as SentryClientInterface;
 use Helioviewer\EventsApi\Sentry\VoidClient as SentryVoidClient;
 use Psr\Log\LoggerInterface;
@@ -39,8 +40,9 @@ use Helioviewer\EventsApi\Events\Processors\CCMC\DonkiFlareProcessor;
 use Helioviewer\EventsApi\Events\Processors\CCMC\DonkiCmeProcessor;
 use Helioviewer\EventsApi\Events\Processors\CCMC\FlareScoreboard\Processor as FlareScoreboardProcessor;
 use Helioviewer\EventsApi\Events\Processors\CCMC\FlareScoreboard\DaffProcessor;
-use Helioviewer\EventsApi\Events\Processors\CCMC\FlareScoreboard\AssaProcessor;
-use Helioviewer\EventsApi\Events\Processors\CCMC\FlareScoreboard\SidcProcessor;
+use Helioviewer\EventsApi\Events\Processors\CCMC\FlareScoreboard\AmosProcessor;
+use Helioviewer\EventsApi\Events\Processors\CCMC\FlareScoreboard\ModelRegionProcessor;
+use Helioviewer\EventsApi\Regions\ActiveRegionPositions;
 // WSA sources + processors
 use Helioviewer\EventsApi\Events\Sources\WSA\Source as WsaSource;
 use Helioviewer\EventsApi\Events\Sources\WSA\CoronalHole as WsaCoronalHole;
@@ -88,6 +90,13 @@ class Collector
      * @var array<ProcessorInterface>
      */
     private array $processors = [];
+
+    /**
+     * Where saved predictions got their positions, per batch (e.g. "HEK SWPC" => 12).
+     *
+     * @var array<string, int>
+     */
+    private array $positionSources = [];
 
     /**
      * Construct a new EventCollector instance.
@@ -201,26 +210,20 @@ class Collector
         $collector->addSource('CCMC>>DONKI>>CME', new DonkiCmeSource($httpClient));
         $collector->addSource('CCMC>>DONKI>>Solar Flares', new DonkiFlareSource($httpClient));
 
-        // Prediction models, from CCMC's HAPI 3.0 server. Each one is switched on
-        // only after it has been validated on its own (see public/flare-scoreboard-plan.html).
+        // Prediction models: every _REGIONS dataset on CCMC's HAPI 3.0 server
+        // (MAG4 Sharp ×3 and AEffort are gone from CCMC and were removed).
         $predictionModels = [
             'SIDC_Operator_REGIONS' => 'SIDC Operator',
-            // 'MAG4_LOS_FEr_REGIONS' => 'MAG4 LoS FEr',
-            // 'MAG4_LOS_r_REGIONS' => 'MAG4 LoS r',
-            // 'BoM_flare1_REGIONS' => 'Bureau of Meteorology',
-            // 'ASAP_1_REGIONS' => 'ASAP',
-            // 'AMOS_v1_REGIONS' => 'AMOS',
-            // 'DAFFS_REGIONS' => 'DAFFS',
-            // 'ASSA_1_REGIONS' => 'ASSA',
-            // Gone from CCMC's servers, to be removed:
-            // 'MAG4_SHARP_FE_REGIONS' => 'MAG4 Sharp FE',
-            // 'MAG4_SHARP_REGIONS' => 'MAG4 Sharp',
-            // 'MAG4_SHARP_HMI_REGIONS' => 'MAG4 Sharp HMI',
-            // 'AEffort_REGIONS' => 'AEffort',
-            // New on CCMC's server, to be added:
-            // 'NOAA_1_REGIONS' => 'NOAA',
-            // 'ASSA_24H_1_REGIONS' => 'ASSA 24h',
-            // 'MetOffice - Solar Region Summary_REGIONS' => 'Met Office',
+            'MAG4_LOS_FEr_REGIONS' => 'MAG4 LoS FEr',
+            'MAG4_LOS_r_REGIONS' => 'MAG4 LoS r',
+            'BoM_flare1_REGIONS' => 'Bureau of Meteorology',
+            'ASAP_1_REGIONS' => 'ASAP',
+            'AMOS_v1_REGIONS' => 'AMOS',
+            'DAFFS_REGIONS' => 'DAFFS',
+            'ASSA_1_REGIONS' => 'ASSA',
+            'ASSA_24H_1_REGIONS' => 'ASSA 24h',
+            'NOAA_1_REGIONS' => 'NOAA',
+            'MetOffice - Solar Region Summary_REGIONS' => 'Met Office',
         ];
         foreach ($predictionModels as $modelId => $modelName) {
             $collector->addSource("CCMC>>Solar Flare Predictions>>$modelName",
@@ -244,20 +247,13 @@ class Collector
             )
         ));
 
-        // DAFF processor uses direct service integration (no resolvers)
-        $daffProcessor = new DaffProcessor($harpService, $noaaService, $logger, $sentryForProcessors);
-        $collector->addProcessor($daffProcessor);
-
-        // ASSA processor with custom coordinate extraction
-        $assaProcessor = new AssaProcessor($logger, $sentryForProcessors, $noaaService);
-        $collector->addProcessor($assaProcessor);
-
-        // SIDC positions come from the NOAA region lookup only (CCMC mirrors its longitudes)
-        $collector->addProcessor(new SidcProcessor($logger, $sentryForProcessors, $noaaService));
-
-        // FlareScoreboard processor reads coordinates from fields, else looks the NOAA region up
-        $flareScoreboardProcessor = new FlareScoreboardProcessor($logger, $sentryForProcessors, $noaaService);
-        $collector->addProcessor($flareScoreboardProcessor);
+        // Flare Scoreboard: positions from the active region (HEK records, JSOC as the
+        // fallback), else CCMC's own position, flagged. Subclasses first, base last.
+        $activeRegionPositions = new ActiveRegionPositions($regionRepository, $repository, $noaaService, $json_storage, $logger);
+        $collector->addProcessor(new DaffProcessor($harpService, $activeRegionPositions, $logger, $sentryForProcessors));
+        $collector->addProcessor(new ModelRegionProcessor($logger, $sentryForProcessors, $activeRegionPositions));
+        $collector->addProcessor(new AmosProcessor($logger, $sentryForProcessors, $activeRegionPositions));
+        $collector->addProcessor(new FlareScoreboardProcessor($logger, $sentryForProcessors, $activeRegionPositions));
 
         // === WSA ===
         // Needs its own HTTP client: CCMC answers 403 to the default user agent, so the
@@ -387,7 +383,10 @@ class Collector
         // Keep region info aside; it is not a column
         $tempRegionInfo = $event->region_info ?? null;
         $tempRegionsInfo = $event->regions_info ?? null;
-        unset($event->region_info, $event->regions_info);
+        if (isset($event->position_source)) {
+            $this->positionSources[$event->position_source] = ($this->positionSources[$event->position_source] ?? 0) + 1;
+        }
+        unset($event->region_info, $event->regions_info, $event->position_source);
 
         // Handle upsert logic: find existing event or create new one
         $existingEvent = $this->repository->findByRemoteId($event->remote_id);
@@ -711,7 +710,8 @@ class Collector
         $processedCount = 0;
         $seenRemoteIds = [];  // Track remote_ids within this batch
         $duplicateCount = 0;
-        $skipped = ['coordinate' => 0, 'invalid' => 0];
+        $skipped = ['coordinate' => 0, 'invalid' => 0, 'repeat' => 0];
+        $this->positionSources = [];
         $errorCount = 0;
 
         foreach ($rawData as $index => $rawRecord) {
@@ -749,6 +749,10 @@ class Collector
                         $processedCount++;
                     }
 
+                } catch (SkippedRecordException $e) {
+                    // A repeat of a row that is stored (AMOS Model rows): counted, not a failure
+                    $skipped['repeat']++;
+                    $this->logger->debug("Skipped | {$e->getMessage()}");
                 } catch (InvalidEventException | CoordinateResolutionException $e) {
                     $skipped[$e instanceof InvalidEventException ? 'invalid' : 'coordinate']++;
                     $failureURL = $this->storeFailure(
@@ -814,12 +818,15 @@ class Collector
             $this->logger->error("BATCH DUPLICATE SUMMARY: {$duplicateCount} duplicates found out of {$totalRawRecords} records ({$uniqueCount} unique remote_ids)");
         }
 
-        $problems = array_sum($skipped) + $errorCount + $duplicateCount;
+        $problems = $skipped['coordinate'] + $skipped['invalid'] + $errorCount + $duplicateCount;
+        $positions = $this->positionSources === [] ? '' : ' | positions: ' . implode(', ', array_map(
+            fn($source, $count) => "{$source} {$count}", array_keys($this->positionSources), $this->positionSources
+        ));
         $this->logger->log(
             $problems > 0 ? 'warning' : 'info',
             "Batch summary | records {$totalRawRecords} | saved {$processedCount} | " .
-            "skipped: no position {$skipped['coordinate']}, invalid {$skipped['invalid']} | " .
-            "errors {$errorCount} | duplicates {$duplicateCount}"
+            "skipped: no position {$skipped['coordinate']}, invalid {$skipped['invalid']}, repeats {$skipped['repeat']} | " .
+            "errors {$errorCount} | duplicates {$duplicateCount}{$positions}"
         );
 
         return $processedCount;

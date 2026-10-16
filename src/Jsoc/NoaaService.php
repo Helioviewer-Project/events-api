@@ -135,6 +135,34 @@ class NoaaService
     }
 
     /**
+     * Every NOAA region in NOAA's Solar Region Summary for one date, from JSOC.
+     *
+     * @param string $date Date in Y-m-d format
+     * @return array<int, array{latitude: float, longitude: float, time: int}> Keyed by NOAA number
+     * @throws \Helioviewer\EventsApi\Exception\JsocException If JSOC query fails
+     */
+    public function getRegionsOnDate(string $date): array
+    {
+        $cacheKey = "noaa_service_regions_on_{$date}";
+        $records = $this->cache?->get($cacheKey);
+        if ($records === null) {
+            $records = $this->jsoc->fetchNoaaActiveRegionsOnDate($date) ?? [];
+            $this->cache?->set($cacheKey, $records, $this->cacheTtl);
+        }
+
+        $regions = [];
+        foreach ($records as $record) {
+            $regions[(int) $record['RegionNumber']] = [
+                'latitude' => (float) $record['LatitudeHG'],
+                'longitude' => (float) $record['LongitudeCM'],
+                'time' => strtotime($this->formatJsocTime((string) $record['ObservationTime'])),
+            ];
+        }
+
+        return $regions;
+    }
+
+    /**
      * UNUSED: Get last known NOAA region coordinate data by NOAA Active Region number before specified datetime (from HARP logs).
      * This method is not called anywhere in the codebase.
      *

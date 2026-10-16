@@ -109,4 +109,25 @@ interface RepositoryInterface
      * @return Collection<int, Event>
      */
     public function findEvents(Region $region, int $limit = 2000): Collection;
+
+    /**
+     * The region's events on the given paths that started within [from, to], newest first.
+     *
+     * @param Region        $region The region
+     * @param array<string> $paths  Exact event paths
+     * @param int           $from   Earliest start (Unix timestamp)
+     * @param int           $to     Latest start (Unix timestamp)
+     * @return Collection<int, Event>
+     */
+    public function findEventsByPathsBetween(Region $region, array $paths, int $from, int $to): Collection;
+
+    /**
+     * The region's latest event on a path that started at or before a time.
+     *
+     * @param Region $region The region
+     * @param string $path   Exact event path
+     * @param int    $before Latest start (Unix timestamp)
+     * @return Event|null
+     */
+    public function findLatestEventByPath(Region $region, string $path, int $before): ?Event;
 }

@@ -150,22 +150,22 @@ class FlareScoreboardSource extends JsonSource
     /**
      * Extract the unique remote ID from a FlareScoreboard raw record.
      *
-     * One prediction = one model, forecast window and region: start_window,
-     * end_window and the NOAA region number, else the model's own region number
-     * (the source name is prefixed by the collector). The issue time is left
-     * out, so a re-issued forecast for the same window updates the event; a
-     * content hash would store every upstream change as a new event.
+     * The row's own identity: its issue, its forecast window and the region
+     * number the row itself carries (NOAA, else the model's own); the source
+     * name is prefixed by the collector. Never the active region we match, so
+     * changing the matching never re-keys an event. issue_time keeps DAFFS's
+     * lead times apart; the window keeps the windows of one DAFFS issue apart.
      *
      * @param array $rawRecord The raw prediction record (fills already null)
      *
-     * @return string e.g. "2026-10-14T00:00:00.000Z:2026-10-15T00:00:00.000Z:NOAA14548"
+     * @return string e.g. "2026-10-14T12:30:03.000Z:2026-10-14T12:30:00.000Z:2026-10-15T12:30:00.000Z:NOAA14548"
      */
     public function extractRawRecordId(array $rawRecord): string
     {
         $region = isset($rawRecord['NOAARegionId']) ? 'NOAA' . $rawRecord['NOAARegionId']
             : (isset($rawRecord['ModelRegionId']) ? 'Model' . $rawRecord['ModelRegionId'] : 'none');
 
-        return "{$rawRecord['start_window']}:{$rawRecord['end_window']}:{$region}";
+        return "{$rawRecord['issue_time']}:{$rawRecord['start_window']}:{$rawRecord['end_window']}:{$region}";
     }
     
     /**
@@ -211,19 +211,11 @@ class FlareScoreboardSource extends JsonSource
      */
     protected function extractDataFromResponse(array $jsonData): array
     {
-        // HAPI format nests actual data within a 'data' array
-        $rawData = [];
-
-        if (isset($jsonData['data']) && is_array($jsonData['data'])) {
-            $rawData = $jsonData['data'];
-        } else if (is_array($jsonData)) {
-            // Fallback: Handle direct array responses (non-standard HAPI)
-            $rawData = $jsonData;
-        } else {
-            echo "WARNING: FlareScoreboard response has unexpected structure\n";
-            error_log("FlareScoreboard response missing 'data' array: " . json_encode(array_keys($jsonData)));
+        // No 'data' array: HAPI's "no data for time range" answer (status 1201)
+        if (!isset($jsonData['data']) || !is_array($jsonData['data'])) {
             return [];
         }
+        $rawData = $jsonData['data'];
 
         // Transform HAPI format data into structured associative arrays
         $records = $this->readHapi($jsonData, $rawData);

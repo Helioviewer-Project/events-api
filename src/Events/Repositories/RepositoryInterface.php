@@ -293,4 +293,15 @@ interface RepositoryInterface
      */
     public function deleteByIds(array $ids): int;
 
+    /**
+     * Events on one exact path that started within [from, to], oldest first,
+     * with their regions loaded.
+     *
+     * @param string $path Exact event path
+     * @param int    $from Earliest start (Unix timestamp)
+     * @param int    $to   Latest start (Unix timestamp)
+     * @return Collection<int, Event>
+     */
+    public function findByPathBetween(string $path, int $from, int $to): Collection;
+
 }
