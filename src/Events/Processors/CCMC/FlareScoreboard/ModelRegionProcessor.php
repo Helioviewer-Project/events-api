@@ -58,12 +58,17 @@ class ModelRegionProcessor extends Processor
 
         if (isset($rawRecord['ModelLatitude'], $rawRecord['ModelLongitude'])) {
             $at = strtotime($rawRecord['ModelLocationTime'] ?? $rawRecord['start_window']);
-            $noaaId = $this->nearestNoaa((float) $rawRecord['ModelLatitude'], (float) $rawRecord['ModelLongitude'], $at);
-            if ($noaaId !== null) {
+            [$noaaId, $distance] = $this->nearestNoaa((float) $rawRecord['ModelLatitude'], (float) $rawRecord['ModelLongitude'], $at);
+            $where = sprintf('Model %s (%s, %s) at %s', $rawRecord['ModelRegionId'] ?? '?', $rawRecord['ModelLatitude'], $rawRecord['ModelLongitude'], gmdate('Y-m-d H:i', $at));
+            if ($noaaId !== null && $distance <= self::MATCH_DEGREES) {
+                $this->logger->info(sprintf('Position | %s → NOAA %d, %.1f° away', $where, $noaaId, $distance));
                 $coordinates = $this->readCoordinatesFromNOAARegion($noaaId, $rawRecord['start_window']);
                 if ($coordinates !== null) {
                     return $coordinates;
                 }
+            } else {
+                $this->logger->info("Position | {$where} → no NOAA region within " . self::MATCH_DEGREES . '°'
+                    . ($noaaId === null ? ' (no NOAA regions that day)' : sprintf(' (nearest NOAA %d, %.1f°)', $noaaId, $distance)));
             }
         }
 
@@ -71,28 +76,28 @@ class ModelRegionProcessor extends Processor
     }
 
     /**
-     * The NOAA region nearest to (lat, lon) at $at, within MATCH_DEGREES:
-     * each region's latest daily position rotated to $at.
+     * The NOAA region nearest to (lat, lon) at $at: each region's latest daily
+     * position rotated to $at. The caller decides whether it is close enough.
      *
      * @param float $lat Row latitude
      * @param float $lon Row longitude (Stonyhurst)
      * @param int   $at  Row location time (Unix timestamp)
-     * @return int|null NOAA region number, or null when none is that close
+     * @return array{0: int|null, 1: float} [NOAA region number or null, distance in degrees]
      */
-    private function nearestNoaa(float $lat, float $lon, int $at): ?int
+    private function nearestNoaa(float $lat, float $lon, int $at): array
     {
         $best = null;
-        $bestDistance = self::MATCH_DEGREES;
+        $bestDistance = INF;
         foreach ($this->positions?->noaaRegionsBefore($at) ?? [] as $noaaId => $region) {
             $hours = ($at - $region['time']) / 3600;
             $distance = self::angularDistance($lat, $lon, $region['latitude'], self::rotate($region['latitude'], $region['longitude'], $hours));
-            if ($distance <= $bestDistance) {
+            if ($distance < $bestDistance) {
                 $best = $noaaId;
                 $bestDistance = $distance;
             }
         }
 
-        return $best;
+        return [$best, $bestDistance];
     }
 
     /**

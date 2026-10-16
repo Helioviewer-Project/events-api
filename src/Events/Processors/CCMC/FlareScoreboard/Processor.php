@@ -200,6 +200,8 @@ class Processor extends BaseProcessor
                 continue;
             }
 
+            $this->logger->info("Position | no active region: keeping CCMC's {$field} position ({$lat}, {$lon})");
+
             return [
                 'latitude' => $lat,
                 'longitude' => $lon,

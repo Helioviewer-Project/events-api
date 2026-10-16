@@ -70,27 +70,59 @@ class ActiveRegionPositions
             ->findEventsByPathsBetween($region, [self::SHARP, self::SWPC], $at - self::SWPC_MAX_AGE, $at);
 
         // A SHARP patch covering several NOAA regions has their joint centre, which is none of them
+        $sharedSharp = 0;
         foreach ($recent as $event) {
-            if ($event->path === self::SHARP && $at - $event->start <= self::SHARP_MAX_AGE && $this->coversOnly($event, $noaaId)
-                && ($position = $this->fromEvent($event, 'HEK SHARP')) !== null) {
-                return $position;
+            if ($event->path !== self::SHARP || $at - $event->start > self::SHARP_MAX_AGE) {
+                continue;
+            }
+            if (!$this->coversOnly($event, $noaaId)) {
+                $sharedSharp++;
+                continue;
+            }
+            if (($position = $this->fromEvent($event, 'HEK SHARP')) !== null) {
+                return $this->chosen($noaaId, $at, $position, 'single-region SHARP within 4 h');
             }
         }
+        $why = $sharedSharp > 0 ? "{$sharedSharp} shared SHARP patch(es) skipped" : 'no single-region SHARP within 4 h';
         foreach ($recent as $event) {
             if ($event->path === self::SWPC && ($position = $this->fromEvent($event, 'HEK SWPC')) !== null) {
-                return $position;
+                return $this->chosen($noaaId, $at, $position, $why);
             }
         }
 
         // Nothing recent in HEK: JSOC's NOAA list often has a newer record (HEK's SWPC has gaps)
         $older = $region === null ? null : $this->regionRepository->findLatestEventByPath($region, self::SWPC, $at);
         $jsoc = $this->fromJsoc($noaaId, $at);
+        $hekLatest = $older === null ? 'none' : gmdate('Y-m-d H:i', (int) $older->coordinate_time);
 
         if ($jsoc !== null && ($older === null || strtotime($jsoc['coordinate_time']) > $older->coordinate_time)) {
-            return $jsoc;
+            return $this->chosen($noaaId, $at, $jsoc, "nothing in HEK within 24 h; HEK latest: {$hekLatest}");
+        }
+        if ($older !== null && ($position = $this->fromEvent($older, 'HEK SWPC')) !== null) {
+            return $this->chosen($noaaId, $at, $position, 'nothing within 24 h in HEK or newer in JSOC; latest HEK record however old');
         }
 
-        return $older === null ? null : $this->fromEvent($older, 'HEK SWPC');
+        $this->logger->warning("Position | NOAA {$noaaId} at " . gmdate('Y-m-d H:i', $at) . ': nothing in HEK or JSOC'
+            . ($region === null ? ' (region not in our database)' : ''));
+        return null;
+    }
+
+    /**
+     * Log which record a NOAA region's position came from, and why.
+     *
+     * @param int    $noaaId   NOAA region number
+     * @param int    $at       The time asked for
+     * @param array  $position The chosen coordinate data
+     * @param string $why      Why this record and not an earlier option
+     * @return array The same coordinate data
+     */
+    private function chosen(int $noaaId, int $at, array $position, string $why): array
+    {
+        $hours = round(($at - strtotime($position['coordinate_time'])) / 3600, 1);
+        $this->logger->info(sprintf('Position | NOAA %d at %s ← %s (%.1f h earlier; %s) | (%s, %s)',
+            $noaaId, gmdate('Y-m-d H:i', $at), $position['source'], $hours, $why, $position['latitude'], $position['longitude']));
+
+        return $position;
     }
 
     /**
@@ -115,10 +147,12 @@ class ActiveRegionPositions
             }
         }
         if ($regions !== [] || $this->noaaService === null) {
+            $this->logger->debug('Matching | ' . count($regions) . ' NOAA regions from HEK SWPC before ' . gmdate('Y-m-d H:i', $at));
             return $regions;
         }
 
         try {
+            $this->logger->info('Matching | no HEK SWPC records before ' . gmdate('Y-m-d H:i', $at) . ', using JSOC\'s NOAA list for ' . gmdate('Y-m-d', $at));
             return $this->noaaService->getRegionsOnDate(gmdate('Y-m-d', $at));
         } catch (JsocException $e) {
             $this->logger->warning("JSOC NOAA regions for " . gmdate('Y-m-d', $at) . " failed: " . $e->getMessage());

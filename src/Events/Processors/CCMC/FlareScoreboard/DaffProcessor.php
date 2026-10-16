@@ -71,6 +71,11 @@ class DaffProcessor extends Processor
 
             // NOAA_ARS can be "MISSING", one number or several ("13690,13691"); only one is a NOAA region
             $noaaNumbers = array_values(array_filter(array_map('trim', explode(',', (string) ($harp['noaa_id'] ?? ''))), 'ctype_digit'));
+            $this->logger->info("Position | HARP {$harpId} → " . match (true) {
+                $harp === null => 'JSOC has no HARP record',
+                count($noaaNumbers) === 1 => "NOAA {$noaaNumbers[0]}",
+                default => 'HARP only (NOAA_ARS: ' . ($harp['noaa_id'] ?? 'none') . ')',
+            });
             if (count($noaaNumbers) === 1) {
                 $coordinates = $this->readCoordinatesFromNOAARegion((int) $noaaNumbers[0], $rawRecord['start_window'], [$harpRegion]);
                 if ($coordinates !== null) {
