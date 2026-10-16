@@ -369,15 +369,15 @@ events = response.<span class="fn">json</span>()</code></pre>
                     <pre><code>[{
   "url": "https://events.helioviewer.org/api/v1/events/019d0c00-1985-...",
   "path": "CCMC&gt;&gt;Solar Flare Predictions&gt;&gt;ASSA",
-  "start": "2026-03-20 16:00:00",
-  "end": "2026-03-21 04:00:00",
-  "hv_hpc_x": -1,
-  "hv_hpc_y": -1,
-  "label": "ASSA \nC: 25%\nM: 4%\nX: 0%",
+  "start": "2025-06-03 00:00:00",
+  "end": "2025-06-03 12:00:00",
+  "hv_hpc_x": 36.58,
+  "hv_hpc_y": -13.49,
+  "label": "ASSA \nC: 26%\nM: 6%\nX: 1%\nPosition: HEK SHARP 2025-06-03 00:00",
   "coordinate_system": "stonyhurst",
-  "regions": [{"organization": "MODEL", "external_id": "4", ...}],
+  "regions": [{"organization": "NOAA", "external_id": "14099", ...}],
   "source_url": "https://events.helioviewer.org/api/v1/events/019d0c00-.../source",
-  "views": [{"name": "Flare Prediction", "content": {"C": 0.25, "M": 0.04, ...}}],
+  "views": [{"name": "Flare Prediction", "content": {"C": 0.26, "M": 0.06, ...}}],
   "link": {"url": "...", "text": "Helioviewer Events API JSON"}
 }, ... <span class="cmt">// 100 events</span>]</code></pre>
                 </div>
@@ -443,17 +443,17 @@ event = response.<span class="fn">json</span>()</code></pre>
                     <pre><code>{
   "url": "https://events.helioviewer.org/api/v1/events/019d0c00-1985-...",
   "path": "CCMC&gt;&gt;Solar Flare Predictions&gt;&gt;ASSA",
-  "start": "2026-03-20 16:00:00",
-  "peak": "2026-03-21 04:00:00",
-  "end": "2026-03-21 04:00:00",
-  "coordinate_time": "2026-03-20 17:24:36",
-  "hv_hpc_x": -1,
-  "hv_hpc_y": -1,
-  "label": "ASSA \nC: 25%\nM: 4%\nX: 0%",
+  "start": "2025-06-03 00:00:00",
+  "peak": "2025-06-03 12:00:00",
+  "end": "2025-06-03 12:00:00",
+  "coordinate_time": "2025-06-03 00:00:00",
+  "hv_hpc_x": 36.58,
+  "hv_hpc_y": -13.49,
+  "label": "ASSA \nC: 26%\nM: 6%\nX: 1%\nPosition: HEK SHARP 2025-06-03 00:00",
   "coordinate_system": "stonyhurst",
-  "regions": [{"organization": "MODEL", "external_id": "4", ...}],
+  "regions": [{"organization": "NOAA", "external_id": "14099", ...}],
   "source_url": ".../source",
-  "views": [{"name": "Flare Prediction", "content": {"C": 0.25, "M": 0.04, "X": 0, ...}}],
+  "views": [{"name": "Flare Prediction", "content": {"C": 0.26, "M": 0.06, "X": 0.01, ...}}],
   "link": {"url": "...", "text": "Helioviewer Events API JSON"}
 }</code></pre>
                 </div>
@@ -480,16 +480,22 @@ response = requests.<span class="fn">get</span>(
 source_data = response.<span class="fn">json</span>()</code></pre>
                     <p><strong>Example response</strong> (CCMC FlareScoreboard):</p>
                     <pre><code>{
-  "start_window": "2026-03-20T16:00:00.0Z",
-  "end_window": "2026-03-21T04:00:00.0Z",
-  "issue_time": "2026-03-20T16:00:00.0Z",
-  "C": 0.25,
-  "M": 0.04,
-  "X": 0,
-  "NOAALocationTime": "-1",
-  "ModelRegionId": 4,
-  "ModelLatitude": -69,
-  "ModelLongitude": 25
+  "start_window": "2025-06-03T00:00:00.000Z",
+  "end_window": "2025-06-03T12:00:00.000Z",
+  "issue_time": "2025-06-03T00:00:00.000Z",
+  "C": 0.26,
+  "M": 0.06,
+  "CPlus": null,
+  "MPlus": null,
+  "X": 0.01,
+  "NOAARegionId": null,
+  "NOAALocationTime": null,
+  "NOAALatitude": null,
+  "NOAALongitude": null,
+  "ModelRegionId": 2,
+  "ModelLocationTime": "2025-06-03T00:00:00.000Z",
+  "ModelLatitude": -13,
+  "ModelLongitude": 37
 }</code></pre>
                 </div>
             </details>
@@ -559,9 +565,9 @@ events = data[<span class="str">"events"</span>]</code></pre>
     "path": "CCMC&gt;&gt;Solar Flare Predictions&gt;&gt;DAFFS",
     "start": "2025-08-31 23:54:00",
     "end": "2025-09-01 23:54:00",
-    "hv_hpc_x": -10.97,
-    "hv_hpc_y": 60.73,
-    "label": "DAFFS \nC+: 0.3%\nM+: 0.03%\nX: 0.06%",
+    "hv_hpc_x": 78,
+    "hv_hpc_y": -9,
+    "label": "DAFFS \nC+: 0.3%\nM+: 0.03%\nX: 0.06%\nPosition: JSOC 2025-08-30 00:00:00",
     "coordinate_system": "stonyhurst",
     ...
   }, ... <span class="cmt">// 100 events total</span>]

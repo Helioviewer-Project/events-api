@@ -38,9 +38,9 @@ use Psr\Http\Client\ClientInterface;
  * - Data array: Time-series values corresponding to parameter definitions
  * - Metadata: Information about the dataset, time ranges, and data provenance
  *
- * API Endpoint: https://iswa.gsfc.nasa.gov/IswaSystemWebApp/flarescoreboard/hapi/data
- * Protocol: HAPI (Heliophysics Application Programmer's Interface)
- * Time Format: ISO 8601 with millisecond precision
+ * API Endpoint: https://ccmc.gsfc.nasa.gov/flare-scoreboard/hapi/data
+ * Protocol: HAPI 3.0 (Heliophysics Application Programmer's Interface)
+ * Time Format: ISO 8601 UTC with a Z suffix
  * Data Cadence: Typically hourly predictions
  *
  * Example HAPI Response:
@@ -61,7 +61,7 @@ use Psr\Http\Client\ClientInterface;
  * @package    Helioviewer\EventsApi\Collector\Sources\CCMC
  * @author     Kasim Necdet Percinel <kasim.n.percinel@nasa.gov>
  * @since      1.0.0
- * @link       https://iswa.gsfc.nasa.gov/IswaSystemWebApp/flarescoreboard/ FlareScoreboard Portal
+ * @link       https://ccmc.gsfc.nasa.gov/flare-scoreboard/hapi/ FlareScoreboard HAPI server
  * @link       https://hapi-server.org/ HAPI Protocol Specification
  */
 class FlareScoreboardSource extends JsonSource
@@ -127,24 +127,10 @@ class FlareScoreboardSource extends JsonSource
     /**
      * Build the HAPI API URL for FlareScoreboard prediction data.
      *
-     * Constructs the complete HAPI endpoint URL for querying FlareScoreboard
-     * prediction data from a specific model within the given time range.
-     * The HAPI protocol uses standardized parameter naming and ISO 8601
-     * time format with millisecond precision.
-     *
-     * HAPI URL Structure:
-     * - Base: https://iswa.gsfc.nasa.gov/IswaSystemWebApp/flarescoreboard/hapi/data
-     * - Required Parameters:
-     *   - id: The model identifier for the specific prediction algorithm
-     *   - time.min: Start time in ISO 8601 format (YYYY-MM-DDTHH:MM:SS.mmm)
-     *   - time.max: End time in ISO 8601 format (YYYY-MM-DDTHH:MM:SS.mmm)
-     *   - format: Response format specification ("json")
-     *
-     * Time Format Notes:
-     * - HAPI requires ISO 8601 format with 'T' separator
-     * - Millisecond precision (.0) is included for compatibility
-     * - All times are interpreted as UTC by the HAPI server
-     * - Time range is inclusive of both start and end times
+     * Constructs the HAPI 3.0 data URL for one model and time range:
+     * https://ccmc.gsfc.nasa.gov/flare-scoreboard/hapi/data?dataset=…&start=…Z&stop=…Z&format=json
+     * Times must end in Z (the server rejects them otherwise); the dataset id is
+     * URL-encoded, since some contain spaces ("MetOffice - Solar Region Summary_REGIONS").
      *
      * @param TimeRange $range The time range for prediction data query.
      *                         Unix timestamps are converted to ISO 8601 format.
@@ -153,33 +139,33 @@ class FlareScoreboardSource extends JsonSource
      */
     protected function buildUrl(TimeRange $range): string
     {
-        // Convert Unix timestamps to ISO 8601 format required by HAPI
-        $startTime = date('Y-m-d\TH:i:s.0', $range->start);
-        $endTime = date('Y-m-d\TH:i:s.0', $range->end);
-
-        return "https://iswa.ccmc.gsfc.nasa.gov/flarescoreboard/hapi/data?"
-             . "id=" . $this->modelId
-             . "&time.min=" . $startTime
-             . "&time.max=" . $endTime
-             . "&format=json";
+        return 'https://ccmc.gsfc.nasa.gov/flare-scoreboard/hapi/data?' . http_build_query([
+            'dataset' => $this->modelId,
+            'start'   => gmdate('Y-m-d\TH:i:s\Z', $range->start),
+            'stop'    => gmdate('Y-m-d\TH:i:s\Z', $range->end),
+            'format'  => 'json',
+        ]);
     }
     
     /**
      * Extract the unique remote ID from a FlareScoreboard raw record.
      *
-     * FlareScoreboard predictions use a composite ID based on the model ID
-     * and the prediction timestamp. This creates a unique identifier for each
-     * prediction record from each model.
+     * The row's own identity: its issue, its forecast window and the region
+     * number the row itself carries (NOAA, else the model's own); the source
+     * name is prefixed by the collector. Never the active region we match, so
+     * changing the matching never re-keys an event. issue_time keeps DAFFS's
+     * lead times apart; the window keeps the windows of one DAFFS issue apart.
      *
-     * @param array $rawRecord The raw prediction record from FlareScoreboard API
+     * @param array $rawRecord The raw prediction record (fills already null)
      *
-     * @return string Composite ID in format "MODEL_ID:TIMESTAMP"
-     *
-     * @throws \InvalidArgumentException When timestamp is missing or invalid
+     * @return string e.g. "2026-10-14T12:30:03.000Z:2026-10-14T12:30:00.000Z:2026-10-15T12:30:00.000Z:NOAA14548"
      */
     public function extractRawRecordId(array $rawRecord): string
     {
-        return md5(json_encode($rawRecord));
+        $region = isset($rawRecord['NOAARegionId']) ? 'NOAA' . $rawRecord['NOAARegionId']
+            : (isset($rawRecord['ModelRegionId']) ? 'Model' . $rawRecord['ModelRegionId'] : 'none');
+
+        return "{$rawRecord['issue_time']}:{$rawRecord['start_window']}:{$rawRecord['end_window']}:{$region}";
     }
     
     /**
@@ -225,22 +211,18 @@ class FlareScoreboardSource extends JsonSource
      */
     protected function extractDataFromResponse(array $jsonData): array
     {
-        // HAPI format nests actual data within a 'data' array
-        $rawData = [];
-
-        if (isset($jsonData['data']) && is_array($jsonData['data'])) {
-            $rawData = $jsonData['data'];
-        } else if (is_array($jsonData)) {
-            // Fallback: Handle direct array responses (non-standard HAPI)
-            $rawData = $jsonData;
-        } else {
-            echo "WARNING: FlareScoreboard response has unexpected structure\n";
-            error_log("FlareScoreboard response missing 'data' array: " . json_encode(array_keys($jsonData)));
+        // No 'data' array: HAPI's "no data for time range" answer (status 1201)
+        if (!isset($jsonData['data']) || !is_array($jsonData['data'])) {
             return [];
         }
+        $rawData = $jsonData['data'];
 
         // Transform HAPI format data into structured associative arrays
-        return $this->readHapi($jsonData, $rawData);
+        $records = $this->readHapi($jsonData, $rawData);
+
+        // Rows with no region and no position anywhere can never be placed (SIDC's
+        // Catania copies of a NOAA row); drop them here rather than fail them one by one
+        return array_values(array_filter($records, fn(array $r) => !self::isEmptyRegionRow($r)));
     }
     
     /**
@@ -320,8 +302,9 @@ class FlareScoreboardSource extends JsonSource
 
                 $value = $dataRecord[$index] ?? null;
 
-                // Convert HAPI fill values to null for consistent handling
-                if ($fillValue !== null && $value === $fillValue) {
+                // Fill values mean "no value". CCMC declares them as strings ("-1",
+                // "999") but often sends numbers (-1, 999), so compare loosely.
+                if ($fillValue !== null && $value !== null && self::isFill($value, $fillValue)) {
                     $processedRecord[$paramName] = null;
                 } else {
                     $processedRecord[$paramName] = $value;
@@ -333,5 +316,27 @@ class FlareScoreboardSource extends JsonSource
 
 
         return $processedRecords;
+    }
+
+    private static function isFill(mixed $value, mixed $fill): bool
+    {
+        if ((string) $value === (string) $fill) {
+            return true;
+        }
+
+        return is_numeric($value) && is_numeric($fill) && (float) $value === (float) $fill;
+    }
+
+    private static function isEmptyRegionRow(array $record): bool
+    {
+        foreach (['NOAA', 'Catania', 'Model'] as $prefix) {
+            foreach (['RegionId', 'LocationTime', 'Latitude', 'Longitude'] as $field) {
+                if (isset($record[$prefix . $field])) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
     }
 }

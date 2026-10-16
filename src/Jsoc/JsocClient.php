@@ -37,16 +37,38 @@ class JsocClient
      */
     public function fetchNoaaActiveRegions(int $noaaNumber): ?array
     {
-        // Query using jsoc.noaa_active_regions dataset with [][noaa_id] syntax
-        $dsQuery = "jsoc.noaa_active_regions[][{$noaaNumber}]";
-        
+        return $this->queryNoaaActiveRegions("jsoc.noaa_active_regions[][{$noaaNumber}]", "region {$noaaNumber}");
+    }
+
+    /**
+     * Every NOAA region in NOAA's Solar Region Summary for one date.
+     *
+     * @param string $date Date in Y-m-d format
+     * @return array|null Records like fetchNoaaActiveRegions(), or null when none
+     * @throws JsocException If JSOC query fails
+     */
+    public function fetchNoaaActiveRegionsOnDate(string $date): ?array
+    {
+        return $this->queryNoaaActiveRegions('jsoc.noaa_active_regions[' . str_replace('-', '.', $date) . ']', "date {$date}");
+    }
+
+    /**
+     * Query jsoc.noaa_active_regions.
+     *
+     * @param string $dsQuery JSOC dataset query, e.g. jsoc.noaa_active_regions[][14548]
+     * @param string $what    What is queried, for the logs
+     * @return array|null Records, or null when none
+     * @throws JsocException If JSOC query fails
+     */
+    private function queryNoaaActiveRegions(string $dsQuery, string $what): ?array
+    {
         $url = 'http://jsoc.stanford.edu/cgi-bin/ajax/jsoc_info?' . http_build_query([
             'ds' => $dsQuery,
             'op' => 'rs_list',
             'key' => 'RegionNumber,ObservationTime,LatitudeHG,LongitudeHG,LongitudeCM'
         ]);
         
-        $this->logger->info("JSOC NOAA AR {$noaaNumber} query: " . urldecode($url));
+        $this->logger->info("JSOC NOAA AR {$what} query: " . urldecode($url));
         
         try {
             $response = $this->client->request('GET', $url);
@@ -70,7 +92,7 @@ class JsocClient
 
             // Parse JSOC results
             if (!isset($data['keywords']) || !isset($data['count']) || $data['count'] === 0) {
-                $this->logger->info("No NOAA AR records found for region {$noaaNumber}");
+                $this->logger->info("No NOAA AR records found for {$what}");
                 return null;
             }
 
@@ -84,7 +106,7 @@ class JsocClient
             $records = [];
             $recordCount = $data['count'];
             
-            $this->logger->info("Found {$recordCount} NOAA AR records for region {$noaaNumber}");
+            $this->logger->info("Found {$recordCount} NOAA AR records for {$what}");
             
             for ($i = 0; $i < $recordCount; $i++) {
                 $records[] = [
@@ -99,7 +121,7 @@ class JsocClient
             return $records;
 
         } catch (GuzzleException $e) {
-            throw new JsocException("Failed to fetch NOAA AR {$noaaNumber} from JSOC: " . $e->getMessage(), 0, $e);
+            throw new JsocException("Failed to fetch NOAA AR {$what} from JSOC: " . $e->getMessage(), 0, $e);
         }
     }
 
@@ -201,8 +223,7 @@ class JsocClient
     */
 
     /**
-     * UNUSED: Fetch data for a specific HARP number with date range from JSOC.
-     * Only called by unused HarpService.
+     * Fetch data for a specific HARP number with date range from JSOC (HarpService).
      *
      * @param int $harpNumber The HARP number to query
      * @param string $date The date (Y-m-d format)
@@ -210,7 +231,6 @@ class JsocClient
      * @return array|null Array of HARP records or null if not found
      * @throws \Exception If JSOC query fails
      */
-    /*
     public function fetchByHarpNumberWithDateRange(int $harpNumber, string $date, int $days = 5): ?array
     {
         // Convert Y-m-d to JSOC date format (Y.m.d)
@@ -223,7 +243,7 @@ class JsocClient
             'key' => 'HARPNUM,NOAA_ARS,T_REC,LAT_FWT,LON_FWT'
         ]);
         
-        echo "  " . urldecode($url) . "\n\n";
+        $this->logger->info("JSOC HARP {$harpNumber} query: " . urldecode($url));
         
         try {
             $response = $this->client->request('GET', $url);
@@ -277,7 +297,6 @@ class JsocClient
             throw new \Exception("Failed to fetch HARP {$harpNumber} from JSOC: " . $e->getMessage());
         }
     }
-    */
 
     /**
      * UNUSED: Fetch data for a specific NOAA Active Region number from JSOC.

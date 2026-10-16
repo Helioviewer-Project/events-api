@@ -6,45 +6,43 @@ namespace Helioviewer\EventsApi\Events\Processors\CCMC\FlareScoreboard;
 
 use Helioviewer\EventsApi\Events\Sources\SourceInterface;
 use Helioviewer\EventsApi\Jsoc\HarpService;
-use Helioviewer\EventsApi\Jsoc\NoaaService;
-use Helioviewer\EventsApi\Exception\CoordinateResolutionException;
-use Helioviewer\EventsApi\Exception\JsocException;
+use Helioviewer\EventsApi\Regions\ActiveRegionPositions;
 use Helioviewer\EventsApi\Sentry\ClientInterface as SentryClientInterface;
+use Psr\Log\LoggerInterface;
 
 /**
- * DAFF Solar Flare Event Processor
+ * DAFFS flare predictions.
  *
- * This processor handles the transformation and normalization of DAFF solar flare
- * event data from the Community Coordinated Modeling Center (CCMC). DAFF (Data
- * Archive for Flare Forecasting) provides specialized solar flare prediction and
- * analysis data that requires custom processing logic.
+ * Rows name a NOAA region, or a HARP from HMI's near-real-time series in the
+ * Model fields (DAFFS's own Model lat/lon is unreliable). A HARP that lists
+ * exactly one NOAA region is placed as that NOAA region; otherwise as the HARP.
  *
- * @package    Helioviewer\EventsApi\Collector\Processors\CCMC\FlareScoreboard
+ * @package    Helioviewer\EventsApi\Events\Processors\CCMC\FlareScoreboard
  * @author     Kasim Necdet Percinel <kasim.n.percinel@nasa.gov>
- * @since      1.0.0
  */
 class DaffProcessor extends Processor
 {
-    private HarpService $harpService;
-    private NoaaService $noaaService;
-    
+    /**
+     * @param HarpService                $harpService HMI near-real-time HARP lookup (JSOC)
+     * @param ActiveRegionPositions|null $positions   Where NOAA regions were
+     * @param LoggerInterface|null       $logger      Logger
+     * @param SentryClientInterface|null $sentry      Sentry client
+     */
     public function __construct(
-        HarpService $harpService,
-        NoaaService $noaaService,
-        ?\Psr\Log\LoggerInterface $logger = null,
+        private HarpService $harpService,
+        ?ActiveRegionPositions $positions = null,
+        ?LoggerInterface $logger = null,
         ?SentryClientInterface $sentry = null
     ) {
-        parent::__construct($logger, $sentry);
-        $this->harpService = $harpService;
-        $this->noaaService = $noaaService;
+        parent::__construct($logger, $sentry, $positions);
     }
+
     /**
-     * Determines if this processor can handle DAFF source data.
+     * Handles DAFFS rows.
      *
-     * @param SourceInterface $source The data source interface
-     * @param array $rawRecord The raw event data record from the source
-     *
-     * @return bool True if this processor can handle the data, false otherwise
+     * @param SourceInterface $source    Data source
+     * @param array           $rawRecord Raw record
+     * @return bool
      */
     public function canProcess(SourceInterface $source, array $rawRecord): bool
     {
@@ -52,116 +50,50 @@ class DaffProcessor extends Processor
     }
 
     /**
-     * Read coordinates from raw record - simplified version.
+     * The row's NOAA region; else its HARP (as the HARP's NOAA region when it lists one); else CCMC's position.
      *
-     * Checks for HARP fields in raw data only.
-     *
-     * @param array $rawRecord The raw event data
-     * @return array|null Array with coordinate data or null if not found
+     * @param array $rawRecord Raw record
+     * @return array|null Coordinate data, or null when the row has no position
      */
     protected function readCoordinates(array $rawRecord): ?array
     {
-        // Check if we have HARP coordinates directly in the raw record (don't require HARPRegionId)
-        if (isset($rawRecord['HARPLatitude']) && 
-            isset($rawRecord['HARPLongitude']) &&
-            $rawRecord['HARPLatitude'] !== '' &&
-            $rawRecord['HARPLongitude'] !== '') {
-            
-            // Handle HARPRegionId - use it if available, otherwise use 'UNK'
-            $regionId = (isset($rawRecord['HARPRegionId']) && $rawRecord['HARPRegionId'] !== '') ? $rawRecord['HARPRegionId'] : 'UNK';
-            $this->logger->info("DAFF: Using HARP coordinates from raw record for region {$regionId}");
-            
-            return [
-                'latitude' => (float) $rawRecord['HARPLatitude'],
-                'longitude' => (float) $rawRecord['HARPLongitude'],
-                'coordinate_time' => $rawRecord['start_window'],
-                'source' => 'HARP ' . $regionId . '|RawRecord'
-            ];
-        }
-        
-        // No HARP coordinates found, try parent implementation
-        $this->logger->debug("DAFF: No HARP coordinates found, trying parent implementation");
-        $coordinates = parent::readCoordinates($rawRecord);
-        
-        if ($coordinates !== null) {
-            return $coordinates;
-        }
-        
-        // Parent failed, try NOAA service if NOAARegionId is available
-        if (isset($rawRecord['NOAARegionId'])) {
-            
-            $eventDateTime = $rawRecord['start_window'];
-            $this->logger->info("DAFF: Trying NOAA service for region {$rawRecord['NOAARegionId']} to find closest coordinates before {$eventDateTime}");
-            
-            $noaaId = (int) $rawRecord['NOAARegionId'];
-
-            try {
-                $noaaData = $this->noaaService->getLastCoordinateForNoaa($noaaId, $eventDateTime);
-            } catch (JsocException $e) {
-                $this->logger->warning("DAFF: JSOC NOAA service failed for region {$noaaId}: " . $e->getMessage());
-                $this->sentry->setContext('Jsoc', [
-                    'service' => 'NoaaService',
-                    'noaa_id' => $noaaId,
-                    'event_datetime' => $eventDateTime,
-                ]);
-                $this->sentry->capture($e);
-                $noaaData = null;
-            }
-            
-            if ($noaaData) {
-                $this->logger->info("DAFF: Found coordinates from NOAA service for region {$noaaId}");
-                return [
-                    'latitude' => (float) $noaaData['latitude'],
-                    'longitude' => (float) $noaaData['longitude'],
-                    'coordinate_time' => $noaaData['location_time'] ?? $eventDateTime,
-                    'source' => 'NOAA ' . $noaaId . '| JSOC NOAAService'
-                ];
-            } else {
-                $this->logger->debug("DAFF: No data found from NOAA service for region {$noaaId}");
+        if (isset($rawRecord['NOAARegionId']) && (int) $rawRecord['NOAARegionId'] > 0) {
+            $coordinates = $this->readCoordinatesFromNOAARegion((int) $rawRecord['NOAARegionId'], $rawRecord['start_window']);
+            if ($coordinates !== null) {
+                return $coordinates;
             }
         }
-        
-        return null;
-    }
-    
-    /**
-     * Collect all region information from raw record for DAFF
-     * 
-     * @param array $rawRecord The raw event data
-     * @return array Array of region info arrays
-     */
-    protected function collectRegions(array $rawRecord): array
-    {
-        $regions = [];
 
-        // Check for NOAA region
-        if (isset($rawRecord['NOAARegionId']) && $rawRecord['NOAARegionId'] !== '') {
-            $externalId = $rawRecord['NOAARegionId'];
+        if (isset($rawRecord['ModelRegionId']) && (int) $rawRecord['ModelRegionId'] > 0) {
+            $harpId = (int) $rawRecord['ModelRegionId'];
+            $harp = $this->harpService->getLastCoordinateForHarp($harpId, $rawRecord['start_window']);
+            $harpRegion = ['organization' => 'HARP', 'external_id' => (string) $harpId];
 
-            // NOAA region numbers cycle: after July 2002, 4-digit IDs need +10000
-            if (is_numeric($externalId)) {
-                $regionId = (int) $externalId;
-                if ($regionId > 0 && $regionId < 9000) {
-                    $externalId = (string) ($regionId + 10000);
+            // NOAA_ARS can be "MISSING", one number or several ("13690,13691"); only one is a NOAA region
+            $noaaNumbers = array_values(array_filter(array_map('trim', explode(',', (string) ($harp['noaa_id'] ?? ''))), 'ctype_digit'));
+            $via = $harp === null ? 'JSOC HARP' : 'JSOC HARP · ' . (!empty($harp['cached']) ? 'CACHED' : 'LIVE');
+            $this->logger->info("Position | {$via} | HARP {$harpId} → " . match (true) {
+                $harp === null => 'JSOC has no HARP record',
+                count($noaaNumbers) === 1 => "NOAA {$noaaNumbers[0]}",
+                default => 'HARP only (NOAA_ARS: ' . ($harp['noaa_id'] ?? 'none') . ')',
+            });
+            if (count($noaaNumbers) === 1) {
+                $coordinates = $this->readCoordinatesFromNOAARegion((int) $noaaNumbers[0], $rawRecord['start_window'], [$harpRegion]);
+                if ($coordinates !== null) {
+                    return $coordinates;
                 }
             }
-
-            $regions[] = [
-                'organization' => 'NOAA',
-                'external_id' => (string) $externalId
-            ];
-            $this->logger->debug("DAFF: Added NOAA region: {$externalId}");
+            if ($harp !== null) {
+                return [
+                    'latitude' => (float) $harp['latitude'],
+                    'longitude' => (float) $harp['longitude'],
+                    'coordinate_time' => $harp['location_time'],
+                    'source' => 'JSOC HARP ' . $harp['location_time'],
+                    'regions' => [$harpRegion],
+                ];
+            }
         }
 
-        // Check for HARP region
-        if (isset($rawRecord['HARPRegionId']) && $rawRecord['HARPRegionId'] !== '') {
-            $regions[] = [
-                'organization' => 'HARP',
-                'external_id' => (string) $rawRecord['HARPRegionId']
-            ];
-            $this->logger->debug("DAFF: Added HARP region: {$rawRecord['HARPRegionId']}");
-        }
-
-        return $regions;
+        return $this->readCoordinatesFromRow($rawRecord);
     }
 }

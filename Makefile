@@ -1,4 +1,4 @@
-.PHONY: composer-install composer-require composer-dump up down build ps pull images dlogs shell shell-root nginx-reload migrate-status migrate-create migrate-run migrate-rollback seed-run collect sources purge-path recents reset stats logs db-shell db-backup cache-flush fix-regions distribution-build reprocess reprocess-uuid backfill-hpc build-failure-report retry-failures help
+.PHONY: composer-install composer-require composer-dump up down build ps pull images dlogs shell shell-root nginx-reload migrate-status migrate-create migrate-run migrate-rollback seed-run collect sources collect-flare-scoreboard purge-path recents reset stats logs db-shell db-backup cache-flush fix-regions distribution-build reprocess reprocess-uuid backfill-hpc build-failure-report retry-failures help
 .DEFAULT_GOAL := help
 
 # Set compose file based on ENV
@@ -116,6 +116,14 @@ collect:
 
 sources:
 	$(DOCKER_COMPOSE) run --rm --user $(shell id -u):$(shell id -g) phpfpm php bin/sources.php
+
+# Full history of every enabled Flare Scoreboard model, each from its own first
+# date at CCMC. Dry run unless APPLY=1 (lists each model's dates and the collect
+# it would run). Optional: DATASETS="ASSA_1_REGIONS,DAFFS_REGIONS", CHUNK=30.
+#   make collect-flare-scoreboard
+#   make collect-flare-scoreboard APPLY=1
+collect-flare-scoreboard:
+	DATASETS='$(DATASETS)' CHUNK='$(CHUNK)' APPLY='$(APPLY)' bin/collect-flare-scoreboard.sh
 
 # Wipe an event path and everything attached to it: source JSONs, event rows,
 # region links, distribution buckets, regions left with no events, and the
@@ -251,6 +259,11 @@ help:
 	@echo "                                   make collect 2024-01-01 2024-01-31 5 (5-day chunks)"
 	@echo "                          Optional: SOURCES=\"NAME1,NAME2\" to collect only those sources"
 	@echo "  sources               - List every registered source and the path it writes to"
+	@echo "  collect-flare-scoreboard - Full history of every enabled Flare Scoreboard model, each"
+	@echo "                          from its own first date at CCMC"
+	@echo "                          Dry run: make collect-flare-scoreboard"
+	@echo "                          Apply:   make collect-flare-scoreboard APPLY=1"
+	@echo "                          Optional: DATASETS=\"ASSA_1_REGIONS,...\" CHUNK=30"
 	@echo ""
 	@echo "Data Analysis & Maintenance:"
 	@echo "  purge-path            - Delete an event path and everything attached to it: source"

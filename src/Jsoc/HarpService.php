@@ -11,8 +11,7 @@ use Psr\Log\LoggerInterface;
 /**
  * HARP Service for querying HARP region data from JSOC.
  * 
- * NOTE: Methods are currently unused but service is maintained for dependency injection.
- * HarpService is injected into DaffProcessor but methods are not called.
+ * Used by DaffProcessor: DAFFS names regions by HMI near-real-time HARP number.
  *
  * @package    Helioviewer\EventsApi\JSOC
  * @author     Kasim Necdet Percinel <kasim.n.percinel@nasa.gov> 
@@ -34,14 +33,12 @@ class HarpService
     }
 
     /**
-     * UNUSED: Find the closest record before the target datetime from an array of records
-     * Not called anywhere in the codebase.
+     * Find the closest record before the target datetime from an array of records.
      *
      * @param array $records Array of JSOC records
      * @param string $targetDatetime The target datetime to find closest before
      * @return array|null The closest record or null if none found
      */
-    /*
     private function findClosestRecordBefore(array $records, string $targetDatetime): ?array
     {
         $targetTimestamp = strtotime($targetDatetime);
@@ -67,17 +64,14 @@ class HarpService
         
         return $closestRecord;
     }
-    */
 
     /**
-     * UNUSED: Get last known HARP region coordinate data before specified datetime.
-     * Not called anywhere in the codebase.
+     * Get last known HARP region coordinate data before specified datetime.
      *
      * @param int $harpNumber The HARP number
      * @param string $datetime The datetime to find coordinates before (Y-m-d H:i:s format)
      * @return array|null HARP record array or null if not found
      */
-    /*
     public function getLastCoordinateForHarp(int $harpNumber, string $datetime): ?array
     {
         
@@ -88,11 +82,13 @@ class HarpService
         $cacheKey = "harp_{$harpNumber}_{$date}_{$this->queryDays}d";
         
         $records = null;
+        $cached = false;
         
         // Try to get JSOC records from cache first
         if ($this->cache) {
             try {
                 $records = $this->cache->get($cacheKey);
+                $cached = $records !== null;
             } catch (\Exception $e) {
             }
         }
@@ -135,22 +131,20 @@ class HarpService
             'location_time' => $this->formatJsocTime($closestRecord['time']),
             'latitude' => $closestRecord['lat'],
             'longitude' => $closestRecord['long'],
+            'cached' => $cached,
         ];
         
         
         return $result;
     }
-    */
 
     /**
-     * UNUSED: Convert JSOC time format to standard datetime format
-     * Only used by commented out methods.
+     * Convert JSOC time format to standard datetime format.
      * Handles formats like: 2013.06.19_12:00:00_TAI
      *
      * @param string $jsocTime Time from JSOC T_REC field
      * @return string Time in Y-m-d H:i:s format
      */
-    /*
     private function formatJsocTime(string $jsocTime): string
     {
         // Remove _TAI suffix and replace dots/underscores
@@ -161,5 +155,4 @@ class HarpService
         $timestamp = strtotime($timeString);
         return $timestamp ? date('Y-m-d H:i:s', $timestamp) : $jsocTime;
     }
-    */
 }
