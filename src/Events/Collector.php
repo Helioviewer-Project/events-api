@@ -18,6 +18,7 @@ use Helioviewer\EventsApi\Exception\CoordinateResolutionException;
 use Helioviewer\EventsApi\Exception\SourceException;
 use Helioviewer\EventsApi\Exception\InvalidEventException;
 use Helioviewer\EventsApi\Exception\SkippedRecordException;
+use Helioviewer\EventsApi\Exception\UpstreamDownException;
 use Helioviewer\EventsApi\Sentry\ClientInterface as SentryClientInterface;
 use Helioviewer\EventsApi\Sentry\VoidClient as SentryVoidClient;
 use Psr\Log\LoggerInterface;
@@ -97,6 +98,12 @@ class Collector
      * @var array<string, int>
      */
     private array $positionSources = [];
+
+    /**
+     * Stop the whole collect when CCMC or JSOC is down (CLI), instead of
+     * skipping that source for the run (scheduler).
+     */
+    private bool $stopWhenUpstreamDown = false;
 
     /**
      * Construct a new EventCollector instance.
@@ -603,10 +610,12 @@ class Collector
                         $this->logger->debug("Sleeping for " . round($sleepTime / 1000000, 2) . " seconds before next chunk");
                         usleep($sleepTime);
                     }
-                } catch (SourceException $e) {
-                    // One source dying must not stop the others. Log + report, then continue.
-                    $this->logger->critical("Source exception: {$e->getSourcePath()} => {$e->getSourceName()}: {$e->getMessage()}");
-                    $this->logger->debug("SourceException details: " . $e->getTraceAsString());
+                } catch (UpstreamDownException | SourceException | \Psr\Http\Client\ClientExceptionInterface | \GuzzleHttp\Exception\GuzzleException $e) {
+                    // The source's own request (CCMC for Flare Scoreboard) or JSOC (a position lookup)
+                    // did not answer: one source dying must not stop the others, unless stopping was asked for
+                    $down = $e instanceof UpstreamDownException ? $e->getMessage()
+                        : "{$source->getName()} did not answer: " . $e->getMessage();
+                    $this->logger->critical("Upstream down | {$down} | chunk {$chunkRange->getStartDate()} to {$chunkRange->getEndDate()}");
                     $this->sentry->setContext('SourceFailure', [
                         'source'     => $source->getName(),
                         'path'       => $path,
@@ -614,6 +623,9 @@ class Collector
                         'date_range' => $chunkRange->getStartDate() . " to " . $chunkRange->getEndDate(),
                     ]);
                     $this->sentry->capture($e);
+                    if ($this->stopWhenUpstreamDown) {
+                        throw new UpstreamDownException($down, substr($chunkRange->getStartDate(), 0, 10), $e);
+                    }
                 } catch (\Throwable $e) {
                     $this->logger->critical(sprintf(
                         'Failed to collect | %s: %s at %s:%d',
@@ -689,6 +701,15 @@ class Collector
     }
 
     /**
+     * Stop the whole collect when CCMC or JSOC is down, for a CLI run that
+     * someone resumes, rather than skipping the source for this run.
+     */
+    public function stopWhenUpstreamDown(): void
+    {
+        $this->stopWhenUpstreamDown = true;
+    }
+
+    /**
      * Collect and process events from a specific data source object.
      *
      * @param string $path The path/identifier for this source
@@ -749,6 +770,9 @@ class Collector
                         $processedCount++;
                     }
 
+                } catch (UpstreamDownException $e) {
+                    // Not this row's fault: never store it as a failure
+                    throw $e;
                 } catch (SkippedRecordException $e) {
                     // A repeat of a row that is stored (AMOS Model rows): counted, not a failure
                     $skipped['repeat']++;

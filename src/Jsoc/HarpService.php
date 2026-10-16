@@ -107,7 +107,8 @@ class HarpService
                     }
                 }
             } catch (\Exception $e) {
-                return null;
+                // JSOC failing is not "no HARP record": let the caller tell the two apart
+                throw new \Helioviewer\EventsApi\Exception\JsocException("HARP {$harpNumber} query failed: " . $e->getMessage(), 0, $e);
             }
         }
         
