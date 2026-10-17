@@ -19,8 +19,8 @@ use Helioviewer\EventsApi\Regions\Repositories\RepositoryInterface as RegionRepo
  * store (linked to that NOAA region), with JSOC's NOAA list as the fallback.
  *
  * Rule for a NOAA region at time t (latest record at or before t):
- * 1. HMI SHARP no older than 4 h, if its patch covers only this NOAA region;
- * 2. NOAA SWPC Observer no older than 24 h;
+ * 1. NOAA SWPC Observer no older than 24 h (NOAA's own position for its number);
+ * 2. HMI SHARP no older than 4 h, if its patch covers only this NOAA region;
  * 3. the newer of JSOC's record and HEK's latest older record.
  * coordinate_time is the time of the record used; the API rotates from there.
  * Positions are the raw HEK record's hgs_x/hgs_y: most HEK active regions are
@@ -70,6 +70,14 @@ class ActiveRegionPositions
         $recent = $region === null ? [] : $this->regionRepository
             ->findEventsByPathsBetween($region, [self::SHARP, self::SWPC], $at - self::SWPC_MAX_AGE, $at);
 
+        // NOAA's own position first: SHARP's flux-weighted centre sits > 5° from NOAA's
+        // spot position for ~1 region in 10, so predictions would miss NOAA's marker
+        foreach ($recent as $event) {
+            if ($event->path === self::SWPC && ($position = $this->fromEvent($event, 'HEK SWPC')) !== null) {
+                return $this->chosen($noaaId, $at, $position, 'NOAA SWPC within 24 h');
+            }
+        }
+
         // A SHARP patch covering several NOAA regions has their joint centre, which is none of them
         $sharedSharp = 0;
         foreach ($recent as $event) {
@@ -81,13 +89,7 @@ class ActiveRegionPositions
                 continue;
             }
             if (($position = $this->fromEvent($event, 'HEK SHARP')) !== null) {
-                return $this->chosen($noaaId, $at, $position, 'single-region SHARP within 4 h');
-            }
-        }
-        $why = $sharedSharp > 0 ? "{$sharedSharp} shared SHARP patch(es) skipped" : 'no single-region SHARP within 4 h';
-        foreach ($recent as $event) {
-            if ($event->path === self::SWPC && ($position = $this->fromEvent($event, 'HEK SWPC')) !== null) {
-                return $this->chosen($noaaId, $at, $position, $why);
+                return $this->chosen($noaaId, $at, $position, 'no NOAA SWPC within 24 h; single-region SHARP within 4 h');
             }
         }
 
@@ -97,7 +99,8 @@ class ActiveRegionPositions
         $hekLatest = $older === null ? 'none' : gmdate('Y-m-d H:i', (int) $older->coordinate_time);
 
         if ($jsoc !== null && ($older === null || strtotime($jsoc['coordinate_time']) > $older->coordinate_time)) {
-            return $this->chosen($noaaId, $at, $jsoc, "nothing in HEK within 24 h; HEK latest: {$hekLatest}");
+            return $this->chosen($noaaId, $at, $jsoc, "nothing in HEK within 24 h"
+                . ($sharedSharp > 0 ? " ({$sharedSharp} shared SHARP patch(es) skipped)" : '') . "; HEK latest: {$hekLatest}");
         }
         if ($older !== null && ($position = $this->fromEvent($older, 'HEK SWPC')) !== null) {
             return $this->chosen($noaaId, $at, $position, 'nothing within 24 h in HEK or newer in JSOC; latest HEK record however old');
