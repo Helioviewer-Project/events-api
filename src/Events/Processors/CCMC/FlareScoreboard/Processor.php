@@ -76,7 +76,7 @@ class Processor extends BaseProcessor
      *
      * @param array       $rawRecord The raw record (fills already null)
      * @param string      $modelName The model name, e.g. "ASSA"
-     * @param string|null $region    The event's region, e.g. "NOAA 14548" or "HARP 13398"
+     * @param string|null $region    The event's region, e.g. "AR 14548" or "HARP 13398"
      * @return array Array with 'label' and 'short_label'
      */
     protected function createLabels(array $rawRecord, string $modelName, ?string $region): array
@@ -269,8 +269,12 @@ class Processor extends BaseProcessor
         $modelName = method_exists($source, 'getModelName') ? $source->getModelName() : 'Unknown Model';
         
         // Create labels using helper function
-        // The event's NOAA or HARP region; none when the row could not be placed on one
-        $region = isset($regionsInfo[0]) ? "{$regionsInfo[0]['organization']} {$regionsInfo[0]['external_id']}" : null;
+        // The event's NOAA region as "AR 14548" (5 digits), or its HARP; none when the row could not be placed on one
+        $region = match ($regionsInfo[0]['organization'] ?? null) {
+            null => null,
+            'NOAA' => "AR {$regionsInfo[0]['external_id']}",
+            default => "{$regionsInfo[0]['organization']} {$regionsInfo[0]['external_id']}",
+        };
         $labels = $this->createLabels($rawRecord, $modelName, $region);
 
         // Build additional event data specific to FlareScoreboard
