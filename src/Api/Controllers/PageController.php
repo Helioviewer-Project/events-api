@@ -373,7 +373,7 @@ events = response.<span class="fn">json</span>()</code></pre>
   "end": "2025-06-03 12:00:00",
   "hv_hpc_x": 37,
   "hv_hpc_y": -14,
-  "label": "ASSA \nC: 26%\nM: 6%\nX: 1%\nPosition: HEK SWPC 2025-06-03 00:00",
+  "label": "ASSA | NOAA 14099\nC: 26%\nM: 6%\nX: 1%",
   "coordinate_system": "stonyhurst",
   "regions": [{"organization": "NOAA", "external_id": "14099", ...}],
   "source_url": "https://events.helioviewer.org/api/v1/events/019d0c00-.../source",
@@ -449,7 +449,7 @@ event = response.<span class="fn">json</span>()</code></pre>
   "coordinate_time": "2025-06-03 00:00:00",
   "hv_hpc_x": 37,
   "hv_hpc_y": -14,
-  "label": "ASSA \nC: 26%\nM: 6%\nX: 1%\nPosition: HEK SWPC 2025-06-03 00:00",
+  "label": "ASSA | NOAA 14099\nC: 26%\nM: 6%\nX: 1%",
   "coordinate_system": "stonyhurst",
   "regions": [{"organization": "NOAA", "external_id": "14099", ...}],
   "source_url": ".../source",
@@ -567,7 +567,7 @@ events = data[<span class="str">"events"</span>]</code></pre>
     "end": "2025-09-01 23:54:00",
     "hv_hpc_x": 78,
     "hv_hpc_y": -9,
-    "label": "DAFFS \nC+: 0.3%\nM+: 0.03%\nX: 0.06%\nPosition: JSOC 2025-08-30 00:00:00",
+    "label": "DAFFS | NOAA 14188\nC+: 0.3%\nM+: 0.03%\nX: 0.06%",
     "coordinate_system": "stonyhurst",
     ...
   }, ... <span class="cmt">// 100 events total</span>]

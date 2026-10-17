@@ -70,44 +70,31 @@ class Processor extends BaseProcessor
         parent::__construct($logger, $sentry);
     }
     /**
-     * Create labels for FlareScoreboard prediction to match event interface format exactly
-     * 
-     * @param array $rawRecord The raw record from FlareScoreboard
-     * @param string $modelName The model name (dataset)
-     * @param int|string|null $regionId The region ID if available (can be NOAA number or HARP_xxx format)
-     * @param string|null $source The coordinate source (NOAA or Catania)
+     * Labels for a prediction: "<model> | <region>" over one probability per
+     * line, and the one-line "<region> | <probabilities>" for the pin; without
+     * a NOAA or HARP region, just "<model>" and "<probabilities>".
+     *
+     * @param array       $rawRecord The raw record (fills already null)
+     * @param string      $modelName The model name, e.g. "ASSA"
+     * @param string|null $region    The event's region, e.g. "NOAA 14548" or "HARP 13398"
      * @return array Array with 'label' and 'short_label'
      */
-    protected function createLabels(array $rawRecord, string $modelName, int|string|null $regionId, ?string $source): array
+    protected function createLabels(array $rawRecord, string $modelName, ?string $region): array
     {
-        // Create short label with flare class predictions (each on new line)
-        $shortLabel = "";
-        $flareClasses = ["C", "CPlus", "M", "MPlus", "X"];
-        
-        foreach ($flareClasses as $class) {
-            // Use the class name directly as the key in rawRecord
-            if (isset($rawRecord[$class]) && !is_null($rawRecord[$class])) {
-                $probability = round($rawRecord[$class] * 100, 2) . "%";
-                // Convert class name for display (CPlus -> C+, MPlus -> M+)
-                $displayClass = str_replace("PLUS", "+", strtoupper($class));
-                if ($shortLabel !== "") {
-                    $shortLabel .= "\n";
-                }
-                $shortLabel .= $displayClass . ": " . $probability;
+        $probabilities = [];
+        foreach (["C", "CPlus", "M", "MPlus", "X"] as $class) {
+            if (isset($rawRecord[$class])) {
+                // CPlus -> C+, MPlus -> M+
+                $probabilities[] = str_replace("PLUS", "+", strtoupper($class)) . ": " . round($rawRecord[$class] * 100, 2) . "%";
             }
         }
-        
-        // Handle case where no predictions are available
-        if ($shortLabel === "") {
-            $shortLabel = "No probabilities given";
+        if ($probabilities === []) {
+            $probabilities = ["No probabilities given"];
         }
-        
-        // Main label format: "{dataset} \n{short_label}\nPosition: {source}"
-        $label = $modelName . " \n" . $shortLabel . ($source !== null ? "\nPosition: " . $source : '');
-        
+
         return [
-            'label' => $label,
-            'short_label' => "\n" . $shortLabel
+            'label' => $modelName . ($region !== null ? " | {$region}" : '') . "\n" . implode("\n", $probabilities),
+            'short_label' => ($region !== null ? "{$region} | " : '') . implode(", ", $probabilities),
         ];
     }
 
@@ -282,7 +269,9 @@ class Processor extends BaseProcessor
         $modelName = method_exists($source, 'getModelName') ? $source->getModelName() : 'Unknown Model';
         
         // Create labels using helper function
-        $labels = $this->createLabels($rawRecord, $modelName, null, $coordinates['source'] ?? null);
+        // The event's NOAA or HARP region; none when the row could not be placed on one
+        $region = isset($regionsInfo[0]) ? "{$regionsInfo[0]['organization']} {$regionsInfo[0]['external_id']}" : null;
+        $labels = $this->createLabels($rawRecord, $modelName, $region);
 
         // Build additional event data specific to FlareScoreboard
         $additionalData = [
