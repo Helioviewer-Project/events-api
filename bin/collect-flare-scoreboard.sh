@@ -40,6 +40,8 @@ fi
 
 IFS=',' read -r -a WANTED <<< "${DATASETS:-}"
 
+echo "Now: $(date -u '+%Y-%m-%d %H:%M:%S') UTC"
+
 for source in "${SOURCES[@]}"; do
     dataset=${source#FLARE_SCOREBOARD_}
     if [ ${#WANTED[@]} -gt 0 ] && ! printf '%s\n' "${WANTED[@]}" | grep -qxF "$dataset"; then
@@ -58,7 +60,7 @@ for source in "${SOURCES[@]}"; do
         continue
     fi
 
-    echo "== $dataset: $start → $stop in ${CHUNK}-day chunks (ours: ${OURS[${PATHS[$source]:-}]:-none})"
+    echo "== $(date -u '+%Y-%m-%d %H:%M:%S') UTC | $dataset: $start → $stop in ${CHUNK}-day chunks (ours: ${OURS[${PATHS[$source]:-}]:-none})"
     make collect "$start" "$stop" "$CHUNK" SOURCES="$source"
 done
 [ -z "$APPLY" ] && echo "DRY RUN: nothing collected. Re-run with APPLY=1 to collect."
