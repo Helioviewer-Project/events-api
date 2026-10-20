@@ -11,96 +11,58 @@ use Helioviewer\EventsApi\Sentry\ClientInterface as SentryClientInterface;
 use Helioviewer\EventsApi\Events\Sources\JsonSource;
 use Helioviewer\EventsApi\Events\Sources\SourceInterface;
 use Helioviewer\EventsApi\Exception\CoordinateResolutionException;
+use Helioviewer\EventsApi\Regions\ActiveRegionPositions;
 use HelioviewerEventInterface\Util\LocationParser;
 
 /**
- * FlareScoreboard Prediction Data Processor
+ * Flare Scoreboard predictions (CCMC HAPI 3.0) to events: one forecast window,
+ * placed on the active region it names; subclasses cover models that differ
+ * (ModelRegionProcessor, DaffProcessor, AmosProcessor).
  *
- * This processor handles the transformation and normalization of solar flare
- * prediction data from various FlareScoreboard models provided by the Community
- * Coordinated Modeling Center (CCMC). FlareScoreboard is a framework for
- * evaluating and comparing different solar flare prediction models using
- * standardized metrics and time windows.
- *
- * The processor handles:
- * - Solar flare prediction model data validation and processing
- * - Coordinate extraction from multiple HAPI data format field variations
- * - Time window processing for prediction intervals (start/end windows)
- * - Model-specific labeling and categorization
- * - Data deduplication based on generated unique identifiers
- * - Legacy compatibility mapping for existing Helioviewer event types
- *
- * Data Sources Supported:
- * - CCMC FlareScoreboard prediction models (multiple model types)
- * - HAPI (Heliophysics Application Programmer's Interface) formatted data
- * - Real-time and retrospective flare prediction datasets
- * - Active region coordinate data from various observatories (NOAA, Catania)
- *
- * Coordinate System Processing:
- * - Supports multiple coordinate field naming conventions
- * - Handles NOAA and Catania observatory coordinate formats
- * - Validates coordinate pairs for physical validity
- * - Maps Stonyhurst heliographic coordinates to Helioviewer coordinate system
- * - Falls back gracefully when coordinate data is unavailable
- *
- * Model Integration:
- * - Processes predictions from multiple forecasting models simultaneously
- * - Maintains model provenance through context-aware labeling
- * - Supports various prediction time windows and confidence intervals
- *
- * @package    Helioviewer\EventsApi\Collector\Processors\CCMC\FlareScoreboard
+ * @package    Helioviewer\EventsApi\Events\Processors\CCMC\FlareScoreboard
  * @author     Kasim Necdet Percinel <kasim.n.percinel@nasa.gov>
- * @since      1.0.0
- * @see        https://ccmc.gsfc.nasa.gov/challenges/flare-scoreboard/
- * @see        ProcessorInterface
+ * @see        https://ccmc.gsfc.nasa.gov/flare-scoreboard/hapi/
  */
 class Processor extends BaseProcessor
 {
+    /**
+     * @param LoggerInterface|null       $logger    Logger
+     * @param SentryClientInterface|null $sentry    Sentry client
+     * @param ActiveRegionPositions|null $positions Where NOAA regions were (HEK, else JSOC)
+     */
     public function __construct(
         ?LoggerInterface $logger = null,
-        ?SentryClientInterface $sentry = null
+        ?SentryClientInterface $sentry = null,
+        protected ?ActiveRegionPositions $positions = null
     ) {
         parent::__construct($logger, $sentry);
     }
     /**
-     * Create labels for FlareScoreboard prediction to match event interface format exactly
-     * 
-     * @param array $rawRecord The raw record from FlareScoreboard
-     * @param string $modelName The model name (dataset)
-     * @param int|string|null $regionId The region ID if available (can be NOAA number or HARP_xxx format)
-     * @param string|null $source The coordinate source (NOAA or Catania)
+     * Labels for a prediction: "<model> | <region>" over one probability per
+     * line, and the one-line "<region> | <probabilities>" for the pin; without
+     * a NOAA or HARP region, just "<model>" and "<probabilities>".
+     *
+     * @param array       $rawRecord The raw record (fills already null)
+     * @param string      $modelName The model name, e.g. "ASSA"
+     * @param string|null $region    The event's region, e.g. "AR 14548" or "HARP 13398"
      * @return array Array with 'label' and 'short_label'
      */
-    protected function createLabels(array $rawRecord, string $modelName, int|string|null $regionId, ?string $source): array
+    protected function createLabels(array $rawRecord, string $modelName, ?string $region): array
     {
-        // Create short label with flare class predictions (each on new line)
-        $shortLabel = "";
-        $flareClasses = ["C", "CPlus", "M", "MPlus", "X"];
-        
-        foreach ($flareClasses as $class) {
-            // Use the class name directly as the key in rawRecord
-            if (isset($rawRecord[$class]) && !is_null($rawRecord[$class])) {
-                $probability = round($rawRecord[$class] * 100, 2) . "%";
-                // Convert class name for display (CPlus -> C+, MPlus -> M+)
-                $displayClass = str_replace("PLUS", "+", strtoupper($class));
-                if ($shortLabel !== "") {
-                    $shortLabel .= "\n";
-                }
-                $shortLabel .= $displayClass . ": " . $probability;
+        $probabilities = [];
+        foreach (["C", "CPlus", "M", "MPlus", "X"] as $class) {
+            if (isset($rawRecord[$class])) {
+                // CPlus -> C+, MPlus -> M+
+                $probabilities[] = str_replace("PLUS", "+", strtoupper($class)) . ": " . round($rawRecord[$class] * 100, 2) . "%";
             }
         }
-        
-        // Handle case where no predictions are available
-        if ($shortLabel === "") {
-            $shortLabel = "No probabilities given";
+        if ($probabilities === []) {
+            $probabilities = ["No probabilities given"];
         }
-        
-        // Main label format: "{dataset} \n{short_label}"
-        $label = $modelName . " \n" . $shortLabel;
-        
+
         return [
-            'label' => $label,
-            'short_label' => "\n" . $shortLabel
+            'label' => $modelName . ($region !== null ? " | {$region}" : '') . "\n" . implode("\n", $probabilities),
+            'short_label' => ($region !== null ? "{$region} | " : '') . implode(", ", $probabilities),
         ];
     }
 
@@ -123,120 +85,87 @@ class Processor extends BaseProcessor
     }
 
     /**
-     * Read coordinates from specific field prefix in raw record.
+     * Read coordinates for a prediction.
+     *
+     * A row naming a NOAA region takes that region's position from HEK's
+     * active-region records (JSOC as the fallback), never from the row: CCMC's
+     * models send positions mirrored (SIDC), a day stale or differently encoded
+     * (BoM), or NOAA's midnight position stamped hours later (MAG4). When no
+     * active region can be found the row keeps CCMC's own position, flagged.
      *
      * @param array $rawRecord The raw event data
-     * @param string $field The field prefix (e.g., 'NOAA', 'Catania', 'Model')
-     * @return array|null Coordinate data with latitude, longitude, region, time, and source
-     */
-    protected function readCoordinatesFromField(array $rawRecord, string $field): ?array {
-
-        $regionKey = $field . 'RegionId';
-        $latKey = $field . 'Latitude';
-        $lonKey = $field . 'Longitude';
-        $timeKey = $field . 'LocationTime';
-        
-        $this->logger->debug("Checking {$field} coordinates - Region: " . ($rawRecord[$regionKey] ?? 'null') . 
-                           ", Lat: " . ($rawRecord[$latKey] ?? 'null') . ", Lon: " . ($rawRecord[$lonKey] ?? 'null'));
-        
-        // Check if fields have the required data (isset handles 0 values correctly)
-        if (isset($rawRecord[$regionKey]) && 
-            $rawRecord[$regionKey] !== '' &&
-            isset($rawRecord[$latKey]) && 
-            isset($rawRecord[$lonKey]) &&
-            $rawRecord[$latKey] !== '' &&
-            $rawRecord[$lonKey] !== '') {
-            
-            $lat = (float) $rawRecord[$latKey];
-            $lon = (float) $rawRecord[$lonKey];
-            
-            if (LocationParser::IsValidLatitudeLongitude($lat, $lon)) {
-                $this->logger->debug("Valid {$field} coordinates found: {$lat}, {$lon}");
-                return [
-                    'latitude' => $lat,
-                    'longitude' => $lon,
-                    'coordinate_time' => $rawRecord[$timeKey] ?? null,
-                    'source' => $field . ' ' . $rawRecord[$regionKey] . '|RawRecord'
-                ];
-            } else {
-                $this->logger->warning("Invalid {$field} coordinates: lat={$lat}, lon={$lon} (outside valid range)");
-            }
-        } else {
-            $this->logger->debug("Missing or empty {$field} coordinate data");
-        }
-
-        return null;
-    }
-
-    /**
-     * Collect all region information from raw record
-     * 
-     * @param array $rawRecord The raw event data
-     * @return array Array of region info arrays (can be empty)
-     */
-    protected function collectRegions(array $rawRecord): array
-    {
-        $possibleFields = ['NOAA', 'Catania', 'Model'];
-        $regions = [];
-
-        // Collect region IDs from all possible field prefixes
-        foreach ($possibleFields as $field) {
-            $regionKey = $field . 'RegionId';
-
-            // Use isset to properly handle 0 values
-            if (isset($rawRecord[$regionKey]) && $rawRecord[$regionKey] !== '') {
-                // For FlareScoreboard, use appropriate organization
-                $organization = match($field) {
-                    'NOAA' => 'NOAA',
-                    'Catania' => 'CATANIA',
-                    'Model' => 'MODEL',
-                    default => 'UNKNOWN'
-                };
-
-                $externalId = $rawRecord[$regionKey];
-
-                // NOAA region numbers cycle: after July 2002, 4-digit IDs need +10000
-                if ($organization === 'NOAA' && is_numeric($externalId)) {
-                    $regionId = (int) $externalId;
-                    if ($regionId > 0 && $regionId < 9000) {
-                        $externalId = (string) ($regionId + 10000);
-                    }
-                }
-
-                $regions[] = [
-                    'organization' => $organization,
-                    'external_id' => (string) $externalId
-                ];
-            }
-        }
-
-        return $regions;
-    }
-
-    /**
-     * Read coordinates from raw record using coordinate resolvers.
-     *
-     * @param array $rawRecord The raw event data
-     * @return array|null Array with coordinate data or null if no resolver succeeds
-     * @throws CoordinateResolutionException If no resolver can resolve coordinates
+     * @return array|null Coordinate data, or null when the row has no position at all
      */
     protected function readCoordinates(array $rawRecord): ?array
     {
-        $possibleFields = ['NOAA', 'Catania', 'Model'];
-        
-        $this->logger->debug("Attempting coordinate resolution from fields: " . implode(', ', $possibleFields));
-        
-        // Try to read coordinates from each possible field prefix
-        foreach ($possibleFields as $field) {
-            $coordinates = $this->readCoordinatesFromField($rawRecord, $field);
+        if (isset($rawRecord['NOAARegionId']) && (int) $rawRecord['NOAARegionId'] > 0) {
+            $coordinates = $this->readCoordinatesFromNOAARegion((int) $rawRecord['NOAARegionId'], $rawRecord['start_window']);
             if ($coordinates !== null) {
-                $this->logger->info("Successfully resolved coordinates from {$field} field: {$coordinates['latitude']}, {$coordinates['longitude']}");
                 return $coordinates;
             }
         }
-        
-        // No coordinates found in any field
-        $this->logger->error("Failed to resolve coordinates from any field: " . implode(', ', $possibleFields));
+
+        return $this->readCoordinatesFromRow($rawRecord);
+    }
+
+    /**
+     * A NOAA region's position at or before $datetime (ActiveRegionPositions),
+     * with that region as the event's linked region.
+     *
+     * @param array $alsoLink More regions to link (e.g. the HARP that named it)
+     * @return array|null Coordinate data, or null when nothing knows the region
+     */
+    protected function readCoordinatesFromNOAARegion(int $noaaId, string $datetime, array $alsoLink = []): ?array
+    {
+        // 4-digit numbers are the cycled form (4548 = 14548)
+        $noaaId = $noaaId < 9000 ? $noaaId + 10000 : $noaaId;
+
+        $position = $this->positions?->forNoaa($noaaId, strtotime($datetime));
+        if ($position === null) {
+            $this->logger->warning("No position for NOAA region {$noaaId} at or before {$datetime} (HEK or JSOC)");
+            return null;
+        }
+
+        return $position + ['regions' => array_merge([['organization' => 'NOAA', 'external_id' => (string) $noaaId]], $alsoLink)];
+    }
+
+    /**
+     * CCMC's own position when no active region can be placed: the row's NOAA
+     * fields, else its Model fields. Kept (CCMC's data is never dropped) and
+     * flagged in the position source; a NOAA number in the row is still linked.
+     *
+     * @param array $rawRecord The raw event data
+     * @return array|null Coordinate data, or null when the row has no usable position
+     */
+    protected function readCoordinatesFromRow(array $rawRecord): ?array
+    {
+        $regions = isset($rawRecord['NOAARegionId']) && (int) $rawRecord['NOAARegionId'] > 0
+            ? [['organization' => 'NOAA', 'external_id' => (string) ((int) $rawRecord['NOAARegionId'] < 9000 ? (int) $rawRecord['NOAARegionId'] + 10000 : (int) $rawRecord['NOAARegionId'])]]
+            : [];
+
+        // NOAA fields first: when a NOAA region could not be placed, its own row position is the next best
+        foreach (['NOAA', 'Model'] as $field) {
+            if (!isset($rawRecord[$field . 'Latitude'], $rawRecord[$field . 'Longitude'])) {
+                continue;
+            }
+            $lat = (float) $rawRecord[$field . 'Latitude'];
+            $lon = (float) $rawRecord[$field . 'Longitude'];
+            if (!LocationParser::IsValidLatitudeLongitude($lat, $lon)) {
+                $this->logger->warning("Out-of-range {$field} position in row: {$lat}, {$lon}");
+                continue;
+            }
+
+            $this->logger->info("Position | CCMC ROW | no active region: keeping CCMC's {$field} position ({$lat}, {$lon})");
+
+            return [
+                'latitude' => $lat,
+                'longitude' => $lon,
+                'coordinate_time' => $rawRecord[$field . 'LocationTime'] ?? $rawRecord['start_window'],
+                'source' => 'CCMC (no active region)',
+                'regions' => $regions,
+            ];
+        }
+
         return null;
     }
 
@@ -245,7 +174,7 @@ class Processor extends BaseProcessor
      * 
      * This method defines the processing workflow:
      * 1. Get timeline information (start, peak, end)
-     * 2. Get coordinates from resolvers
+     * 2. Get coordinates and regions from readCoordinates()
      * 3. Build base event data
      * 4. Let subclasses calculate remaining fields
      * 5. Return filled Event object
@@ -276,7 +205,7 @@ class Processor extends BaseProcessor
         if ($coordinates === null) {
             throw new CoordinateResolutionException(
                 "No valid coordinates found in raw record. " .
-                "Checked fields: NOAALatitude/Longitude, CataniaLatitude/Longitude, ModelLatitude/Longitude"
+                "No active region and no in-range NOAA or Model position in the row"
             );
         }
         
@@ -300,15 +229,21 @@ class Processor extends BaseProcessor
             'coordinate_system' => 'stonyhurst',
         ];
 
-        // Collect all region information
-        $regionsInfo = $this->collectRegions($rawRecord);
+        // The active region (and any HARP) found while placing the row
+        $regionsInfo = $coordinates['regions'] ?? [];
 
         // Step 4: Let subclass calculate the rest of the fields
         // Extract model name from source for proper labeling
         $modelName = method_exists($source, 'getModelName') ? $source->getModelName() : 'Unknown Model';
         
         // Create labels using helper function
-        $labels = $this->createLabels($rawRecord, $modelName, null, $coordinates['source'] ?? null);
+        // The event's NOAA region as "AR 14548" (5 digits), or its HARP; none when the row could not be placed on one
+        $region = match ($regionsInfo[0]['organization'] ?? null) {
+            null => null,
+            'NOAA' => "AR {$regionsInfo[0]['external_id']}",
+            default => "{$regionsInfo[0]['organization']} {$regionsInfo[0]['external_id']}",
+        };
+        $labels = $this->createLabels($rawRecord, $modelName, $region);
 
         // Build additional event data specific to FlareScoreboard
         $additionalData = [
@@ -332,6 +267,8 @@ class Processor extends BaseProcessor
         if (!empty($regionsInfo)) {
             $event->regions_info = $regionsInfo;
         }
+        // Where the position came from, without its time: counted in the batch summary
+        $event->position_source = preg_replace('/ \d{4}-.*$/', '', (string) ($coordinates['source'] ?? ''));
         
         return $event;
     }

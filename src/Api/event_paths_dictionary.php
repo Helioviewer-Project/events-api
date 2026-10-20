@@ -187,6 +187,16 @@ $ccmc = [
         "contact" => " ",
         "url" => "https://ccmc.gsfc.nasa.gov/scoreboards/flare/"
     ],
+    "CCMC>>Solar Flare Predictions>>ASSA 24h" => [
+        "name" => "ASSA 24h",
+        "contact" => " ",
+        "url" => "https://ccmc.gsfc.nasa.gov/scoreboards/flare/"
+    ],
+    "CCMC>>Solar Flare Predictions>>NOAA" => [
+        "name" => "NOAA",
+        "contact" => " ",
+        "url" => "https://ccmc.gsfc.nasa.gov/scoreboards/flare/"
+    ],
     "CCMC>>Solar Flare Predictions>>Bureau of Meteorology" => [
         "name" => "Bureau of Meteorology",
         "contact" => " ",

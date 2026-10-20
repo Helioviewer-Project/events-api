@@ -86,6 +86,8 @@ make
 - `make collect 2024-01-01 2024-01-31 5` - Collect date range in 5-day chunks
 - `make collect SOURCES="NAME1,NAME2" 2024-01-01` - Collect only from the named sources
 - `make sources` - List every registered source and the path it writes to
+- `make collect-flare-scoreboard` - Dry run: list each enabled Flare Scoreboard model's dates at CCMC and the collect it would run
+- `make collect-flare-scoreboard APPLY=1` - Collect the full history of every enabled Flare Scoreboard model, each from its own first date at CCMC (optional `DATASETS="ASSA_1_REGIONS,DAFFS_REGIONS"`, `CHUNK=30`)
 - `make recents` - Show the most recent events from the database
 - `make recents 10` - Show last 10 events
 - `make stats` - Show database statistics grouped by source and path
@@ -336,15 +338,15 @@ Example response:
   {
     "url": "https://events.helioviewer.org/api/v1/events/019d0c00-1985-...",
     "path": "CCMC>>Solar Flare Predictions>>ASSA",
-    "start": "2026-03-20 16:00:00",
-    "end": "2026-03-21 04:00:00",
-    "hv_hpc_x": -1,
-    "hv_hpc_y": -1,
-    "label": "ASSA \nC: 25%\nM: 4%\nX: 0%",
+    "start": "2025-06-03 00:00:00",
+    "end": "2025-06-03 12:00:00",
+    "hv_hpc_x": 37,
+    "hv_hpc_y": -14,
+    "label": "ASSA | AR 14099\nC: 26%\nM: 6%\nX: 1%",
     "coordinate_system": "stonyhurst",
-    "regions": [{"organization": "MODEL", "external_id": "4", "..."}],
+    "regions": [{"organization": "NOAA", "external_id": "14099", "..."}],
     "source_url": "https://events.helioviewer.org/api/v1/events/019d0c00-.../source",
-    "views": [{"name": "Flare Prediction", "content": {"C": 0.25, "M": 0.04, "..."}}],
+    "views": [{"name": "Flare Prediction", "content": {"C": 0.26, "M": 0.06, "..."}}],
     "link": {"url": "...", "text": "Helioviewer Events API JSON"}
   },
   "... (100 events)"
@@ -414,17 +416,17 @@ Example response:
 {
   "url": "https://events.helioviewer.org/api/v1/events/019d0c00-1985-...",
   "path": "CCMC>>Solar Flare Predictions>>ASSA",
-  "start": "2026-03-20 16:00:00",
-  "peak": "2026-03-21 04:00:00",
-  "end": "2026-03-21 04:00:00",
-  "coordinate_time": "2026-03-20 17:24:36",
-  "hv_hpc_x": -1,
-  "hv_hpc_y": -1,
-  "label": "ASSA \nC: 25%\nM: 4%\nX: 0%",
+  "start": "2025-06-03 00:00:00",
+  "peak": "2025-06-03 12:00:00",
+  "end": "2025-06-03 12:00:00",
+  "coordinate_time": "2025-06-03 00:00:00",
+  "hv_hpc_x": 37,
+  "hv_hpc_y": -14,
+  "label": "ASSA | AR 14099\nC: 26%\nM: 6%\nX: 1%",
   "coordinate_system": "stonyhurst",
-  "regions": [{"organization": "MODEL", "external_id": "4", "..."}],
+  "regions": [{"organization": "NOAA", "external_id": "14099", "..."}],
   "source_url": "https://events.helioviewer.org/api/v1/events/019d0c00-.../source",
-  "views": [{"name": "Flare Prediction", "content": {"C": 0.25, "M": 0.04, "X": 0, "..."}}],
+  "views": [{"name": "Flare Prediction", "content": {"C": 0.26, "M": 0.06, "X": 0.01, "..."}}],
   "link": {"url": "...", "text": "Helioviewer Events API JSON"}
 }
 ```
@@ -450,19 +452,22 @@ source_data = response.json()
 Example response (CCMC FlareScoreboard source):
 ```json
 {
-  "start_window": "2026-03-20T16:00:00.0Z",
-  "end_window": "2026-03-21T04:00:00.0Z",
-  "issue_time": "2026-03-20T16:00:00.0Z",
-  "C": 0.25,
-  "M": 0.04,
-  "X": 0,
-  "NOAALocationTime": "-1",
-  "NOAALatitude": "-1",
-  "NOAALongitude": "-1",
-  "ModelRegionId": 4,
-  "ModelLocationTime": "2026-03-20T16:00:00.0Z",
-  "ModelLatitude": -69,
-  "ModelLongitude": 25
+  "start_window": "2025-06-03T00:00:00.000Z",
+  "end_window": "2025-06-03T12:00:00.000Z",
+  "issue_time": "2025-06-03T00:00:00.000Z",
+  "C": 0.26,
+  "M": 0.06,
+  "CPlus": null,
+  "MPlus": null,
+  "X": 0.01,
+  "NOAARegionId": null,
+  "NOAALocationTime": null,
+  "NOAALatitude": null,
+  "NOAALongitude": null,
+  "ModelRegionId": 2,
+  "ModelLocationTime": "2025-06-03T00:00:00.000Z",
+  "ModelLatitude": -13,
+  "ModelLongitude": 37
 }
 ```
 
@@ -489,15 +494,15 @@ Example response:
 {
   "regions": [
     {
-      "id": 1032,
-      "organization": "CATANIA",
-      "external_id": "1",
-      "event_count": 147,
-      "first_seen": "2025-09-24 23:38:31",
-      "last_updated": "2025-09-24 23:38:31",
-      "latest_event_start": "2026-03-19 12:30:00"
+      "id": 5783,
+      "organization": "NOAA",
+      "external_id": "14548",
+      "event_count": 7,
+      "first_seen": "2026-10-14 16:55:03",
+      "last_updated": "2026-10-14 16:55:03",
+      "latest_event_start": "2026-10-14 00:00:00"
     },
-    "... (11310 total regions)"
+    "... (3199 total regions)"
   ]
 }
 ```
@@ -508,7 +513,7 @@ Get events associated with a specific active region.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `organization` | path | Region organization (e.g., NOAA, CATANIA, HARP) |
+| `organization` | path | Region organization: NOAA or HARP |
 | `external_id` | path | Region identifier (e.g., 14188) |
 
 ```python
@@ -536,9 +541,9 @@ Example response:
       "path": "CCMC>>Solar Flare Predictions>>DAFFS",
       "start": "2025-08-31 23:54:00",
       "end": "2025-09-01 23:54:00",
-      "hv_hpc_x": -10.97,
-      "hv_hpc_y": 60.73,
-      "label": "DAFFS \nC+: 0.3%\nM+: 0.03%\nX: 0.06%",
+      "hv_hpc_x": 78,
+      "hv_hpc_y": -9,
+      "label": "DAFFS | AR 14188\nC+: 0.3%\nM+: 0.03%\nX: 0.06%",
       "coordinate_system": "stonyhurst",
       "..."
     },
