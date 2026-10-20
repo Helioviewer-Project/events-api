@@ -520,14 +520,14 @@ regions = data[<span class="str">"regions"</span>]</code></pre>
                     <p><strong>Example response:</strong></p>
                     <pre><code>{
   "regions": [{
-    "id": 1032,
-    "organization": "CATANIA",
-    "external_id": "1",
-    "event_count": 147,
-    "first_seen": "2025-09-24 23:38:31",
-    "last_updated": "2025-09-24 23:38:31",
-    "latest_event_start": "2026-03-19 12:30:00"
-  }, ... <span class="cmt">// 11310 total regions</span>]
+    "id": 5783,
+    "organization": "NOAA",
+    "external_id": "14548",
+    "event_count": 7,
+    "first_seen": "2026-10-14 16:55:03",
+    "last_updated": "2026-10-14 16:55:03",
+    "latest_event_start": "2026-10-14 00:00:00"
+  }, ... <span class="cmt">// 3199 total regions</span>]
 }</code></pre>
                 </div>
             </details>
@@ -542,7 +542,7 @@ regions = data[<span class="str">"regions"</span>]</code></pre>
                     <p>Get events associated with a specific active region.</p>
                     <table class="param-table">
                         <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
-                        <tr><td><code>organization</code></td><td>path</td><td>Region organization (e.g., NOAA, CATANIA, HARP)</td></tr>
+                        <tr><td><code>organization</code></td><td>path</td><td>Region organization: NOAA or HARP</td></tr>
                         <tr><td><code>external_id</code></td><td>path</td><td>Region identifier (e.g., 14188)</td></tr>
                     </table>
                     <pre><code><span class="kw">import</span> requests
@@ -1179,10 +1179,6 @@ HTML;
                             <label for="org_noaa">NOAA</label>
                         </div>
                         <div class="radio-item">
-                            <input type="radio" id="org_catania" name="organization" value="CATANIA">
-                            <label for="org_catania">Catania</label>
-                        </div>
-                        <div class="radio-item">
                             <input type="radio" id="org_harp" name="organization" value="HARP">
                             <label for="org_harp">HARP</label>
                         </div>
@@ -1273,7 +1269,7 @@ HTML;
                     apiUrl = `/api/v1/regions/\${organization}/\${encodeURIComponent(regionId)}`;
                 } else {
                     // Try each organization if none specified
-                    const orgs = ['NOAA', 'CATANIA', 'HARP'];
+                    const orgs = ['NOAA', 'HARP'];
                     let results = [];
 
                     for (const org of orgs) {

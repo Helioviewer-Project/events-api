@@ -494,15 +494,15 @@ Example response:
 {
   "regions": [
     {
-      "id": 1032,
-      "organization": "CATANIA",
-      "external_id": "1",
-      "event_count": 147,
-      "first_seen": "2025-09-24 23:38:31",
-      "last_updated": "2025-09-24 23:38:31",
-      "latest_event_start": "2026-03-19 12:30:00"
+      "id": 5783,
+      "organization": "NOAA",
+      "external_id": "14548",
+      "event_count": 7,
+      "first_seen": "2026-10-14 16:55:03",
+      "last_updated": "2026-10-14 16:55:03",
+      "latest_event_start": "2026-10-14 00:00:00"
     },
-    "... (11310 total regions)"
+    "... (3199 total regions)"
   ]
 }
 ```
@@ -513,7 +513,7 @@ Get events associated with a specific active region.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `organization` | path | Region organization (e.g., NOAA, CATANIA, HARP) |
+| `organization` | path | Region organization: NOAA or HARP |
 | `external_id` | path | Region identifier (e.g., 14188) |
 
 ```python

@@ -15,45 +15,13 @@ use Helioviewer\EventsApi\Regions\ActiveRegionPositions;
 use HelioviewerEventInterface\Util\LocationParser;
 
 /**
- * FlareScoreboard Prediction Data Processor
+ * Flare Scoreboard predictions (CCMC HAPI 3.0) to events: one forecast window,
+ * placed on the active region it names; subclasses cover models that differ
+ * (ModelRegionProcessor, DaffProcessor, AmosProcessor).
  *
- * This processor handles the transformation and normalization of solar flare
- * prediction data from various FlareScoreboard models provided by the Community
- * Coordinated Modeling Center (CCMC). FlareScoreboard is a framework for
- * evaluating and comparing different solar flare prediction models using
- * standardized metrics and time windows.
- *
- * The processor handles:
- * - Solar flare prediction model data validation and processing
- * - Coordinate extraction from multiple HAPI data format field variations
- * - Time window processing for prediction intervals (start/end windows)
- * - Model-specific labeling and categorization
- * - Data deduplication based on generated unique identifiers
- * - Legacy compatibility mapping for existing Helioviewer event types
- *
- * Data Sources Supported:
- * - CCMC FlareScoreboard prediction models (multiple model types)
- * - HAPI (Heliophysics Application Programmer's Interface) formatted data
- * - Real-time and retrospective flare prediction datasets
- * - Active region coordinate data from various observatories (NOAA, Catania)
- *
- * Coordinate System Processing:
- * - Supports multiple coordinate field naming conventions
- * - Handles NOAA and Catania observatory coordinate formats
- * - Validates coordinate pairs for physical validity
- * - Maps Stonyhurst heliographic coordinates to Helioviewer coordinate system
- * - Falls back gracefully when coordinate data is unavailable
- *
- * Model Integration:
- * - Processes predictions from multiple forecasting models simultaneously
- * - Maintains model provenance through context-aware labeling
- * - Supports various prediction time windows and confidence intervals
- *
- * @package    Helioviewer\EventsApi\Collector\Processors\CCMC\FlareScoreboard
+ * @package    Helioviewer\EventsApi\Events\Processors\CCMC\FlareScoreboard
  * @author     Kasim Necdet Percinel <kasim.n.percinel@nasa.gov>
- * @since      1.0.0
- * @see        https://ccmc.gsfc.nasa.gov/challenges/flare-scoreboard/
- * @see        ProcessorInterface
+ * @see        https://ccmc.gsfc.nasa.gov/flare-scoreboard/hapi/
  */
 class Processor extends BaseProcessor
 {
@@ -206,7 +174,7 @@ class Processor extends BaseProcessor
      * 
      * This method defines the processing workflow:
      * 1. Get timeline information (start, peak, end)
-     * 2. Get coordinates from resolvers
+     * 2. Get coordinates and regions from readCoordinates()
      * 3. Build base event data
      * 4. Let subclasses calculate remaining fields
      * 5. Return filled Event object
