@@ -5,8 +5,6 @@ declare(strict_types=1);
 namespace Helioviewer\EventsApi\Events\Processors\CCMC\FlareScoreboard;
 
 use Helioviewer\EventsApi\Events\Sources\SourceInterface;
-use Helioviewer\EventsApi\Exception\JsocException;
-use Helioviewer\EventsApi\Exception\UpstreamDownException;
 use Helioviewer\EventsApi\Jsoc\HarpService;
 use Helioviewer\EventsApi\Regions\ActiveRegionPositions;
 use Helioviewer\EventsApi\Sentry\ClientInterface as SentryClientInterface;
@@ -68,11 +66,7 @@ class DaffProcessor extends Processor
 
         if (isset($rawRecord['ModelRegionId']) && (int) $rawRecord['ModelRegionId'] > 0) {
             $harpId = (int) $rawRecord['ModelRegionId'];
-            try {
-                $harp = $this->harpService->getLastCoordinateForHarp($harpId, $rawRecord['start_window']);
-            } catch (JsocException $e) {
-                throw new UpstreamDownException("JSOC is down: " . $e->getMessage(), null, $e);
-            }
+            $harp = $this->harpService->getLastCoordinateForHarp($harpId, $rawRecord['start_window']);
             $harpRegion = ['organization' => 'HARP', 'external_id' => (string) $harpId];
 
             // NOAA_ARS can be "MISSING", one number or several ("13690,13691"); only one is a NOAA region

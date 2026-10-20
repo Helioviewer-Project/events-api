@@ -85,8 +85,6 @@ $collector = EventCollector::createStandard(
     $container['hpcResolver'],
     $container['cache']
 );
-// Someone is watching a CLI collect: stop at the first CCMC or JSOC outage and say where to resume
-$collector->stopWhenUpstreamDown();
 
 // Log registered sources, marking what the SOURCES filter will actually run.
 // Asks the collector rather than re-deriving the match, so this cannot drift
@@ -147,13 +145,6 @@ try {
         $avgRate = round($totalEvents / max($duration, 0.1), 2);
         $logger->info("Collection completed with total {$totalEvents} events, average {$avgRate} events/sec");
     });
-} catch (\Helioviewer\EventsApi\Exception\UpstreamDownException $e) {
-    // Already logged and sent to Sentry by the collector
-    $resume = $e->resumeFrom ?? date('Y-m-d', $start);
-    $sources = $sourceNames === [] ? '' : ' SOURCES="' . implode(',', $sourceNames) . '"';
-    fwrite(STDERR, "\nSTOPPED: {$e->getMessage()}\n"
-        . "Resume when it is back: make collect {$resume} " . date('Y-m-d', $end) . " {$intervalDays}{$sources}\n");
-    exit(3);
 } catch (\Throwable $e) {
     $sentry->capture($e);
     $logger->critical("Collection failed: " . $e->getMessage());

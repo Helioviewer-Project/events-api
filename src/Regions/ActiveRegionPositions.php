@@ -7,7 +7,6 @@ namespace Helioviewer\EventsApi\Regions;
 use Helioviewer\EventsApi\Events\Event;
 use Helioviewer\EventsApi\Events\Repositories\RepositoryInterface as EventRepositoryInterface;
 use Helioviewer\EventsApi\Exception\JsocException;
-use Helioviewer\EventsApi\Exception\UpstreamDownException;
 use Helioviewer\EventsApi\Jsoc\NoaaService;
 use Helioviewer\EventsApi\Storage\Json\JsonStorageInterface;
 use Psr\Log\LoggerInterface;
@@ -162,7 +161,8 @@ class ActiveRegionPositions
                 . gmdate('Y-m-d H:i', $at) . ', ' . count($regions) . ' NOAA regions for ' . gmdate('Y-m-d', $at));
             return $regions;
         } catch (JsocException $e) {
-            throw new UpstreamDownException('JSOC is down: NOAA regions for ' . gmdate('Y-m-d', $at) . ' failed: ' . $e->getMessage(), null, $e);
+            $this->logger->warning("JSOC NOAA regions for " . gmdate('Y-m-d', $at) . " failed: " . $e->getMessage());
+            return [];
         }
     }
 
@@ -247,7 +247,8 @@ class ActiveRegionPositions
         try {
             $record = $this->noaaService->getLastCoordinateForNoaa($noaaId, gmdate('Y-m-d H:i:s', $at));
         } catch (JsocException $e) {
-            throw new UpstreamDownException("JSOC is down: NOAA {$noaaId} lookup failed: " . $e->getMessage(), null, $e);
+            $this->logger->warning("JSOC lookup for NOAA {$noaaId} failed: " . $e->getMessage());
+            return null;
         }
 
         return $record === null ? null : [
