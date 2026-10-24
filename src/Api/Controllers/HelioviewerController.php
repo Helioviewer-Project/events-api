@@ -81,6 +81,9 @@ class HelioviewerController extends Controller
      */
     public function getObservationsBySelection(Request $request, Response $response): Response
     {
+        // Footprints of many frames are decoded at once (WSA maps are large)
+        ini_set('memory_limit', '512M');
+
         // Parse JSON body
         $body = $request->getBody()->getContents();
         $json = json_decode($body, true);
