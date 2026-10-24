@@ -144,7 +144,7 @@ class HelioviewerController extends Controller
         // Ensure every event carries its native-HPC snapshot (in-memory only, for
         // rows the backfill has not covered yet). The static dict below serves the
         // arcsec base, and resolving once here also spares the per-timestamp clones.
-        $needsSnapshot = $allEvents->filter(fn($e) => $e->footprint_hpc === null || $e->x_hpc === null);
+        $needsSnapshot = $allEvents->reject(fn($e) => $e->hasHpcSnapshot());
         if ($needsSnapshot->isNotEmpty()) {
             $this->hpcResolver->resolve($needsSnapshot);
         }

@@ -81,7 +81,7 @@ class CoordinateRotator
         }
 
         // Transitional: resolve rows without a stored snapshot, in-memory only.
-        $unresolved = $events->filter(fn($event) => $event->footprint_hpc === null || $event->x_hpc === null);
+        $unresolved = $events->reject(fn($event) => $event->hasHpcSnapshot());
         if ($unresolved->isNotEmpty()) {
             $this->logger->info("CoordinateRotator | Resolving {$unresolved->count()} events without native-HPC snapshot");
             $this->hpcResolver->resolve($unresolved);

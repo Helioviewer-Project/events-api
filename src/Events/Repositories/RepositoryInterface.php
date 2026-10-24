@@ -66,8 +66,7 @@ interface RepositoryInterface
      *
      * Returns events from the given sources whose lifespan intersects
      * [minTime, maxTime]. Use this when consumers need every event in a
-     * span (e.g. a single short query). For long spans with sparse sample
-     * points, prefer findActiveAtAnyTimestamp() to avoid pulling unrelated rows.
+     * span (e.g. a single short query).
      *
      * @param array<string> $sources Source names to filter by
      * @param int $minTime Start of window (Unix timestamp)
@@ -76,23 +75,6 @@ interface RepositoryInterface
      * @return Collection<int, Event>
      */
     public function findActiveInWindow(array $sources, int $minTime, int $maxTime): Collection;
-
-    /**
-     * Retrieve events active at ANY of the given timestamps.
-     *
-     * Built as one SQL with N ORed (start <= t AND end >= t) conditions.
-     * For sparse timestamp lists (e.g. a long movie with widely-spaced
-     * frames) this is dramatically cheaper than findActiveInWindow(),
-     * because only events that intersect at least one requested moment
-     * are returned. For dense timestamps the ORed ranges overlap heavily
-     * and the cost is similar.
-     *
-     * @param array<string> $sources    Source names to filter by
-     * @param array<int>    $timestamps Unix timestamps to consider
-     *
-     * @return Collection<int, Event>
-     */
-    public function findActiveAtAnyTimestamp(array $sources, array $timestamps): Collection;
 
     /**
      * Retrieve events matching path-prefix and/or UUID selections, active at ANY of the timestamps.
