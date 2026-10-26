@@ -226,6 +226,19 @@ class Event extends Model
     }
 
     /**
+     * Whether the native-HPC snapshot (x_hpc and footprint_hpc) is stored.
+     * Reads the raw attribute: the array cast would decode the whole
+     * footprint JSON on every check, which costs seconds on WSA maps.
+     *
+     * @return bool
+     */
+    public function hasHpcSnapshot(): bool
+    {
+        return ($this->attributes['footprint_hpc'] ?? null) !== null
+            && $this->x_hpc !== null;
+    }
+
+    /**
      * Scope a query to only include events from a specific source.
      *
      * @param  Builder $query The query builder instance

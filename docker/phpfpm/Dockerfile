@@ -14,6 +14,9 @@ RUN docker-php-ext-install pdo pdo_pgsql pcntl
 # Install Redis extension
 RUN pecl install redis && docker-php-ext-enable redis
 
+# PHP settings
+COPY app.ini /usr/local/etc/php/conf.d/zz-app.ini
+
 # Copy composer from official composer image
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 

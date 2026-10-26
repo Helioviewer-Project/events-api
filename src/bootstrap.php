@@ -29,6 +29,11 @@ register_shutdown_function(function () {
     if ($error !== null && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR])) {
         // Log to stderr since logger might not be available
         error_log("Fatal error: {$error['message']} in {$error['file']} on line {$error['line']}");
+        if (php_sapi_name() !== 'cli' && !headers_sent()) {
+            http_response_code(500);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => 'Internal server error']);
+        }
     }
 });
 
