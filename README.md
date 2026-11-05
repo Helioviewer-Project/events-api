@@ -567,6 +567,8 @@ Example response:
 ### Services
 - **Nginx** (`eventsapi-nginx`) - Web server listening on port 8082
 - **PHP-FPM** (`eventsapi-phpfpm`) - PHP 8.4 application server
+  - Settings live in `docker/phpfpm/app.ini` (PHP) and `docker/phpfpm/zz-pool.conf` (workers: up to 16). Both are mounted, so a change applies after `docker compose restart phpfpm`, with no image rebuild.
+  - The access log in `docker logs eventsapi-phpfpm` shows each request's time and peak memory.
 - **PostgreSQL** (`eventsapi-postgres`) - Event database with Eloquent ORM
 - **Redis** (`eventsapi-redis`) - Caching layer for HTTP and coordinate transformations
 
