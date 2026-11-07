@@ -575,9 +575,11 @@ Example response:
 ### Coordinate Transformation
 The system includes dual HTTP-based coordinate transformation services with automatic failover:
 - **Primary** - Remote coordinator service (`HV_COORDINATOR_URL`)
-- **Backup** - Local Docker coordinator container (`http://coordinator`)
+- **Backup** - Local Docker coordinator container (`HV_COORDINATOR_FALLBACK_URL`)
 
 Both coordinators support batch processing and Redis caching for optimal performance.
+
+A movie request (`frames_with_selections`) needs one coordinator call per frame and coordinate system, so up to 144 for 48 frames. They are sent in parallel, `COORDINATOR_CONCURRENCY` at a time (default 8). Calls that fall back to the backup go one at a time, because the backup runs on the same machine as the API. Rotation results are cached in Redis for 24 hours.
 
 ### Database Configuration
 

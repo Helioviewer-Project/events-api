@@ -71,4 +71,16 @@ interface CoordinatorInterface
      * @throws CoordinatorException If coordinate transformation fails
      */
     public function helioprojectiveToHelioprojectiveBatch(array $coordinateArray, $targetTimestamp): array;
+
+    /**
+     * One batch call for any of the three systems, as a promise, so a caller
+     * can keep several in flight.
+     *
+     * @param string $system carrington, stonyhurst, or helioprojective
+     * @param array $coordinateArray Coordinates keyed by event id, in the system's own fields
+     * @param int|string $targetTimestamp Target time
+     * @return \GuzzleHttp\Promise\PromiseInterface Resolves to the same result as the
+     *         matching batch method; rejects with CoordinatorException
+     */
+    public function batchAsync(string $system, array $coordinateArray, $targetTimestamp): \GuzzleHttp\Promise\PromiseInterface;
 }
