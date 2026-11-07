@@ -271,9 +271,7 @@ $harpService = new HarpService($httpClient, $redisCache, $logger);
 $noaaService = new NoaaService($httpClient, $redisCache, $logger);
 $failoverCoordinator = new FailoverCoordinator($coordinator, $backup_coordinator, $logger, $sentry);
 $hpcResolver = HPCResolver::createDefault($failoverCoordinator, $logger);
-// Coordinator calls a movie request keeps in flight at once
-$coordinateRotator = new CoordinateRotator($failoverCoordinator, $hpcResolver, $logger, $redisCache,
-    (int) ($_ENV['COORDINATOR_CONCURRENCY'] ?? 8));
+$coordinateRotator = new CoordinateRotator($failoverCoordinator, $hpcResolver, $logger, $redisCache);
 $distributionRepository = new DistributionPostgres($redisCache, $logger);
 
 // Initialize container with all services

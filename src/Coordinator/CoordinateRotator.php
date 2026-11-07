@@ -9,7 +9,6 @@ use Helioviewer\EventsApi\Events\Event;
 use Psr\SimpleCache\CacheInterface;
 use Psr\Log\LoggerInterface;
 use Illuminate\Database\Eloquent\Collection;
-use GuzzleHttp\Promise\Each;
 
 /**
  * Rotates event coordinates to a target observation time.
@@ -39,27 +38,23 @@ class CoordinateRotator
     private HPCResolver $hpcResolver;
     private LoggerInterface $logger;
     private ?CacheInterface $cache;
-    private int $concurrency;
 
     /**
      * @param CoordinatorInterface $coordinator Coordinator (failover-wrapped)
      * @param HPCResolver $hpcResolver Fills missing native-HPC snapshots in-memory
      * @param LoggerInterface $logger Logger
      * @param CacheInterface|null $cache Optional cache for rotation results
-     * @param int $concurrency Coordinator calls rotateFrames() keeps in flight
      */
     public function __construct(
         CoordinatorInterface $coordinator,
         HPCResolver $hpcResolver,
         LoggerInterface $logger,
-        ?CacheInterface $cache = null,
-        int $concurrency = 8
+        ?CacheInterface $cache = null
     ) {
         $this->coordinator = $coordinator;
         $this->hpcResolver = $hpcResolver;
         $this->logger = $logger;
         $this->cache = $cache;
-        $this->concurrency = max(1, $concurrency);
     }
 
     /**
@@ -166,8 +161,9 @@ class CoordinateRotator
      * Rotate one group of events sharing a coordinate system, through the route
      * built for that system. Cached 24h.
      *
-     * The match below has no default: Event::coordinateSystem() can only
-     * return these three names, so a fourth throws immediately.
+     * Neither match has a default: Event::coordinateSystem() can only return
+     * these three names, so a fourth added there without updating here throws
+     * immediately instead of routing a new system silently through /hpc.
      *
      * @param string $system carrington, stonyhurst, or helioprojective
      * @param Collection $events Events in that system
@@ -175,117 +171,6 @@ class CoordinateRotator
      * @return array Rotated coordinates keyed by event ID
      */
     private function rotateSameCoordinateGroup(string $system, Collection $events, int $target): array
-    {
-        $coordinates = $this->coordinatesFor($system, $events);
-
-        $coordCount = count($coordinates);
-        $this->logger->debug("CoordinateRotator | Rotating {$coordCount} {$system} centers");
-
-        $cacheKey = $this->groupCacheKey($system, $coordinates, $target);
-        if ($this->cache !== null) {
-            $cached = $this->cache->get($cacheKey);
-            if ($cached !== null) {
-                $this->logger->info("CoordinateRotator | Cache HIT | {$coordCount} {$system} coordinates");
-                return $cached;
-            }
-        }
-
-        try {
-            $result = match ($system) {
-                'carrington'      => $this->coordinator->carringtonToHelioprojectiveBatch($coordinates, $target),
-                'stonyhurst'      => $this->coordinator->stonyhurstToHelioprojectiveBatch($coordinates, $target),
-                'helioprojective' => $this->coordinator->helioprojectiveToHelioprojectiveBatch($coordinates, $target),
-            };
-        } catch (CoordinatorException $e) {
-            // Only this system falls back; the other groups still rotate.
-            $this->logger->error("CoordinateRotator | {$system} rotation failed for {$coordCount} coordinates | " . $e->getMessage());
-            return [];
-        }
-
-        if ($this->cache !== null && !empty($result)) {
-            $this->cache->set($cacheKey, $result, 86400);
-        }
-
-        return $result;
-    }
-
-    /**
-     * Rotate the centers of many frames at once, for movies. Same groups,
-     * routes and cache entries as rotate(), but the coordinator calls of all
-     * frames run in parallel, up to $concurrency at a time.
-     *
-     * @param Collection $events Events of the whole movie
-     * @param int[] $targets Frame times (Unix timestamps)
-     * @return array [target => [eventId => ['hpc_x' => …, 'hpc_y' => …, 'visible' => …]]];
-     *               an event missing from a frame could not be rotated there
-     */
-    public function rotateFrames(Collection $events, array $targets): array
-    {
-        $unresolved = $events->reject(fn($event) => $event->hasHpcSnapshot());
-        if ($unresolved->isNotEmpty()) {
-            $this->logger->info("CoordinateRotator | Resolving {$unresolved->count()} events without native-HPC snapshot");
-            $this->hpcResolver->resolve($unresolved);
-        }
-        $events = $events->filter(fn($event) => $event->x_hpc !== null);
-
-        // Cached groups are served at once; the rest become coordinator jobs
-        $out = [];
-        $jobs = [];
-        foreach (array_unique($targets) as $target) {
-            $out[$target] = [];
-            $active = $events->filter(fn($e) => $e->start <= $target && $e->end >= $target);
-            foreach ($active->groupBy(fn($e) => $e->coordinateSystem()) as $system => $group) {
-                $system = (string) $system;
-                $coordinates = $this->coordinatesFor($system, $group);
-                $cacheKey = $this->groupCacheKey($system, $coordinates, $target);
-                $cached = $this->cache?->get($cacheKey);
-                if ($cached !== null) {
-                    $out[$target] += $cached;
-                    continue;
-                }
-                $jobs[] = [$target, $system, $coordinates, $cacheKey];
-            }
-        }
-
-        $hits = array_sum(array_map('count', $out));
-        $this->logger->info("CoordinateRotator | " . count($targets) . " frames | {$hits} centers from cache | " . count($jobs) . " coordinator calls, {$this->concurrency} at a time");
-
-        $calls = function () use ($jobs, &$out) {
-            foreach ($jobs as [$target, $system, $coordinates, $cacheKey]) {
-                yield $this->coordinator->batchAsync($system, $coordinates, $target)->then(
-                    function (array $result) use ($target, $cacheKey, &$out) {
-                        $out[$target] += $result;
-                        if ($this->cache !== null && !empty($result)) {
-                            $this->cache->set($cacheKey, $result, 86400);
-                        }
-                    },
-                    function (\Throwable $e) use ($target, $system, $coordinates) {
-                        if (!$e instanceof CoordinatorException) {
-                            throw $e;
-                        }
-                        // Only this frame and system stay unrotated; the other calls go on
-                        $this->logger->error("CoordinateRotator | {$system} rotation failed for " . count($coordinates) . " coordinates at {$target} | " . $e->getMessage());
-                    }
-                );
-            }
-        };
-        Each::ofLimit($calls(), $this->concurrency)->wait();
-
-        return $out;
-    }
-
-    /**
-     * The coordinator input for each event of one system.
-     *
-     * Neither match has a default: Event::coordinateSystem() can only return
-     * these three names, so a fourth added there without updating here throws
-     * immediately instead of routing a new system silently through /hpc.
-     *
-     * @param string $system carrington, stonyhurst, or helioprojective
-     * @param Collection $events Events in that system
-     * @return array Coordinates keyed by event ID
-     */
-    private function coordinatesFor(string $system, Collection $events): array
     {
         $coordinates = [];
         foreach ($events as $event) {
@@ -314,21 +199,37 @@ class CoordinateRotator
                 ],
             };
         }
-        return $coordinates;
-    }
 
-    /**
-     * One cache entry per group of events, system and target.
-     *
-     * @param string $system Coordinate system
-     * @param array $coordinates From coordinatesFor()
-     * @param int $target Target observation time
-     * @return string
-     */
-    private function groupCacheKey(string $system, array $coordinates, int $target): string
-    {
+        $coordCount = count($coordinates);
+        $this->logger->debug("CoordinateRotator | Rotating {$coordCount} {$system} centers");
+
         // The system belongs in the key, or two groups of the same size collide.
-        return "coordinator:rot:{$system}:" . md5(serialize($coordinates) . $target);
+        $cacheKey = "coordinator:rot:{$system}:" . md5(serialize($coordinates) . $target);
+        if ($this->cache !== null) {
+            $cached = $this->cache->get($cacheKey);
+            if ($cached !== null) {
+                $this->logger->info("CoordinateRotator | Cache HIT | {$coordCount} {$system} coordinates");
+                return $cached;
+            }
+        }
+
+        try {
+            $result = match ($system) {
+                'carrington'      => $this->coordinator->carringtonToHelioprojectiveBatch($coordinates, $target),
+                'stonyhurst'      => $this->coordinator->stonyhurstToHelioprojectiveBatch($coordinates, $target),
+                'helioprojective' => $this->coordinator->helioprojectiveToHelioprojectiveBatch($coordinates, $target),
+            };
+        } catch (CoordinatorException $e) {
+            // Only this system falls back; the other groups still rotate.
+            $this->logger->error("CoordinateRotator | {$system} rotation failed for {$coordCount} coordinates | " . $e->getMessage());
+            return [];
+        }
+
+        if ($this->cache !== null && !empty($result)) {
+            $this->cache->set($cacheKey, $result, 86400);
+        }
+
+        return $result;
     }
 
     /**

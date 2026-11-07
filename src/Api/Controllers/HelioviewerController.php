@@ -143,7 +143,7 @@ class HelioviewerController extends Controller
 
         // Ensure every event carries its native-HPC snapshot (in-memory only, for
         // rows the backfill has not covered yet). The static dict below serves the
-        // arcsec base, and rotateFrames() then finds every snapshot in place.
+        // arcsec base, and resolving once here also spares the per-timestamp clones.
         $needsSnapshot = $allEvents->reject(fn($e) => $e->hasHpcSnapshot());
         if ($needsSnapshot->isNotEmpty()) {
             $this->hpcResolver->resolve($needsSnapshot);
@@ -189,35 +189,47 @@ class HelioviewerController extends Controller
         }
 
         // === Per-timestamp rotated coordinates ===
-        // Centers only — footprints were sent once in `events`; the client
-        // moves them per frame. All frames rotate in one call, in parallel.
-        $rotatedByFrame = $this->coordinateRotator->rotateFrames($allEvents, $parsedTimestamps);
-
         $timestampsOut = [];
         foreach ($parsedTimestamps as $idx => $t) {
             $tsKey = $timestamps[$idx]; // original string used as key
 
-            $obs = [];
-            foreach ($allEvents as $event) {
-                if (!($event->start <= $t && $event->end >= $t)) {
-                    continue;
-                }
-                $rotated = $rotatedByFrame[$t][$event->id] ?? null;
+            $activeEvents = $allEvents
+                ->filter(fn($e) => $e->start <= $t && $e->end >= $t)
+                ->map(fn($e) => clone $e);
 
-                // No result = rotation did not happen (coordinator failed): the
-                // event stays at its base position. dx/dy = rotated center minus
-                // the base center (x_hpc/y_hpc — the same values served in
-                // `events`). visible is this frame's own answer: a long-lived
-                // event rotates behind the limb mid-movie.
-                $obs[$event->id] = $rotated === null
-                    ? ['dx' => 0, 'dy' => 0, 'visible' => true]
+            if ($activeEvents->isEmpty()) {
+                $timestampsOut[$tsKey] = (object) [];
+                continue;
+            }
+
+            // Remember each center before rotation, to detect rotation failures.
+            $centersBeforeRotate = [];
+            foreach ($activeEvents as $e) {
+                $centersBeforeRotate[$e->id] = [$e->hv_hpc_x, $e->hv_hpc_y];
+            }
+
+            // Centers only — footprints were sent once in `events`; the client
+            // moves them per frame.
+            $rotated = $this->coordinateRotator->rotate($activeEvents, $t, false);
+
+            $obs = [];
+            foreach ($rotated as $event) {
+                // Center unchanged = rotation did not happen (no snapshot, or
+                // coordinator failed): the event stays at its base position.
+                $unrotated = [$event->hv_hpc_x, $event->hv_hpc_y] === $centersBeforeRotate[$event->id];
+
+                // dx/dy = rotated center minus the base center (x_hpc/y_hpc —
+                // the same values served in `events`). visible is this frame's
+                // own answer: a long-lived event rotates behind the limb mid-movie.
+                $obs[$event->id] = $unrotated
+                    ? ['dx' => 0, 'dy' => 0, 'visible' => $event->visible ?? true]
                     : [
-                        'dx' => $rotated['hpc_x'] - $event->x_hpc,
-                        'dy' => $rotated['hpc_y'] - $event->y_hpc,
-                        'visible' => $rotated['visible'] ?? true,
+                        'dx' => $event->hv_hpc_x - $event->x_hpc,
+                        'dy' => $event->hv_hpc_y - $event->y_hpc,
+                        'visible' => $event->visible ?? true,
                     ];
             }
-            $timestampsOut[$tsKey] = $obs === [] ? (object) [] : $obs;
+            $timestampsOut[$tsKey] = $obs;
         }
 
         return $this->json($response, [

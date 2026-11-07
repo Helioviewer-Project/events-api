@@ -12,9 +12,6 @@ use Psr\Log\LoggerInterface;
 use GuzzleHttp\Client;
 use GuzzleHttp\Psr7\Response;
 use GuzzleHttp\Psr7\Request;
-use GuzzleHttp\ClientInterface as GuzzleClientInterface;
-use GuzzleHttp\Promise\Create;
-use GuzzleHttp\Promise\PromiseInterface;
 
 /**
  * HTTP Client with caching capabilities for source requests
@@ -137,60 +134,6 @@ class CachedHttpClient implements ClientInterface
         $request = new Request('POST', $uri, $headers, $body);
 
         return $this->sendRequest($request);
-    }
-
-    /**
-     * postJson() that returns at once, so several requests can be in flight
-     * together. Same cache, key and TTL as postJson().
-     *
-     * @param string $uri URI to request
-     * @param array $data Data to be JSON encoded and sent
-     * @return PromiseInterface Resolves to the ResponseInterface
-     */
-    public function postJsonAsync(string $uri, array $data): PromiseInterface
-    {
-        $request = new Request('POST', $uri, [
-            'Content-Type' => 'application/json',
-            'Accept' => 'application/json'
-        ], json_encode($data));
-        $cacheKey = $this->createCacheKey($request);
-
-        if ($this->cache) {
-            try {
-                $cachedResponse = $this->cache->get($cacheKey);
-                if ($cachedResponse !== null) {
-                    $this->logger->debug("HTTP Client | Cache HIT | POST " . $uri);
-                    return Create::promiseFor($this->deserializeResponse($cachedResponse));
-                }
-            } catch (\Psr\SimpleCache\CacheException $e) {
-                $this->logger->error("HTTP Client | Cache read error: " . $e->getMessage());
-            }
-        }
-
-        $this->logger->debug("HTTP Client | Cache MISS | POST " . $uri);
-
-        // A client without async support still works, one request at a time
-        if (!$this->client instanceof GuzzleClientInterface) {
-            try {
-                return Create::promiseFor($this->sendRequest($request));
-            } catch (\Throwable $e) {
-                return Create::rejectionFor($e);
-            }
-        }
-
-        // Same options Guzzle's sendRequest() uses: error statuses come back as responses
-        return $this->client->sendAsync($request, ['http_errors' => false, 'allow_redirects' => false])
-            ->then(function (ResponseInterface $response) use ($cacheKey) {
-                if ($this->cache && $response->getStatusCode() < 400) {
-                    try {
-                        $this->cache->set($cacheKey, $this->serializeResponse($response), $this->cacheTtl);
-                    } catch (\Psr\SimpleCache\CacheException $e) {
-                        $this->logger->error("HTTP Client | Cache write error: " . $e->getMessage());
-                    }
-                }
-                $response->getBody()->rewind();
-                return $response;
-            });
     }
 
     /**

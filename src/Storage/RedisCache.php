@@ -107,18 +107,9 @@ class RedisCache implements CacheInterface
      */
     public function getMultiple(iterable $keys, mixed $default = null): iterable
     {
-        $keys = is_array($keys) ? array_values($keys) : iterator_to_array($keys, false);
-        if ($keys === []) {
-            return [];
-        }
-
-        // One MGET round trip; a missing key comes back as false
-        $values = $this->redis->mget(array_map(fn($key) => $this->prefix . $key, $keys));
-
         $result = [];
-        foreach ($keys as $i => $key) {
-            $value = $values[$i] ?? false;
-            $result[$key] = $value === false ? $default : unserialize($value);
+        foreach ($keys as $key) {
+            $result[$key] = $this->get($key, $default);
         }
         return $result;
     }
@@ -132,35 +123,12 @@ class RedisCache implements CacheInterface
      */
     public function setMultiple(iterable $values, null|int|\DateInterval $ttl = null): bool
     {
-        if ($ttl instanceof \DateInterval) {
-            $ttl = (new \DateTime())->add($ttl)->getTimestamp() - time();
-        }
-
-        // One pipelined round trip instead of one per key
-        $this->redis->multi(Redis::PIPELINE);
-        $count = 0;
-        try {
-            foreach ($values as $key => $value) {
-                $prefixedKey = $this->prefix . $key;
-                $serializedValue = serialize($value);
-                if ($ttl === null) {
-                    $this->redis->set($prefixedKey, $serializedValue);
-                } else {
-                    $this->redis->setex($prefixedKey, $ttl, $serializedValue);
-                }
-                $count++;
+        foreach ($values as $key => $value) {
+            if (!$this->set($key, $value, $ttl)) {
+                return false;
             }
-        } catch (\Throwable $e) {
-            // An unserializable value must not leave the connection in pipeline mode
-            $this->redis->discard();
-            throw $e;
         }
-        $results = $this->redis->exec();
-
-        if ($count === 0) {
-            return true;
-        }
-        return is_array($results) && !in_array(false, $results, true);
+        return true;
     }
 
     /**
