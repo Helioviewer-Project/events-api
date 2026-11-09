@@ -136,7 +136,8 @@ interface RepositoryInterface
     public function getRecent(int $limit = 100): Collection;
 
     /**
-     * Retrieve a page of events ordered by start time (oldest first).
+     * Retrieve a page of events ordered by id, which batch jobs never change,
+     * so the pages stay stable while they rewrite start/end.
      *
      * Used by long-running batch jobs (e.g. distribution rebuild, reprocess)
      * to walk the whole events table without holding the entire result set
@@ -151,7 +152,7 @@ interface RepositoryInterface
 
     /**
      * Retrieve a page of events whose path matches any of the given prefixes,
-     * ordered by start time (oldest first). Same ordering/semantics as
+     * ordered by id. Same ordering/semantics as
      * {@see getWithPage()} but restricted to matching paths so batch jobs can
      * walk only the relevant subset instead of the whole table.
      *

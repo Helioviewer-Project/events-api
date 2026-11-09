@@ -472,7 +472,10 @@ class Postgres implements RepositoryInterface
     }
 
     /**
-     * Get events with pagination, ordered by start time.
+     * Get events with pagination, ordered by id: unique, and never changed by
+     * the batch jobs that page through here. Ordering by start (shared by many
+     * rows, and rewritten by a reprocess) let a reprocess skip some rows and
+     * read others twice.
      *
      * @param int $page     Page number (0-indexed)
      * @param int $pageSize Number of events per page
@@ -482,7 +485,7 @@ class Postgres implements RepositoryInterface
     {
         $offset = $page * $pageSize;
 
-        return Event::orderBy('start')
+        return Event::orderBy('id')
             ->offset($offset)
             ->limit($pageSize)
             ->get()
@@ -491,7 +494,7 @@ class Postgres implements RepositoryInterface
 
     /**
      * Page over events matching any of the given path prefixes, ordered by
-     * start time — same semantics as getWithPage() but path-restricted.
+     * id — same semantics as getWithPage() but path-restricted.
      *
      * @param array<string> $pathPrefixes
      * @return array<Event>
@@ -511,7 +514,7 @@ class Postgres implements RepositoryInterface
                     $query->orWhere('path', 'LIKE', $this->nestedPathPattern($prefix));
                 }
             })
-            ->orderBy('start')
+            ->orderBy('id')
             ->offset($offset)
             ->limit($pageSize)
             ->get()
