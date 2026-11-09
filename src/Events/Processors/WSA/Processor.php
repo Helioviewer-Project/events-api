@@ -21,22 +21,20 @@ use Helioviewer\EventsApi\Events\Processors\BaseProcessor;
  */
 abstract class Processor extends BaseProcessor
 {
-    /** Seconds a WSA event is active before its forecast_time. */
-    protected const ACTIVE_BEFORE = 3600;
-
-    /** Seconds a WSA event stays active after its forecast_time: maps come every 4–8 h. */
-    protected const ACTIVE_AFTER = 8 * 3600;
+    /** Seconds a WSA map stays active after its forecast_time; the newest active map per path is served. */
+    protected const ACTIVE_AFTER = 24 * 3600;
 
     /**
      * The event timeline from the record's forecast window.
      *
      * WSA times are UTC ISO strings with no offset; the container runs in UTC.
      *
-     * The event is active from ACTIVE_BEFORE before forecast_time until
-     * ACTIVE_AFTER after it, roughly until the next map of the same kind (they
-     * come every 4–8 h), so about one map of a kind shows at a time. Not the
-     * API's forecast_range: that range is ~±1 h around the forecast, which is
-     * the map's validity, not how long a viewer wants to see it. The
+     * The event is active from forecast_time until ACTIVE_AFTER after it, so
+     * a map never shows before its own time. Several maps of one path can be
+     * active at once; the observation query keeps the newest (issue_time =
+     * forecast_time), so the window only caps how old a shown map can be. Not
+     * the API's forecast_range: that range is ~±1 h around the forecast, which
+     * is the map's validity, not how long a viewer wants to see it. The
      * real range still reaches the client through the view ("Forecast window").
      * coordinate_time stays forecast_time, so widening this costs no rotation.
      * A record without a usable forecast_time falls back to the range start.
@@ -53,7 +51,7 @@ abstract class Processor extends BaseProcessor
             $peak = !empty($range[0]) ? (int) strtotime($range[0]) : 0;
         }
 
-        return [$peak - self::ACTIVE_BEFORE, $peak, $peak + self::ACTIVE_AFTER];
+        return [$peak, $peak, $peak + self::ACTIVE_AFTER];
     }
 
     /**

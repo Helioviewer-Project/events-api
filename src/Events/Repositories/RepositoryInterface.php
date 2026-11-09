@@ -54,6 +54,10 @@ interface RepositoryInterface
      * meaning the event was ongoing at that moment. Useful for
      * determining what events were happening at a particular time.
      *
+     * Forecasts (issue_time set: WSA, Solar Flare Predictions) are returned
+     * only once issued (issue_time <= T), and only with the newest such
+     * issue_time per path.
+     *
      * @param string $source Source identifier to filter by
      * @param int $timestamp Unix timestamp to check for active events
      *
@@ -91,7 +95,7 @@ interface RepositoryInterface
      *
      * @return Collection<int, Event>
      */
-    public function findActiveAtAnyTimestampForSelections(
+    public function findActiveAtTimeForSelections(
         array $pathPrefixes,
         array $uuids,
         array $timestamps
@@ -136,7 +140,8 @@ interface RepositoryInterface
     public function getRecent(int $limit = 100): Collection;
 
     /**
-     * Retrieve a page of events ordered by start time (oldest first).
+     * Retrieve a page of events ordered by id, which batch jobs never change,
+     * so the pages stay stable while they rewrite start/end.
      *
      * Used by long-running batch jobs (e.g. distribution rebuild, reprocess)
      * to walk the whole events table without holding the entire result set
@@ -151,7 +156,7 @@ interface RepositoryInterface
 
     /**
      * Retrieve a page of events whose path matches any of the given prefixes,
-     * ordered by start time (oldest first). Same ordering/semantics as
+     * ordered by id. Same ordering/semantics as
      * {@see getWithPage()} but restricted to matching paths so batch jobs can
      * walk only the relevant subset instead of the whole table.
      *
