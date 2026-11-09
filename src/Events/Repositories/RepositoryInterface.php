@@ -54,6 +54,10 @@ interface RepositoryInterface
      * meaning the event was ongoing at that moment. Useful for
      * determining what events were happening at a particular time.
      *
+     * Forecasts (issue_time set: WSA, Solar Flare Predictions) are returned
+     * only once issued (issue_time <= T), and only with the newest such
+     * issue_time per path.
+     *
      * @param string $source Source identifier to filter by
      * @param int $timestamp Unix timestamp to check for active events
      *
@@ -91,7 +95,7 @@ interface RepositoryInterface
      *
      * @return Collection<int, Event>
      */
-    public function findActiveAtAnyTimestampForSelections(
+    public function findActiveAtTimeForSelections(
         array $pathPrefixes,
         array $uuids,
         array $timestamps

@@ -88,6 +88,7 @@ class CoronalHoleProcessor extends Processor
             'peak'              => $peak,
             'end'               => $end,
             'coordinate_time'   => $peak,
+            'issue_time'        => $peak,
             'hv_hpc_x'          => $cx,
             'hv_hpc_y'          => $cy,
             'coordinate_system' => 'carrington',

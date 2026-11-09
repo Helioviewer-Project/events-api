@@ -131,7 +131,7 @@ These endpoints return data in a format tailored for the Helioviewer.org client.
 
 #### GET `/helioviewer/events/{source}/observation/{timestamp}`
 
-Get events active at a specific observation time, in Helioviewer legacy format. Returns events grouped by event type with nested groups by detection method.
+Get events active at a specific observation time, in Helioviewer legacy format. Returns events grouped by event type with nested groups by detection method. Solar Flare Predictions return only the newest forecast per model issued at or before the observation time, as in `/api/v1/events/{source}/observation/{timestamp}`.
 
 **WSA is not implemented on this endpoint.** It is the legacy tree format, which stops at three path levels; WSA paths go deeper. Requesting `source=WSA` returns 400 — use `/api/v1/events/WSA/observation/{timestamp}` instead.
 
@@ -356,6 +356,8 @@ Example response:
 #### GET `/api/v1/events/{source}/observation/{timestamp}`
 
 Get events from a specific source active at a given observation time.
+
+For WSA and Solar Flare Predictions, only one forecast per path is returned: among the forecasts active at the observation time and issued at or before it, the events with the newest `issue_time` (ties all kept). A forecast issued after the observation time is never returned, even if its window has started. Older forecasts that are still active are left out, and so is a region the chosen forecast does not list.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|

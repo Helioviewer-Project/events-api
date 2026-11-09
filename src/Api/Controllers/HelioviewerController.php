@@ -125,7 +125,7 @@ class HelioviewerController extends Controller
 
         // === Single DB query: events matching selections AND active at any timestamp ===
         try {
-            $allEvents = $this->eventRepository->findActiveAtAnyTimestampForSelections(
+            $allEvents = $this->eventRepository->findActiveAtTimeForSelections(
                 $pathPrefixes,
                 $uuids,
                 $parsedTimestamps
@@ -158,6 +158,40 @@ class HelioviewerController extends Controller
             $this->logger->warning("Selection observations | dropping {$unusable->count()} events with no arcsec snapshot");
             $allEvents = $allEvents->reject(fn($e) => $e->x_hpc === null);
         }
+
+        // Newest issued forecast per path, frame by frame. The query above loaded
+        // every event active at ANY frame, so it holds other issues too; which
+        // one is kept depends on the frame time, so the rule runs here in PHP
+        // rather than in SQL. Same rule as findActiveAtTime for a single time.
+        $eventsForFrame = [];
+        $keptIds = [];
+        foreach ($parsedTimestamps as $idx => $t) {
+            // Active at the frame; a forecast also must have been issued by then.
+            $activeEvents = $allEvents->filter(
+                fn($e) => $e->start <= $t && $e->end >= $t && ($e->isNotPrediction() || $e->issue_time <= $t)
+            );
+
+            // Newest issue_time per path among this frame's forecasts.
+            $newestPredictionPerPath = [];
+            foreach ($activeEvents as $e) {
+                if ($e->isPrediction()) {
+                    $newestPredictionPerPath[$e->path] = max($newestPredictionPerPath[$e->path] ?? PHP_INT_MIN, $e->issue_time);
+                }
+            }
+
+            // Keep events that are not forecasts, and forecasts from their path's
+            // newest issue (ties all kept: every region or contour of that issue).
+            $eventsForFrame[$idx] = $activeEvents->filter(
+                fn($e) => $e->isNotPrediction() || $e->issue_time === $newestPredictionPerPath[$e->path]
+            );
+            // Remember every event shown in at least one frame.
+            foreach ($eventsForFrame[$idx] as $e) {
+                $keptIds[$e->id] = true;
+            }
+        }
+        // The events dict below sends each event's static fields once; drop the
+        // forecasts no frame shows, so their footprints are never sent.
+        $allEvents = $allEvents->filter(fn($e) => isset($keptIds[$e->id]));
 
         // === Build events dict (static fields, same shape as formatEventsBatched) ===
         // Center and footprint are the native-HPC (arcsec) snapshot at the event's
@@ -193,9 +227,10 @@ class HelioviewerController extends Controller
         foreach ($parsedTimestamps as $idx => $t) {
             $tsKey = $timestamps[$idx]; // original string used as key
 
-            $activeEvents = $allEvents
-                ->filter(fn($e) => $e->start <= $t && $e->end >= $t)
-                ->map(fn($e) => clone $e);
+            // This frame's events, already filtered above. Cloned because rotation
+            // writes this frame's centers onto the event, and the same event
+            // appears in other frames.
+            $activeEvents = $eventsForFrame[$idx]->map(fn($e) => clone $e);
 
             if ($activeEvents->isEmpty()) {
                 $timestampsOut[$tsKey] = (object) [];
