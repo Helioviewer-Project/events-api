@@ -37,7 +37,7 @@
           "events"
         ],
         "summary": "Events active at an instant",
-        "description": "Every event of the source active at `timestamp`, centres and footprints rotated to it, with labels, views, links and the raw source record.",
+        "description": "Every event of the source active at `timestamp`, centres and footprints rotated to it, with labels, views, links and the raw source record. For WSA and Solar Flare Predictions only the newest forecast per path issued at or before `timestamp` is returned (newest `issue_time` <= `timestamp`, ties all kept).",
         "parameters": [
           {
             "name": "source",
@@ -307,7 +307,7 @@
           "helioviewer"
         ],
         "summary": "Events at an instant, legacy tree format",
-        "description": "Grouped by event type and detection method. **WSA is not implemented here** (400); use `/api/v1/events/WSA/observation/{timestamp}`.",
+        "description": "Grouped by event type and detection method. Solar Flare Predictions return only the newest forecast per model issued at or before `timestamp`. **WSA is not implemented here** (400); use `/api/v1/events/WSA/observation/{timestamp}`.",
         "parameters": [
           {
             "name": "source",

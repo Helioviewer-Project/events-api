@@ -390,7 +390,7 @@ events = response.<span class="fn">json</span>()</code></pre>
                     <span class="endpoint-desc">Events by observation time</span>
                 </summary>
                 <div class="endpoint-detail">
-                    <p>Get events from a specific source active at a given observation time.</p>
+                    <p>Get events from a specific source active at a given observation time. For WSA and Solar Flare Predictions, only the newest forecast per path issued at or before the observation time is returned.</p>
                     <table class="param-table">
                         <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
                         <tr><td><code>source</code></td><td>path</td><td>Event source (CCMC, HEK, RHESSI, WSA)</td></tr>
@@ -584,7 +584,7 @@ events = data[<span class="str">"events"</span>]</code></pre>
                     <span class="endpoint-desc">Legacy observation format</span>
                 </summary>
                 <div class="endpoint-detail">
-                    <p>Get events active at a specific observation time, grouped by event type with nested detection method groups.</p>
+                    <p>Get events active at a specific observation time, grouped by event type with nested detection method groups. Solar Flare Predictions return only the newest forecast per model issued at or before the observation time.</p>
                     <table class="param-table">
                         <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
                         <tr><td><code>source</code></td><td>path</td><td>Event source (CCMC, HEK, RHESSI) — WSA is not implemented on this legacy endpoint; use /api/v1/events/WSA/observation/{timestamp}</td></tr>

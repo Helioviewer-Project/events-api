@@ -224,6 +224,7 @@ class Processor extends BaseProcessor
             'peak' => $timeline['peak'],
             'end' => $timeline['end'],
             'coordinate_time' => strtotime($coordinateTime),
+            'issue_time' => strtotime($rawRecord['issue_time']),  // the same field remote_id is built from
             'hv_hpc_x' => $coordinates['longitude'],  // longitude maps to X
             'hv_hpc_y' => $coordinates['latitude'],   // latitude maps to Y
             'coordinate_system' => 'stonyhurst',

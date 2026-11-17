@@ -33,6 +33,7 @@ use Illuminate\Database\Eloquent\Builder;
  * @property int|null $peak Event peak time as Unix timestamp
  * @property int $end Event end time as Unix timestamp
  * @property int $coordinate_time Time when coordinates were observed as Unix timestamp
+ * @property int|null $issue_time When the forecast was issued (predictions) or is valid for (WSA), as Unix timestamp; set only for forecasts, NULL for every other source
  * @property float|null $hv_hpc_x Helioviewer HPC X coordinate
  * @property float|null $hv_hpc_y Helioviewer HPC Y coordinate
  * @property string|null $coordinate_system Coordinate system (stonyhurst, helioprojective, carrington)
@@ -101,6 +102,7 @@ class Event extends Model
         'peak',
         'end',
         'coordinate_time',
+        'issue_time',
         'hv_hpc_x',
         'hv_hpc_y',
         'coordinate_system',
@@ -125,6 +127,7 @@ class Event extends Model
         'peak' => 'integer',
         'end' => 'integer',
         'coordinate_time' => 'integer',
+        'issue_time' => 'integer',
         'hv_hpc_x' => 'float',
         'hv_hpc_y' => 'float',
         'footprint' => 'array',
@@ -186,6 +189,28 @@ class Event extends Model
      * below anything a client can draw.
      */
     private const CENTER_TOLERANCE = 1e-6;
+
+    /**
+     * Whether this event is a forecast (a flare prediction or a WSA map).
+     * Only forecasts carry issue_time; every other source leaves it NULL.
+     *
+     * @return bool
+     */
+    public function isPrediction(): bool
+    {
+        return $this->issue_time !== null;
+    }
+
+    /**
+     * Whether this event is not a forecast: no issue_time, as for HEK, DONKI
+     * and RHESSI events.
+     *
+     * @return bool
+     */
+    public function isNotPrediction(): bool
+    {
+        return !$this->isPrediction();
+    }
 
     /**
      * Which coordinate system this event can be rotated from. The only place
