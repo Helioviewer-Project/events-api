@@ -4,11 +4,16 @@ x-phpfpm-common: &phpfpm-common
   volumes:
     - ../:/u/apps/site
     - ${APP_STORAGE:-../storage}:/u/apps/data:rw
+    # PHP settings are mounted, so a change applies on restart with no image rebuild
+    - ./phpfpm/app.ini:/usr/local/etc/php/conf.d/zz-app.ini:ro
+    - ./phpfpm/zz-pool.conf:/usr/local/etc/php-fpm.d/zz-pool.conf:ro
   depends_on:
     postgres:
       condition: service_healthy
     redis:
       condition: service_healthy
+  environment:
+    PHP_OPCACHE_REVALIDATE_FREQ: 60
   networks:
     - eventsapi
   restart: unless-stopped
