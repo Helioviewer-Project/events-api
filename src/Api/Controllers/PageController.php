@@ -447,6 +447,7 @@ event = response.<span class="fn">json</span>()</code></pre>
   "peak": "2025-06-03 12:00:00",
   "end": "2025-06-03 12:00:00",
   "coordinate_time": "2025-06-03 00:00:00",
+  "issue_time": "2025-06-03 00:00:00",
   "hv_hpc_x": 37,
   "hv_hpc_y": -14,
   "label": "ASSA | AR 14099\nC: 26%\nM: 6%\nX: 1%",

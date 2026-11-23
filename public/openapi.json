@@ -634,6 +634,11 @@
             "type": "string",
             "description": "The instant the producer's position describes"
           },
+          "issue_time": {
+            "type": "string",
+            "nullable": true,
+            "description": "When the forecast was issued: the model's issue time for Solar Flare Predictions, the map's forecast_time for WSA. Null for every other source."
+          },
           "coordinate_system": {
             "type": "string",
             "enum": [
