@@ -46,6 +46,7 @@ try {
         $eventArray['peak'] = isset($eventArray['peak']) && $eventArray['peak'] ? date('Y-m-d H:i:s', $eventArray['peak']) : null;
         $eventArray['end'] = isset($eventArray['end']) ? date('Y-m-d H:i:s', $eventArray['end']) : null;
         $eventArray['coordinate_time'] = isset($eventArray['coordinate_time']) && $eventArray['coordinate_time'] ? date('Y-m-d H:i:s', $eventArray['coordinate_time']) : null;
+        $eventArray['issue_time'] = isset($eventArray['issue_time']) ? date('Y-m-d H:i:s', $eventArray['issue_time']) : null;
         
         // Load and include JSON files
         $uuid = $eventArray['id'];
