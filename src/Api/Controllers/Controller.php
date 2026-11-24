@@ -119,7 +119,7 @@ abstract class Controller
         $uuid       = $eventArray['id'] ?? null;
 
         // Format timestamps (existing v1 contract: space-separated)
-        foreach (['start', 'end', 'peak', 'coordinate_time'] as $field) {
+        foreach (['start', 'end', 'peak', 'coordinate_time', 'issue_time'] as $field) {
             if (!empty($eventArray[$field]) && is_numeric($eventArray[$field])) {
                 $eventArray[$field] = $this->formatTimestamp((int) $eventArray[$field]);
             }

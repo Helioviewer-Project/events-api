@@ -124,6 +124,9 @@ class Legacy
                 if (isset($eventArray['peak'])) {
                     $eventArray['peak'] = date('Y-m-d\TH:i:s', $eventArray['peak']);
                 }
+                if (isset($eventArray['issue_time'])) {
+                    $eventArray['issue_time'] = date('Y-m-d\TH:i:s', $eventArray['issue_time']);
+                }
                 
                 // Add extended data if requested
                 if ($includeExtendedData) {

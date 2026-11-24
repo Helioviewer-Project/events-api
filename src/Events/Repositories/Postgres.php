@@ -106,6 +106,11 @@ class Postgres implements RepositoryInterface
      * - event.start <= T (event had already started)
      * - event.end >= T (event had not yet ended)
      *
+     * A forecast (issue_time set: WSA, Solar Flare Predictions) counts only
+     * once issued (issue_time <= T), and is returned only if its issue_time
+     * is the newest among those of its path, i.e. the closest to T; ties are
+     * all returned. Events with no issue_time are all returned.
+     *
      * Performance Notes:
      * - Uses compound WHERE clause optimized for (source_id, start, end) index
      * - Filters by source first to reduce query scope
@@ -122,12 +127,25 @@ class Postgres implements RepositoryInterface
     {
         $sourceId = $this->getSourceId($source);
 
-        // Query events that were active at the specified timestamp
-        // This uses an optimized WHERE clause that can leverage indexes
-        return Event::where('source_id', $sourceId)
-            ->where('start', '<=', $timestamp)  // Event had started
-            ->where('end', '>=', $timestamp)    // Event had not ended
-            ->get();
+        // A forecast counts only once issued; among those, each path keeps its
+        // newest issue_time (the closest to T). Found among the active rows
+        // only, so the cost does not grow with a path's history (ASSA alone
+        // has ~340k rows on production).
+        $sql = <<<'SQL'
+            WITH active AS (
+                SELECT * FROM events
+                 WHERE source_id = ? AND start <= ? AND "end" >= ?
+                   AND (issue_time IS NULL OR issue_time <= ?)
+            )
+            SELECT * FROM active
+             WHERE issue_time IS NULL
+                OR (path, issue_time) IN (
+                    SELECT path, max(issue_time) FROM active
+                     WHERE issue_time IS NOT NULL
+                     GROUP BY path)
+        SQL;
+
+        return Event::fromQuery($sql, [$sourceId, $timestamp, $timestamp, $timestamp]);
     }
 
     /**
@@ -166,7 +184,7 @@ class Postgres implements RepositoryInterface
      * @param array<int>    $timestamps   Unix timestamps to consider
      * @return Collection<int, Event>
      */
-    public function findActiveAtAnyTimestampForSelections(
+    public function findActiveAtTimeForSelections(
         array $pathPrefixes,
         array $uuids,
         array $timestamps
@@ -472,7 +490,10 @@ class Postgres implements RepositoryInterface
     }
 
     /**
-     * Get events with pagination, ordered by start time.
+     * Get events with pagination, ordered by id: unique, and never changed by
+     * the batch jobs that page through here. Ordering by start (shared by many
+     * rows, and rewritten by a reprocess) let a reprocess skip some rows and
+     * read others twice.
      *
      * @param int $page     Page number (0-indexed)
      * @param int $pageSize Number of events per page
@@ -482,7 +503,7 @@ class Postgres implements RepositoryInterface
     {
         $offset = $page * $pageSize;
 
-        return Event::orderBy('start')
+        return Event::orderBy('id')
             ->offset($offset)
             ->limit($pageSize)
             ->get()
@@ -491,7 +512,7 @@ class Postgres implements RepositoryInterface
 
     /**
      * Page over events matching any of the given path prefixes, ordered by
-     * start time — same semantics as getWithPage() but path-restricted.
+     * id — same semantics as getWithPage() but path-restricted.
      *
      * @param array<string> $pathPrefixes
      * @return array<Event>
@@ -511,7 +532,7 @@ class Postgres implements RepositoryInterface
                     $query->orWhere('path', 'LIKE', $this->nestedPathPattern($prefix));
                 }
             })
-            ->orderBy('start')
+            ->orderBy('id')
             ->offset($offset)
             ->limit($pageSize)
             ->get()
